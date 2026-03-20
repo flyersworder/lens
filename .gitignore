@@ -26,8 +26,6 @@ Thumbs.db
 .env.local
 
 # Data
-*.duckdb
-*.duckdb.wal
 *.lance/
 data/
 

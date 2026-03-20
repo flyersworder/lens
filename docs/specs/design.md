@@ -3,7 +3,7 @@
 Design spec for a system that automatically discovers recurring solution patterns, contradiction resolutions, architecture innovations, and agentic design patterns from LLM research papers (arxiv), inspired by TRIZ methodology.
 
 **Status**: Draft
-**Date**: 2026-03-19
+**Date**: 2026-03-20
 
 ---
 
@@ -62,18 +62,35 @@ Catalogs recurring patterns for building and orchestrating LLM-based agents.
 | Package manager | uv | Fast, reliable (same as triz-ai) |
 | CLI framework | Typer | Clean CLI + library dual use |
 | LLM abstraction | litellm | Multi-provider, model-agnostic |
-| Structured data DB | DuckDB | Embedded, columnar, excellent SQL + JSON |
-| Vector + multimodal DB | LanceDB | Embedded, native vector search, multimodal-ready |
+| Database | LanceDB | Embedded, native vector search, Arrow-native, multimodal-ready, Pydantic schemas |
+| Analytics | Polars | Zero-copy from Arrow/Lance, fast groupby/join/agg for matrix construction |
 | Topic modeling | BERTopic + HDBSCAN | State-of-the-art neural topic modeling |
 | Scientific embeddings | SPECTER2 | Purpose-built for scientific documents |
-| Data validation | Pydantic | Structured LLM output validation |
+| Data validation | Pydantic | Structured LLM output validation + LanceDB schema definition |
 | Paper sources | arxiv API, OpenAlex, Semantic Scholar | Complementary metadata and embeddings |
 
 ### Data Model
 
 Four layers: Raw Extraction -> Taxonomy -> Knowledge Structures -> Query Interface.
 
-#### Layer 1: Raw Extractions (per-paper, stored in DuckDB)
+#### Layer 0: Papers
+
+```
+Paper:
+  paper_id: str              # arxiv ID, e.g. "2401.12345"
+  title: str
+  abstract: str
+  authors: list[str]
+  venue: str | None          # nullable — many arxiv papers are preprint-only
+  date: str                  # publication date, e.g. "2024-01-15"
+  arxiv_id: str
+  citations: int             # from OpenAlex enrichment
+  quality_score: float       # computed from citations, venue tier, recency
+  extraction_status: str     # "pending" | "complete" | "incomplete" | "failed"
+  embedding: Vector(768)     # SPECTER2 embedding for similarity search
+```
+
+#### Layer 1: Raw Extractions (per-paper)
 
 ```
 TradeoffExtraction:
@@ -110,6 +127,9 @@ Parameter:
   name: str                # e.g. "Inference Latency"
   description: str
   raw_strings: list[str]   # extracted strings that mapped here
+  paper_ids: list[str]     # papers whose extractions mapped to this parameter
+  taxonomy_version: int
+  embedding: Vector(768)   # SPECTER2 embedding of name+description for concept resolution
 
 Principle:
   id: int
@@ -117,11 +137,16 @@ Principle:
   description: str
   sub_techniques: list[str]
   raw_strings: list[str]
+  paper_ids: list[str]     # papers whose extractions mapped to this principle
+  taxonomy_version: int
+  embedding: Vector(768)   # SPECTER2 embedding for concept resolution
 
 ArchitectureSlot:
   id: int
   name: str                # e.g. "Attention Mechanism"
-  variants: list[ArchitectureVariant]
+  description: str
+  taxonomy_version: int
+  # Variants are stored in separate `architecture_variants` table, linked by slot_id
 
 ArchitectureVariant:
   id: int
@@ -130,6 +155,8 @@ ArchitectureVariant:
   replaces: list[int]      # variant IDs this generalizes/replaces
   properties: str
   paper_ids: list[str]
+  taxonomy_version: int
+  embedding: Vector(768)   # SPECTER2 embedding for concept resolution
 
 AgenticPattern:
   id: int
@@ -139,47 +166,112 @@ AgenticPattern:
   components: list[str]
   use_cases: list[str]
   paper_ids: list[str]
+  taxonomy_version: int
+  embedding: Vector(768)   # SPECTER2 embedding for concept resolution
 ```
 
 #### Layer 3: Knowledge Structures
 
+Stored models (LanceDB tables):
+
+```
+MatrixCell:
+  improving_param_id: int
+  worsening_param_id: int
+  principle_id: int
+  count: int                # number of extractions supporting this cell
+  avg_confidence: float     # mean confidence across supporting extractions
+  paper_ids: list[str]      # papers that contributed to this cell
+  taxonomy_version: int
+```
+
+Computed models (in-memory, not stored — assembled from tables via Polars):
+
 ```
 ContradictionMatrix:
+  # Built from `matrix_cells` table: group by (improving, worsening), rank principles by count * avg_confidence, keep top-4
   cells: dict[(improving_param_id, worsening_param_id), list[principle_id]]
 
 ArchitectureCatalog:
-  slots: list[ArchitectureSlot]   # each with variant evolution trees
+  # Built from `architecture_slots` + `architecture_variants` tables: join on slot_id, order variants chronologically
+  slots: list[ArchitectureSlot with variants]
 
 AgenticPatternCatalog:
-  patterns: list[AgenticPattern]  # organized by category
+  # Built from `agentic_patterns` table: group by category
+  patterns: list[AgenticPattern]
+```
+
+Query response models (returned to caller, not stored):
+
+```
+ExplanationResult:
+  resolved_type: str        # "parameter" | "principle" | "architecture_variant" | "agentic_pattern"
+  resolved_id: int          # taxonomy entry ID
+  resolved_name: str        # taxonomy entry name
+  narrative: str            # LLM-synthesized explanation
+  evolution: list[str]      # ordered predecessor/successor chain (if applicable)
+  tradeoffs: list[dict]     # matrix cells referencing this concept
+  connections: list[str]    # related concepts from shared matrix cells or papers
+  paper_refs: list[str]     # key paper references
+  alternatives: list[dict]  # other candidate matches (type, id, name, score) for disambiguation
+
+IdeationGap:
+  id: int
+  report_id: int
+  gap_type: str           # "sparse_cell" | "cross_pollination" | "stalled_slot" | "trend_gap"
+  description: str        # structured description of the gap
+  related_params: list[int]
+  related_principles: list[int]
+  related_slots: list[int]
+  score: float            # relevance/novelty score
+  llm_hypothesis: str | None   # filled if LLM enrichment enabled
+  created_at: datetime
+  taxonomy_version: int
+
+IdeationReport:
+  id: int
+  created_at: datetime
+  taxonomy_version: int
+  paper_batch_size: int
+  gap_count: int
 ```
 
 #### Storage
 
-DuckDB (structured data):
-- `papers` (id, title, abstract, authors, venue, date, arxiv_id, citations, quality_score)
-- `tradeoff_extractions`, `architecture_extractions`, `agentic_extractions`
-- `parameters`, `principles`, `architecture_slots`, `architecture_variants`, `agentic_patterns`
-- `matrix_cells`
-- `taxonomy_versions`
+All data is stored in a single LanceDB instance. Each data type is a Lance table with a Pydantic `LanceModel` schema. Data models defined above map directly to table schemas.
 
-LanceDB (vectors + future multimodal):
-- `paper_embeddings` (SPECTER2 vectors + paper metadata)
-- `paper_figures` (Phase 2: figure images + extracted structured data)
+LanceDB tables:
+- `papers` — paper metadata + SPECTER2 embedding (Layer 0)
+- `tradeoff_extractions`, `architecture_extractions`, `agentic_extractions` — raw extraction records (Layer 1)
+- `parameters`, `principles` — taxonomy entries + SPECTER2 embeddings for concept resolution (Layer 2)
+- `architecture_slots`, `architecture_variants` — architecture taxonomy, variants carry SPECTER2 embeddings (Layer 2)
+- `agentic_patterns` — agentic pattern taxonomy + SPECTER2 embeddings (Layer 2)
+- `matrix_cells` — one row per (improving_param, worsening_param, principle) with counts and confidence (Layer 3)
+- `taxonomy_versions` — taxonomy version metadata
+- `ideation_reports`, `ideation_gaps` — ideation pipeline output (Layer 3)
+- `paper_figures` (Phase 2: figure images stored as Lance blobs + extracted structured data)
 
-### Database Design: DuckDB + LanceDB
+### Database Design: LanceDB + Polars
 
-Two embedded databases, each handling what it does best:
+Single embedded database. LanceDB stores all data (structured, vectors, future multimodal). Polars handles analytical operations (groupby, joins, aggregations) in memory via zero-copy Arrow interchange.
 
 ```python
 class LensStore:
     def __init__(self, data_dir: str):
-        self.db = duckdb.connect(f"{data_dir}/lens.duckdb")
-        self.vectors = lancedb.connect(f"{data_dir}/lens.lance")
+        self.db = lancedb.connect(f"{data_dir}/lens.lance")
 ```
 
-- **DuckDB**: All structured/relational data. Powerful SQL with native JSON, list, and struct types. Excellent for analytical queries (aggregations, pattern frequency counting).
-- **LanceDB**: Vector search (paper similarity, clustering input) and future multimodal storage (figures/diagrams). Native ANN search, built on Apache Arrow.
+**Why single-database**: At LENS's scale (~200-5000 papers, ~30 parameters, ~35 principles), all data fits comfortably in memory. SQL is unnecessary — every analytical operation (matrix construction, gap detection, taxonomy stats) is a Polars one-liner on Arrow tables loaded from Lance.
+
+**Write path**: Python → Pydantic models → LanceDB `table.add()`. Accepts Pydantic objects, dicts, pandas/polars DataFrames.
+
+**Read path (queries)**: LanceDB `table.search()` for vector similarity, `table.search().where()` for filtered retrieval, `table.to_arrow()` → `polars.from_arrow()` for analytical operations.
+
+**Read path (analytics)**: Load full tables as Arrow → Polars DataFrames for groupby/join/agg. Example: matrix construction is `extractions.group_by(["improving_param_id", "worsening_param_id", "principle_id"]).agg(pl.count(), pl.mean("confidence"))`.
+
+**Versioning**: Taxonomy versioning is application-level — each taxonomy entry carries a `taxonomy_version` field, and `taxonomy_versions` table tracks version metadata. A rebuild writes new entries with a new version ID; old versions are retained for diffing. Filtering by `taxonomy_version` selects the active taxonomy. Lance's built-in MVCC provides an additional safety net: if a rebuild goes wrong, the entire dataset can be restored to a previous Lance snapshot.
+
+**Persistence**: Data stored as Lance columnar files in a directory. Backup = copy the directory. No server process required.
 
 ## Pipeline
 
@@ -267,16 +359,33 @@ Map raw extractions through the taxonomy to populate knowledge structures.
 
 ### Stage 5: Serve
 
-Two user modes:
+Three user modes:
 
 **Problem-solving** (`lens analyze`): User describes a problem in natural language. Routing depends on `--type`:
 - Default (no type): LLM classifies the tradeoff (identifying improving/worsening parameters) -> contradiction matrix lookup -> return ranked principles with paper references.
 - `--type architecture`: LLM identifies the relevant architecture slot and constraints -> search architecture catalog by slot + vector similarity -> return relevant variants with properties and evolution context.
 - `--type agentic`: LLM identifies the agent task type and constraints -> search agentic catalog by category + vector similarity -> return relevant patterns with components and use cases.
 
-All three modes enrich results with paper references and evidence quotes from the extraction layer.
+All three modes enrich results with paper references and evidence quotes from the extraction layer. For `--type architecture` and `--type agentic`, the LLM first reformulates the user's conversational query into a technical description suitable for SPECTER2 embedding (e.g., "efficient attention for long context" → "attention mechanism with sub-quadratic complexity for extended sequence lengths"). This reformulated query is embedded and used for vector search against taxonomy tables.
 
-**Exploration** (`lens explore`): Browse parameters, principles, matrix cells, architecture trees, agentic patterns, evolution trajectories.
+**Education** (`lens explain`): User asks about any LLM concept. The system resolves the query to taxonomy entries, walks the knowledge graph outward, and synthesizes a coherent explanation with adaptive depth.
+
+1. **Resolve** — Match the input query to taxonomy entries via embedding similarity. The query is embedded with SPECTER2, then searched against the `embedding` column on each taxonomy table (`parameters`, `principles`, `architecture_variants`, `agentic_patterns`). Top results across all tables are ranked by distance. If ambiguous, the CLI shows top-3 matches for the user to pick; the library API returns the top match with alternatives listed in `ExplanationResult.alternatives`.
+2. **Graph walk** — From the resolved entry, walk outward through knowledge structures:
+   - **Identity**: Name, description, paper references (from taxonomy layer)
+   - **Context**: Which slot/category it belongs to (architecture slot, agentic category, or parameter/principle type)
+   - **Evolution**: Predecessors and successors (for architecture variants), or sub-techniques (for principles)
+   - **Tradeoffs**: Which matrix cells reference this concept — what does it improve, what does it cost?
+   - **Connections**: Other concepts that share matrix cells or appear in the same papers
+   - **Agentic usage**: Which agentic patterns employ this concept (if applicable)
+3. **Synthesize** — An LLM receives the structured graph walk data and produces a coherent narrative explanation. The prompt instructs adaptive depth: broad concepts (mapping to many entries) get an overview with pointers; specific concepts get deep coverage of the node and its neighborhood. Newcomer-friendly when the concept is foundational; expert-oriented when the concept is specialized.
+
+Flags for focused exploration:
+- `--related`: Emphasize connected concepts and how they relate
+- `--evolution`: Focus on the evolution tree (predecessors, successors, timeline)
+- `--tradeoffs`: Focus on tradeoffs the concept resolves or introduces
+
+**Exploration** (`lens explore`): Browse parameters, principles, matrix cells, architecture trees, agentic patterns, evolution trajectories, and ideation reports.
 
 ## CLI Interface
 
@@ -308,6 +417,14 @@ lens analyze "reduce hallucination without hurting latency"
 lens analyze --type architecture "efficient attention for long context"
 lens analyze --type agentic "reliable multi-step code generation"
 
+# Explain (education)
+lens explain "grouped-query attention"     # adaptive-depth explanation
+lens explain "knowledge distillation"      # works for any concept type
+lens explain "ReAct pattern"               # agentic patterns too
+lens explain "MoE" --related               # emphasize connected concepts
+lens explain "attention" --evolution        # focus on evolution tree
+lens explain "RLHF" --tradeoffs            # focus on tradeoffs resolved
+
 # Explore (browsing)
 lens explore parameters
 lens explore principles
@@ -319,10 +436,12 @@ lens explore agents
 lens explore agents multi-agent
 lens explore paper 2401.12345
 lens explore evolution attention
+lens explore ideas                    # browse ideation reports
+lens explore ideas --type sparse      # filter by gap type
 
 # Monitor (continuous)
 lens monitor --interval weekly
-lens monitor --trending
+lens monitor --trending               # includes ideation gaps
 
 # Config
 lens config set llm.default_model openrouter/anthropic/claude-sonnet
@@ -334,7 +453,7 @@ lens config show
 Public API is synchronous (async internals are wrapped with `asyncio.run()` as needed, matching triz-ai's pattern). Typer CLI is a thin wrapper over these functions.
 
 ```python
-from lens import LensStore, analyze, explore, acquire_arxiv, extract, build_taxonomy
+from lens import LensStore, analyze, explain, explore, acquire_arxiv, extract, build_taxonomy
 
 # Problem-solving
 result = analyze("reduce hallucination without increasing latency")
@@ -342,10 +461,17 @@ print(result.principles)
 print(result.architecture_suggestions)
 print(result.agentic_suggestions)
 
+# Education
+explanation = explain("grouped-query attention")
+print(explanation.narrative)
+print(explanation.evolution)
+print(explanation.tradeoffs)
+
 # Exploration
 params = explore.parameters()
 cell = explore.matrix(12, 8)
 tree = explore.architecture("attention")
+ideas = explore.ideas(gap_type="sparse_cell")
 
 # Pipeline (sync wrappers over async internals)
 papers = acquire_arxiv(query="LLM reasoning", since="2025-01")
@@ -381,15 +507,16 @@ lens/
 │       │   └── agentic.py
 │       ├── serve/
 │       │   ├── analyzer.py
-│       │   └── explorer.py
+│       │   ├── explorer.py
+│       │   └── explainer.py
 │       ├── store/
-│       │   ├── duckdb_store.py
-│       │   ├── lance_store.py
+│       │   ├── store.py
 │       │   └── models.py
 │       ├── llm/
 │       │   └── client.py
 │       ├── monitor/
-│       │   └── watcher.py
+│       │   ├── watcher.py
+│       │   └── ideation.py
 │       └── data/
 │           └── seed_papers.yaml
 └── tests/
@@ -398,6 +525,8 @@ lens/
     ├── test_matrix.py
     ├── test_architecture.py
     ├── test_agentic.py
+    ├── test_explain.py
+    ├── test_ideation.py
     └── fixtures/
 ```
 
@@ -423,6 +552,12 @@ taxonomy:
   min_cluster_size: 3
   embedding_model: specter2
 
+monitor:
+  ideate: true              # enable ideation in monitor (default: true)
+  ideate_llm: false         # enable LLM enrichment layer (default: false)
+  ideate_top_n: 10          # how many gaps to surface per cycle
+  ideate_min_gap_score: 0.5 # minimum relevance score to surface
+
 storage:
   data_dir: ~/.lens/data
 ```
@@ -443,7 +578,7 @@ Organized by primary contribution area:
 
 ### Bootstrap Sequence
 
-1. **Phase 0 — Setup** (~1 day dev): Initialize databases, define models, implement seed loader
+1. **Phase 0 — Setup** (~1 day dev): Initialize LanceDB, define Pydantic/LanceModel schemas, implement seed loader
 2. **Phase 1 — Acquire** (~minutes runtime): Fetch seed papers, enrich metadata, get SPECTER2 embeddings
 3. **Phase 2 — Extract** (~1-2 hours LLM time): Extract tuples from all 200 papers. Expect ~400-600 tradeoffs, ~150-200 architecture tuples, ~100-150 agentic tuples
 4. **Phase 3 — Taxonomize** (~minutes compute): Cluster into parameters, principles, slots, patterns. Human spot-check: do emergent categories match intuition?
@@ -457,6 +592,9 @@ The bootstrap succeeds if:
 - Emergent principles include recognizable techniques (distillation, quantization, MoE, RAG, CoT, etc.)
 - Architecture slots include recognizable components (attention, positional encoding, FFN, normalization)
 - `lens analyze "reduce hallucination without increasing latency"` returns sensible suggestions (RAG, constrained decoding, etc.)
+- `lens explain "grouped-query attention"` returns a coherent narrative covering what it is, its evolution from MHA, and what tradeoffs it resolves
+- `lens explain "attention"` returns a broad overview with pointers to variants rather than deep-diving a single node
+- Ideation gap analysis on the seed corpus produces at least 5 sparse cells and 3 cross-pollination candidates
 
 ## Phase 2: Multimodal (Future)
 
@@ -491,14 +629,22 @@ Methods selected based on research survey of 2023-2026 literature:
 2. **Auto-extraction**: Newly acquired papers are extracted automatically (using `extract_model` for cost efficiency).
 3. **Taxonomy drift detection**: After every N new papers (configurable, default 100), compare new extractions against current taxonomy centroids. If >20% of new strings are noise (no close centroid match), flag for taxonomy rebuild.
 4. **Trend detection**: BERTrend analysis on extraction timestamps surfaces emerging techniques (weak signals) and established trends (strong signals). Available via `lens monitor --trending`.
-5. **Taxonomy rebuild is NOT automatic** — `lens build taxonomy` must be run manually or scripted. This prevents taxonomy churn from small batches of noisy papers.
+5. **Ideation** (automatic, runs after extraction): Analyzes the current knowledge structures for gaps and emerging opportunities. Two layers:
+   - **Layer 1 — Gap analysis** (deterministic, always runs): Detects four types of gaps:
+     - *Sparse matrix cells*: Tradeoff pairs with fewer than N known principles (default 2) — known problems without well-established solutions.
+     - *Cross-pollination candidates*: A principle resolves (A, B) but not (A, B') where B and B' are semantically similar parameters (cosine similarity of their `embedding` vectors in the `parameters` table, computed via NumPy on vectors loaded from Lance, threshold configurable, default 0.75) — untested transfers of known techniques.
+     - *Stalled architecture slots*: Slots where the most recent variant is older than a threshold (e.g., 18 months) relative to corpus recency — areas ripe for innovation.
+     - *Trend-gap intersections*: BERTrend detects an emerging technique that doesn't yet appear in matrix cells or catalogs — early signals not yet well-characterized. Trend data from BERTrend is ephemeral (recomputed each cycle); only gaps produced from trend-gap intersections are persisted as `IdeationGap` entries.
+   - **Layer 2 — LLM enrichment** (optional, controlled by `monitor.ideate_llm` config): Takes the top-N gaps and asks an LLM to articulate each as a human-readable research hypothesis, suggest why the gap exists, propose directions, and rate novelty/feasibility. Uses `default_model` for quality (runs on only top-N gaps so cost is minimal — see Cost Estimation).
+   - Ideation results are stored in LanceDB (`ideation_reports`, `ideation_gaps` tables) and surfaced alongside trend data in `lens monitor --trending`.
+6. **Taxonomy rebuild is NOT automatic** — `lens build taxonomy` must be run manually or scripted. This prevents taxonomy churn from small batches of noisy papers.
 
 ## Error Handling
 
 - **LLM extraction failures**: 1 retry with stricter prompt. On second failure, store partial results (successfully parsed tuple types) and mark paper as `extraction_incomplete`. These papers are retried on next `lens extract` run.
 - **API failures** (arxiv, OpenAlex, Semantic Scholar): Exponential backoff with jitter. After 3 retries, skip the paper and log a warning. Acquisition is resumable — papers already stored are not re-fetched.
 - **Missing embeddings**: If Semantic Scholar does not have SPECTER2 embeddings for a paper (uncommon for arxiv), fall back to local SPECTER2 model if installed, otherwise skip embedding and mark paper as `embedding_missing`. These papers are excluded from vector search but still participate in extraction and taxonomy.
-- **DuckDB/LanceDB consistency**: Both databases are embedded and not transactionally linked. If a crash occurs between writes, re-running the pipeline stage repairs inconsistencies (all stages are idempotent). LanceDB writes are append-only with versioning, so partial writes do not corrupt existing data.
+- **LanceDB consistency**: LanceDB writes are append-only with MVCC versioning, so partial writes do not corrupt existing data. If a crash occurs mid-write, re-running the pipeline stage repairs inconsistencies (all stages are idempotent).
 - **Clustering failures**: If HDBSCAN produces degenerate results (all noise, or a single cluster), fall back to KMeans with `target_parameters`/`target_principles` as k, and log a warning.
 
 ## Cost Estimation
@@ -511,8 +657,13 @@ Methods selected based on research survey of 2023-2026 literature:
 
 **Ongoing monitoring** (~50 papers/week):
 - Extraction: ~$0.50-3/week with Gemini Flash
+- Ideation Layer 1 (gap analysis): zero LLM cost — deterministic Polars operations on Lance tables
+- Ideation Layer 2 (LLM enrichment, optional): ~$0.05-0.20 per monitor cycle with default model (top-N gaps only)
 - API calls: well within free tier limits
 - Taxonomy rebuild (~monthly): negligible
+
+**Education queries** (`lens explain`):
+- One LLM call per query (synthesis). Uses `default_model`. Negligible per-query cost.
 
 **Recommendation**: Use `extract_model` (Gemini 2.5 Flash or similar cheap model) for bulk extraction. Use `default_model` (Claude Sonnet) only for seed papers and taxonomy labeling where quality matters most.
 
@@ -521,4 +672,6 @@ Methods selected based on research survey of 2023-2026 literature:
 - **Unit tests**: Pydantic model validation, taxonomy versioning logic, matrix construction, quality scoring. No LLM calls.
 - **Fixture-based integration tests**: Recorded LLM responses (saved as JSON fixtures) for extraction and classification. Tests verify that the full pipeline produces expected outputs from known inputs without hitting live APIs.
 - **Snapshot tests for taxonomy**: Store a reference taxonomy built from test fixtures. Verify that pipeline changes don't unexpectedly alter cluster assignments.
+- **Education tests**: Verify graph walk produces expected structure for known concepts (e.g., "GQA" should include evolution chain, matrix cells, related concepts). Uses fixture data, no LLM calls for the walk; LLM synthesis tested via recorded responses.
+- **Ideation tests**: Verify gap detection logic against a fixture matrix with known sparse cells, known similar parameter pairs, and known stale slots. Layer 2 tested via recorded LLM responses.
 - **Live integration tests** (optional, CI-skippable): Hit real arxiv/OpenAlex APIs with a small query to verify client code. Marked with `@pytest.mark.integration`.
