@@ -38,11 +38,6 @@ async def _fetch_paper_metadata(arxiv_id: str) -> dict[str, Any] | None:
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             resp = await fetch_with_retry(client, url)
-            if resp.status_code >= 400:
-                logger.warning(
-                    f"Failed to fetch arxiv metadata for {arxiv_id}: HTTP {resp.status_code}"
-                )
-                return None
             papers = parse_arxiv_response(resp.text)
             return papers[0] if papers else None
         except httpx.HTTPError as e:

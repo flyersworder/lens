@@ -4,9 +4,13 @@ from __future__ import annotations
 
 
 def strip_code_fences(text: str) -> str:
-    """Strip markdown code fences from LLM output, extracting the JSON body.
+    """Strip markdown code fences from LLM output, extracting the JSON object.
 
-    Handles responses like:
+    Looks for the outermost ``{…}`` pair inside fenced code blocks.
+    Only handles JSON objects, not arrays — all LENS LLM responses are objects.
+
+    Handles responses like::
+
         ```json
         {"key": "value"}
         ```

@@ -2,6 +2,22 @@
 
 import polars as pl
 
+from lens.store.store import escape_sql_string
+
+
+class TestEscapeSqlString:
+    def test_no_quotes(self):
+        assert escape_sql_string("hello") == "hello"
+
+    def test_single_quote(self):
+        assert escape_sql_string("O'Brien") == "O''Brien"
+
+    def test_multiple_quotes(self):
+        assert escape_sql_string("it's a 'test'") == "it''s a ''test''"
+
+    def test_empty_string(self):
+        assert escape_sql_string("") == ""
+
 
 def test_store_init(store):
     assert store.db is not None

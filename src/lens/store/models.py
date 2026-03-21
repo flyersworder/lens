@@ -1,5 +1,6 @@
 """Pydantic LanceModel schemas for all LENS data types."""
 
+import re
 from datetime import datetime
 
 from lancedb.pydantic import LanceModel, Vector
@@ -26,6 +27,13 @@ class Paper(LanceModel):
     quality_score: float = 0.0
     extraction_status: str = "pending"
     embedding: Vector(768)  # type: ignore[valid-type]
+
+    @field_validator("date")
+    @classmethod
+    def _check_date_format(cls, v: str) -> str:
+        if v and not re.match(r"^\d{4}-\d{2}-\d{2}$", v):
+            raise ValueError(f"date must be YYYY-MM-DD format, got '{v}'")
+        return v
 
     @field_validator("extraction_status")
     @classmethod

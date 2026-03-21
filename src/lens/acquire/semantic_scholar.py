@@ -51,10 +51,6 @@ async def fetch_embedding(
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             resp = await fetch_with_retry(client, url, headers=headers)
-            if resp.status_code == 404:
-                return None
-            if resp.status_code >= 400:
-                return None
             data = resp.json()
             return parse_embedding_response(data)
         except httpx.HTTPError as e:

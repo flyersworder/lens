@@ -22,7 +22,12 @@ MODELS = [
 
 
 def _get_model(model_name: str | None = None) -> SentenceTransformer:
-    """Load and cache a sentence-transformers model."""
+    """Load and cache a sentence-transformers model.
+
+    When *model_name* is ``None``, tries MODELS in order and falls back to
+    the lightweight model.  When a specific *model_name* is given, only that
+    model is attempted (no fallback).
+    """
     if model_name and model_name in _model_cache:
         return _model_cache[model_name]
 
