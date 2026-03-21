@@ -15,6 +15,7 @@ def test_parse_openalex_works():
     r = results[0]
     assert r["citations"] == 120000
     assert "Neural Information Processing" in (r["venue"] or "")
+    assert r["arxiv_id"] == "1706.03762"
 
 
 def test_parse_openalex_null_venue():
@@ -23,12 +24,14 @@ def test_parse_openalex_null_venue():
               "publication_date": "2024-01-01", "primary_location": None, "authorships": []}]
     results = parse_openalex_works(works)
     assert results[0]["venue"] is None
+    assert results[0]["arxiv_id"] is None
 
 
-def test_build_openalex_url_from_arxiv_ids():
-    from lens.acquire.openalex import build_url_for_arxiv_ids
-    url = build_url_for_arxiv_ids(["1706.03762", "2401.12345"])
-    assert "filter" in url.lower() or "arxiv" in url.lower()
+def test_extract_arxiv_id_from_doi():
+    from lens.acquire.openalex import _extract_arxiv_id_from_doi
+    assert _extract_arxiv_id_from_doi("https://doi.org/10.48550/arXiv.1706.03762") == "1706.03762"
+    assert _extract_arxiv_id_from_doi("https://doi.org/10.1234/something-else") is None
+    assert _extract_arxiv_id_from_doi(None) is None
 
 
 @pytest.mark.asyncio
@@ -49,3 +52,31 @@ async def test_enrich_papers_with_openalex():
         papers = [{"arxiv_id": "1706.03762", "citations": 0, "venue": None}]
         enriched = await enrich_with_openalex(papers)
         assert enriched[0]["citations"] == 120000
+        assert "Neural Information Processing" in enriched[0]["venue"]
+
+
+@pytest.mark.asyncio
+async def test_enrich_no_match_leaves_paper_unchanged():
+    import httpx
+    from lens.acquire.openalex import enrich_with_openalex
+
+    # Response has a different paper's DOI — should not match
+    response_data = {"results": [{
+        "id": "W1", "doi": "https://doi.org/10.48550/arXiv.9999.99999",
+        "title": "Other", "cited_by_count": 500,
+        "publication_date": "2024-01-01", "primary_location": None, "authorships": []
+    }]}
+    mock_response = httpx.Response(200, text=json.dumps(response_data),
+                                   headers={"content-type": "application/json"})
+
+    with patch("lens.acquire.openalex.httpx.AsyncClient") as MockClient:
+        mock_instance = AsyncMock()
+        mock_instance.get.return_value = mock_response
+        mock_instance.__aenter__ = AsyncMock(return_value=mock_instance)
+        mock_instance.__aexit__ = AsyncMock(return_value=False)
+        MockClient.return_value = mock_instance
+
+        papers = [{"arxiv_id": "1706.03762", "citations": 0, "venue": None}]
+        enriched = await enrich_with_openalex(papers)
+        assert enriched[0]["citations"] == 0  # unchanged
+        assert enriched[0]["venue"] is None  # unchanged

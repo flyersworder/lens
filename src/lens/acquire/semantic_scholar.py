@@ -1,13 +1,17 @@
 """Semantic Scholar API client for SPECTER2 embeddings.
 
-Rate limit: 1 request per 3 seconds. Retry with exponential backoff.
+Rate limit: 1 request per 3 seconds. Retry with exponential backoff per spec.
 """
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any
 
 import httpx
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter
+
+logger = logging.getLogger(__name__)
 
 S2_API_URL = "https://api.semanticscholar.org/graph/v1/paper"
 RATE_LIMIT_SECONDS = 3.0
@@ -32,6 +36,17 @@ def parse_embedding_response(data: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=30))
+async def _fetch_with_retry(client: httpx.AsyncClient, url: str, headers: dict) -> httpx.Response:
+    """Fetch with exponential backoff and jitter."""
+    resp = await client.get(url, headers=headers)
+    if resp.status_code >= 500:
+        raise httpx.HTTPStatusError(
+            f"HTTP {resp.status_code}", request=resp.request, response=resp
+        )
+    return resp
+
+
 async def fetch_embedding(
     arxiv_id: str,
     api_key: str | None = None,
@@ -44,14 +59,15 @@ async def fetch_embedding(
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
-            resp = await client.get(url, headers=headers)
+            resp = await _fetch_with_retry(client, url, headers)
             if resp.status_code == 404:
                 return None
             if resp.status_code >= 400:
                 return None
             data = resp.json()
             return parse_embedding_response(data)
-        except httpx.HTTPError:
+        except (httpx.HTTPError, Exception):
+            logger.warning(f"Failed to fetch S2 embedding for {arxiv_id}")
             return None
         finally:
             await asyncio.sleep(RATE_LIMIT_SECONDS)

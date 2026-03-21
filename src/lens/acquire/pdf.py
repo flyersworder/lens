@@ -32,7 +32,7 @@ def ingest_pdf(pdf_path: Path | str) -> dict[str, Any]:
     paper_id = path.stem
     return {
         "paper_id": paper_id,
-        "arxiv_id": paper_id,
+        "arxiv_id": "",  # not from arxiv; prevents spurious API lookups
         "title": paper_id.replace("-", " ").replace("_", " "),
         "abstract": "",  # will be populated during LLM extraction from PDF
         "authors": [],

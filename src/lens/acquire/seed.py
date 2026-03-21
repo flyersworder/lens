@@ -8,6 +8,7 @@ from typing import Any
 
 import httpx
 import yaml
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 
 from lens.acquire.arxiv import parse_arxiv_response, ARXIV_API_URL
 from lens.acquire.openalex import enrich_with_openalex
@@ -28,22 +29,34 @@ def load_seed_manifest(manifest_path: Path | str | None = None) -> list[dict[str
     return data.get("papers", [])
 
 
+@retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=30))
+async def _fetch_with_retry(client: httpx.AsyncClient, url: str) -> httpx.Response:
+    """Fetch with exponential backoff and jitter."""
+    resp = await client.get(url)
+    if resp.status_code >= 500:
+        raise httpx.HTTPStatusError(
+            f"HTTP {resp.status_code}", request=resp.request, response=resp
+        )
+    return resp
+
+
 async def _fetch_paper_metadata(arxiv_id: str) -> dict[str, Any] | None:
-    """Fetch paper metadata from arxiv for a single paper."""
+    """Fetch paper metadata from arxiv for a single paper with retry."""
     from urllib.parse import quote
     url = f"{ARXIV_API_URL}?id_list={quote(arxiv_id)}&max_results=1"
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
-            resp = await client.get(url)
+            resp = await _fetch_with_retry(client, url)
             if resp.status_code >= 400:
                 logger.warning(f"Failed to fetch arxiv metadata for {arxiv_id}: HTTP {resp.status_code}")
                 return None
             papers = parse_arxiv_response(resp.text)
-            await asyncio.sleep(3.0)  # rate limit
             return papers[0] if papers else None
-        except httpx.HTTPError:
-            logger.warning(f"Failed to fetch arxiv metadata for {arxiv_id}")
+        except (httpx.HTTPError, Exception):
+            logger.warning(f"Failed to fetch arxiv metadata for {arxiv_id} after retries")
             return None
+        finally:
+            await asyncio.sleep(3.0)  # rate limit
 
 
 def _normalize_embedding(embedding: list[float], dim: int = 768) -> list[float]:
