@@ -98,3 +98,51 @@ async def test_label_clusters_handles_malformed():
     labels = await label_clusters(clusters, mock_client)
     assert len(labels) == 1
     assert labels[0]["name"] is not None
+
+
+@pytest.mark.asyncio
+async def test_build_taxonomy(tmp_path):
+    from lens.store.store import LensStore
+    from lens.taxonomy import build_taxonomy
+
+    store = LensStore(str(tmp_path / "test.lance"))
+    store.init_tables()
+
+    # Add tradeoff extractions
+    tradeoffs = [
+        {
+            "paper_id": f"paper_{i}",
+            "improves": "inference speed" if i % 2 == 0 else "model accuracy",
+            "worsens": "model size" if i % 2 == 0 else "training cost",
+            "technique": "quantization" if i % 3 == 0 else "distillation",
+            "context": "test",
+            "confidence": 0.8,
+            "evidence_quote": "test quote",
+        }
+        for i in range(20)
+    ]
+    store.add_rows("tradeoff_extractions", tradeoffs)
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = '{"name": "Test Concept", "description": "A test concept"}'
+
+    version = await build_taxonomy(store, mock_client, min_cluster_size=2)
+    assert version >= 1
+
+    params = store.get_table("parameters").to_polars()
+    assert len(params) >= 1
+
+    principles = store.get_table("principles").to_polars()
+    assert len(principles) >= 1
+
+    versions = store.get_table("taxonomy_versions").to_polars()
+    assert len(versions) >= 1
+
+
+def test_get_next_version(tmp_path):
+    from lens.store.store import LensStore
+    from lens.taxonomy.versioning import get_next_version
+
+    store = LensStore(str(tmp_path / "test.lance"))
+    store.init_tables()
+    assert get_next_version(store) == 1
