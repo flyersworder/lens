@@ -61,6 +61,80 @@ def list_matrix_overview(store: LensStore, taxonomy_version: int) -> list[dict[s
     )
 
 
+def list_architecture_slots(store: LensStore, taxonomy_version: int) -> list[dict[str, Any]]:
+    """List all architecture slots for a version, enriched with variant_count, sorted by name."""
+    slots_df = store.get_table("architecture_slots").to_polars()
+    slots_df = slots_df.filter(pl.col("taxonomy_version") == taxonomy_version)
+
+    variants_df = store.get_table("architecture_variants").to_polars()
+    variants_df = variants_df.filter(pl.col("taxonomy_version") == taxonomy_version)
+    counts_df = variants_df.group_by("slot_id").agg(pl.len().alias("variant_count"))
+
+    slots_df = slots_df.join(counts_df, left_on="id", right_on="slot_id", how="left")
+    slots_df = slots_df.with_columns(pl.col("variant_count").fill_null(0))
+    return slots_df.sort("name").to_dicts()
+
+
+def list_architecture_variants(
+    store: LensStore, slot_name: str, taxonomy_version: int
+) -> list[dict[str, Any]]:
+    """Find the slot by name, then list all variants with that slot_id. Drop embedding column."""
+    slots_df = store.get_table("architecture_slots").to_polars()
+    slot_row = slots_df.filter(
+        (pl.col("name") == slot_name) & (pl.col("taxonomy_version") == taxonomy_version)
+    )
+    if len(slot_row) == 0:
+        return []
+    slot_id = slot_row["id"][0]
+
+    variants_df = store.get_table("architecture_variants").to_polars()
+    variants_df = variants_df.filter(
+        (pl.col("slot_id") == slot_id) & (pl.col("taxonomy_version") == taxonomy_version)
+    )
+    return variants_df.drop("embedding").to_dicts()
+
+
+def list_agentic_patterns(
+    store: LensStore, taxonomy_version: int, category: str | None = None
+) -> list[dict[str, Any]]:
+    """List all agentic patterns for a version, optionally filtered by category."""
+    df = store.get_table("agentic_patterns").to_polars()
+    df = df.filter(pl.col("taxonomy_version") == taxonomy_version)
+    if category is not None:
+        df = df.filter(pl.col("category") == category)
+    return df.drop("embedding").to_dicts()
+
+
+def get_architecture_timeline(
+    store: LensStore, slot_name: str, taxonomy_version: int
+) -> list[dict[str, Any]]:
+    """List variants for a slot ordered by earliest paper date ascending."""
+    slots_df = store.get_table("architecture_slots").to_polars()
+    slot_row = slots_df.filter(
+        (pl.col("name") == slot_name) & (pl.col("taxonomy_version") == taxonomy_version)
+    )
+    if len(slot_row) == 0:
+        return []
+    slot_id = slot_row["id"][0]
+
+    variants_df = store.get_table("architecture_variants").to_polars()
+    variants_df = variants_df.filter(
+        (pl.col("slot_id") == slot_id) & (pl.col("taxonomy_version") == taxonomy_version)
+    )
+
+    papers_df = store.get_table("papers").to_polars().select(["paper_id", "date"])
+
+    # Explode paper_ids, join to get dates, find min date per variant
+    exploded = variants_df.select(["id", "paper_ids"]).explode("paper_ids")
+    joined = exploded.join(papers_df, left_on="paper_ids", right_on="paper_id", how="left")
+    min_dates = joined.group_by("id").agg(pl.col("date").min().alias("earliest_date"))
+
+    variants_df = variants_df.drop("embedding")
+    variants_df = variants_df.join(min_dates, on="id", how="left")
+    variants_df = variants_df.sort("earliest_date")
+    return variants_df.to_dicts()
+
+
 def get_paper(store: LensStore, paper_id: str) -> dict[str, Any] | None:
     """Get a specific paper by ID."""
     df = store.get_table("papers").to_polars()
