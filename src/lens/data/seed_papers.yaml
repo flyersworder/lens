@@ -1,0 +1,32 @@
+# Curated seed papers for LENS bootstrap.
+papers:
+  - arxiv_id: "1706.03762"
+    title: "Attention Is All You Need"
+    category: foundational
+  - arxiv_id: "2005.14165"
+    title: "Language Models are Few-Shot Learners (GPT-3)"
+    category: foundational
+  - arxiv_id: "2302.13971"
+    title: "LLaMA: Open and Efficient Foundation Language Models"
+    category: foundational
+  - arxiv_id: "2305.13245"
+    title: "GQA: Training Generalized Multi-Query Transformer Models"
+    category: architecture
+  - arxiv_id: "2104.09864"
+    title: "RoFormer: Enhanced Transformer with Rotary Position Embedding"
+    category: architecture
+  - arxiv_id: "2203.02155"
+    title: "Training language models to follow instructions with human feedback (InstructGPT)"
+    category: training
+  - arxiv_id: "2305.18290"
+    title: "Direct Preference Optimization (DPO)"
+    category: training
+  - arxiv_id: "2106.09685"
+    title: "LoRA: Low-Rank Adaptation of Large Language Models"
+    category: efficiency
+  - arxiv_id: "2201.11903"
+    title: "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models"
+    category: capabilities
+  - arxiv_id: "2210.03629"
+    title: "ReAct: Synergizing Reasoning and Acting in Language Models"
+    category: agentic
