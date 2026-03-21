@@ -98,13 +98,24 @@ def explain(
 
 @app.command()
 def extract(
-    paper_id: str | None = typer.Option(None, "--paper-id", help="Paper ID to extract from."),
-    model: str | None = typer.Option(None, "--model", help="LLM model to use."),
-    concurrency: int = typer.Option(1, "--concurrency", help="Number of concurrent extractions."),
+    paper_id: str | None = typer.Option(None, "--paper-id", help="Extract specific paper."),
+    model: str | None = typer.Option(None, "--model", help="LLM model override."),
+    concurrency: int = typer.Option(5, "--concurrency", help="Concurrent LLM calls."),
 ) -> None:
-    """Extract structured data from papers. [stub]"""
-    rprint("[yellow]extract not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Extract tradeoffs, architecture, and agentic patterns from papers."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    llm_model = model or config["llm"]["extract_model"]
+
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.extract.extractor import extract_papers
+    from lens.llm.client import LLMClient
+
+    client = LLMClient(model=llm_model)
+    count = asyncio.run(extract_papers(store, client, concurrency=concurrency, paper_id=paper_id))
+    rprint(f"[green]Extracted {count} papers[/green]")
 
 
 @app.command()
