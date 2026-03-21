@@ -2,8 +2,8 @@
 
 Design spec for a system that automatically discovers recurring solution patterns, contradiction resolutions, architecture innovations, and agentic design patterns from LLM research papers (arxiv), inspired by TRIZ methodology.
 
-**Status**: Draft
-**Date**: 2026-03-20
+**Status**: Implemented (Phase 1 — Contradiction Matrix + Monitor/Ideation)
+**Date**: 2026-03-21
 
 ---
 
@@ -64,8 +64,8 @@ Catalogs recurring patterns for building and orchestrating LLM-based agents.
 | LLM abstraction | litellm | Multi-provider, model-agnostic |
 | Database | LanceDB | Embedded, native vector search, Arrow-native, multimodal-ready, Pydantic schemas |
 | Analytics | Polars | Zero-copy from Arrow/Lance, fast groupby/join/agg for matrix construction |
-| Topic modeling | BERTopic + HDBSCAN | State-of-the-art neural topic modeling |
-| Scientific embeddings | SPECTER2 | Purpose-built for scientific documents |
+| Clustering | HDBSCAN + KMeans fallback | Density-based clustering with degenerate-case handling |
+| Embeddings | sentence-transformers (SPECTER2 / MiniLM fallback) | Scientific document embeddings |
 | Data validation | Pydantic | Structured LLM output validation + LanceDB schema definition |
 | Paper sources | arxiv API, OpenAlex, Semantic Scholar | Complementary metadata and embeddings |
 
@@ -488,46 +488,61 @@ lens/
 ├── src/
 │   └── lens/
 │       ├── __init__.py
-│       ├── cli.py
+│       ├── cli.py                  # Typer CLI (sync wrapper over async internals)
+│       ├── config.py               # YAML config management
 │       ├── acquire/
-│       │   ├── arxiv.py
-│       │   ├── openalex.py
-│       │   ├── semantic_scholar.py
-│       │   └── seed.py
+│       │   ├── arxiv.py            # arXiv API client with retry
+│       │   ├── openalex.py         # OpenAlex enrichment (citations, venue)
+│       │   ├── semantic_scholar.py # Semantic Scholar SPECTER2 embeddings
+│       │   ├── seed.py             # Curated seed paper loader
+│       │   ├── pdf.py              # Local PDF ingestion
+│       │   └── quality.py          # Quality scoring (citations+venue+recency)
 │       ├── extract/
-│       │   ├── extractor.py
-│       │   └── prompts.py
+│       │   ├── extractor.py        # LLM extraction orchestrator
+│       │   └── prompts.py          # Extraction prompt templates
 │       ├── taxonomy/
-│       │   ├── clusterer.py
-│       │   ├── labeler.py
-│       │   └── versioning.py
+│       │   ├── __init__.py         # build_taxonomy() entry point
+│       │   ├── embedder.py         # Sentence-transformer embeddings
+│       │   ├── clusterer.py        # HDBSCAN + KMeans fallback
+│       │   ├── labeler.py          # LLM-based cluster naming
+│       │   └── versioning.py       # Taxonomy version tracking
 │       ├── knowledge/
-│       │   ├── matrix.py
-│       │   ├── architecture.py
-│       │   └── agentic.py
+│       │   └── matrix.py           # Contradiction matrix construction
 │       ├── serve/
-│       │   ├── analyzer.py
-│       │   ├── explorer.py
-│       │   └── explainer.py
+│       │   ├── analyzer.py         # Tradeoff analysis (query→classify→lookup)
+│       │   ├── explainer.py        # Concept explanation with graph walk
+│       │   └── explorer.py         # Browse parameters/principles/matrix/papers
 │       ├── store/
-│       │   ├── store.py
-│       │   └── models.py
+│       │   ├── store.py            # LensStore: LanceDB wrapper + table mgmt
+│       │   └── models.py           # Pydantic LanceModel schemas (all tables)
 │       ├── llm/
-│       │   └── client.py
+│       │   └── client.py           # LLMClient (litellm async wrapper)
 │       ├── monitor/
-│       │   ├── watcher.py
-│       │   └── ideation.py
+│       │   ├── watcher.py          # Monitor cycle: acquire→extract→ideate
+│       │   └── ideation.py         # Gap analysis: sparse cells + cross-pollination
 │       └── data/
 │           └── seed_papers.yaml
 └── tests/
+    ├── conftest.py                 # Shared fixtures (tmp_path LanceDB instances)
+    ├── test_acquire_arxiv.py
+    ├── test_acquire_openalex.py
+    ├── test_acquire_pdf.py
+    ├── test_acquire_seed.py
+    ├── test_acquire_semantic.py
+    ├── test_analyzer.py
+    ├── test_cli.py
+    ├── test_config.py
+    ├── test_explainer.py
+    ├── test_explorer.py
     ├── test_extract.py
-    ├── test_taxonomy.py
-    ├── test_matrix.py
-    ├── test_architecture.py
-    ├── test_agentic.py
-    ├── test_explain.py
     ├── test_ideation.py
-    └── fixtures/
+    ├── test_llm_client.py
+    ├── test_matrix.py
+    ├── test_models.py
+    ├── test_monitor.py
+    ├── test_quality.py
+    ├── test_store.py
+    └── test_taxonomy.py
 ```
 
 ## Configuration
@@ -541,6 +556,7 @@ llm:
 
 acquire:
   arxiv_categories: ["cs.CL", "cs.LG", "cs.AI"]
+  openalex_mailto: ""             # set a real email for OpenAlex polite pool
   quality_min_citations: 0
   quality_venue_tiers:
     tier1: ["ICML", "NeurIPS", "ICLR", "ACL", "EMNLP", "COLM"]
