@@ -5,6 +5,7 @@ import os
 import shutil
 from pathlib import Path
 
+import polars as pl
 import typer
 import yaml
 from rich import print as rprint
@@ -185,12 +186,48 @@ def extract(
 
 @app.command()
 def monitor(
-    interval: int = typer.Option(60, "--interval", help="Polling interval in seconds."),
-    trending: bool = typer.Option(False, "--trending", help="Show trending papers."),
+    interval: str = typer.Option("weekly", "--interval", help="Check interval (not yet used)."),
+    trending: bool = typer.Option(False, "--trending", help="Show ideation gaps."),
 ) -> None:
-    """Monitor for new papers. [stub]"""
-    rprint("[yellow]monitor not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Run one monitoring cycle: acquire → extract → ideate."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    if trending:
+        from lens.taxonomy.versioning import get_latest_version
+
+        version = get_latest_version(store)
+        if version is None:
+            rprint("[yellow]No taxonomy yet.[/yellow]")
+            raise typer.Exit(code=0)
+
+        gaps = store.get_table("ideation_gaps").to_polars()
+        gaps = gaps.filter(pl.col("taxonomy_version") == version)
+        if len(gaps) == 0:
+            rprint("[yellow]No ideation gaps found.[/yellow]")
+        else:
+            rprint(f"\n[bold]Ideation Gaps (v{version}):[/bold]")
+            for row in gaps.sort("score", descending=True).to_dicts():
+                hyp = ""
+                if row.get("llm_hypothesis"):
+                    h = row["llm_hypothesis"][:80]
+                    hyp = f" — {h}..."
+                rprint(f"  [{row['gap_type']}] {row['description']}{hyp}")
+        raise typer.Exit(code=0)
+
+    from lens.llm.client import LLMClient
+    from lens.monitor.watcher import run_monitor_cycle
+
+    client = LLMClient(model=config["llm"]["extract_model"])
+    cats = config["acquire"]["arxiv_categories"]
+    result = asyncio.run(run_monitor_cycle(store, client, categories=cats))
+    rprint("[green]Monitor cycle complete:[/green]")
+    rprint(f"  Papers acquired: {result['papers_acquired']}")
+    rprint(f"  Papers extracted: {result['papers_extracted']}")
+    if result.get("ideation_report"):
+        rprint(f"  Gaps found: {result['ideation_report']['gap_count']}")
 
 
 # ---------------------------------------------------------------------------
@@ -538,11 +575,36 @@ def paper(
 
 @explore_app.command()
 def ideas(
-    type_: str | None = typer.Option(None, "--type", help="Idea type filter."),
+    type_: str | None = typer.Option(None, "--type", help="Gap type filter."),
 ) -> None:
-    """Explore generated research ideas. [stub]"""
-    rprint("[yellow]explore ideas not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Browse ideation gaps and research opportunities."""
+    config = load_config(_get_config_path())
+    store = LensStore(str(_get_data_dir(config)))
+    store.init_tables()
+
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[yellow]No taxonomy yet.[/yellow]")
+        raise typer.Exit(code=0)
+
+    gaps = store.get_table("ideation_gaps").to_polars()
+    gaps = gaps.filter(pl.col("taxonomy_version") == version)
+
+    if type_:
+        gaps = gaps.filter(pl.col("gap_type") == type_)
+
+    if len(gaps) == 0:
+        rprint("[yellow]No ideation gaps found.[/yellow]")
+        raise typer.Exit(code=0)
+
+    rprint(f"\n[bold]Research Opportunities ({len(gaps)} gaps):[/bold]\n")
+    for row in gaps.sort("score", descending=True).to_dicts():
+        rprint(f"  [bold][{row['gap_type']}][/bold] {row['description']}")
+        if row.get("llm_hypothesis"):
+            rprint(f"    → {row['llm_hypothesis']}")
+        rprint()
 
 
 # ---------------------------------------------------------------------------
