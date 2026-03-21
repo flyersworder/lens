@@ -283,10 +283,10 @@ def build_matrix_cmd() -> None:
     store.init_tables()
 
     from lens.knowledge.matrix import build_matrix
-    from lens.taxonomy.versioning import get_next_version
+    from lens.taxonomy.versioning import get_latest_version
 
-    version = get_next_version(store) - 1
-    if version < 1:
+    version = get_latest_version(store)
+    if version is None:
         rprint("[red]No taxonomy yet. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
     build_matrix(store, taxonomy_version=version)

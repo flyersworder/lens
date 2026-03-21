@@ -7,13 +7,18 @@ from datetime import datetime
 from lens.store.store import LensStore
 
 
-def get_next_version(store: LensStore) -> int:
-    """Get the next taxonomy version number."""
+def get_latest_version(store: LensStore) -> int | None:
+    """Get the latest taxonomy version number, or None if no versions exist."""
     df = store.get_table("taxonomy_versions").to_polars()
     if len(df) == 0:
-        return 1
-    max_val = df["version_id"].max()
-    return int(max_val) + 1  # type: ignore[arg-type]
+        return None
+    return int(df["version_id"].max())  # type: ignore[arg-type]
+
+
+def get_next_version(store: LensStore) -> int:
+    """Get the next taxonomy version number."""
+    latest = get_latest_version(store)
+    return (latest or 0) + 1
 
 
 def record_version(
