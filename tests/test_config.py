@@ -38,6 +38,18 @@ def test_config_set_nested_key(tmp_path):
     set_config_value(cfg, "llm.default_model", "new/model")
     assert cfg["llm"]["default_model"] == "new/model"
 
+def test_config_set_coerces_types():
+    from lens.config import default_config, set_config_value
+    cfg = default_config()
+    set_config_value(cfg, "taxonomy.target_parameters", "30")
+    assert cfg["taxonomy"]["target_parameters"] == 30
+    assert isinstance(cfg["taxonomy"]["target_parameters"], int)
+    set_config_value(cfg, "monitor.ideate", "false")
+    assert cfg["monitor"]["ideate"] is False
+    set_config_value(cfg, "monitor.ideate_min_gap_score", "0.75")
+    assert cfg["monitor"]["ideate_min_gap_score"] == 0.75
+
+
 def test_resolved_data_dir():
     from lens.config import resolve_data_dir
     cfg = {"storage": {"data_dir": "~/.lens/data"}}

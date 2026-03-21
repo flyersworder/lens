@@ -66,7 +66,8 @@ def init(
         shutil.rmtree(lance_dir)
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    LensStore(str(data_dir))
+    store = LensStore(str(data_dir))
+    store.init_tables()
     rprint(f"[green]Initialized LENS data directory at {data_dir}[/green]")
 
 

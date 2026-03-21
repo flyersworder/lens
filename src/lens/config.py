@@ -76,7 +76,26 @@ def save_config(config: dict[str, Any], config_path: Path | None = None) -> None
         yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
 
+def _coerce_value(value: str) -> Any:
+    """Coerce a string value to its most likely Python type."""
+    if value.lower() in ("true", "yes"):
+        return True
+    if value.lower() in ("false", "no"):
+        return False
+    try:
+        return int(value)
+    except ValueError:
+        pass
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    return value
+
+
 def set_config_value(config: dict[str, Any], dotted_key: str, value: Any) -> None:
+    if isinstance(value, str):
+        value = _coerce_value(value)
     keys = dotted_key.split(".")
     d = config
     for key in keys[:-1]:
