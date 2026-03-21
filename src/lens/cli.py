@@ -1,4 +1,5 @@
 """LENS CLI — LLM Engineering Navigation System command-line interface."""
+import asyncio
 import os
 import shutil
 from pathlib import Path
@@ -120,37 +121,114 @@ def monitor(
 
 @acquire_app.command()
 def seed() -> None:
-    """Seed the paper database with curated papers. [stub]"""
-    rprint("[yellow]acquire seed not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Ingest curated seed papers from the manifest."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+    count = asyncio.run(_acquire_seed_async(store))
+    rprint(f"[green]Acquired {count} seed papers[/green]")
+
+
+async def _acquire_seed_async(store: LensStore) -> int:
+    from lens.acquire.seed import acquire_seed
+    return await acquire_seed(store)
 
 
 @acquire_app.command()
 def arxiv(
-    query: Optional[str] = typer.Option(None, "--query", help="ArXiv search query."),
-    since: Optional[str] = typer.Option(None, "--since", help="Fetch papers since this date (YYYY-MM-DD)."),
+    query: Optional[str] = typer.Option("LLM", "--query", help="ArXiv search query."),
+    since: Optional[str] = typer.Option(None, "--since", help="Fetch papers since date (YYYY-MM-DD)."),
+    max_results: int = typer.Option(100, "--max-results", help="Maximum papers to fetch."),
 ) -> None:
-    """Acquire papers from ArXiv. [stub]"""
-    rprint("[yellow]acquire arxiv not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Fetch papers from arxiv."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    categories = config["acquire"]["arxiv_categories"]
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    papers = asyncio.run(_fetch_arxiv_async(query, categories, since, max_results))
+    if not papers:
+        rprint("[yellow]No papers found[/yellow]")
+        return
+
+    # Add placeholder embeddings for papers without them
+    for p in papers:
+        if "embedding" not in p:
+            p["embedding"] = [0.0] * 768
+
+    store.add_papers(papers)
+    rprint(f"[green]Acquired {len(papers)} papers from arxiv[/green]")
+
+
+async def _fetch_arxiv_async(query, categories, since, max_results):
+    from lens.acquire.arxiv import fetch_arxiv_papers
+    return await fetch_arxiv_papers(query=query, categories=categories, since=since, max_results=max_results)
 
 
 @acquire_app.command()
 def file(
-    path: Path = typer.Argument(..., help="Path to the paper file."),
+    path: Path = typer.Argument(..., help="Path to PDF file."),
 ) -> None:
-    """Acquire a paper from a local file. [stub]"""
-    rprint("[yellow]acquire file not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Ingest a single paper from a local PDF."""
+    from lens.acquire.pdf import extract_text_from_pdf
+
+    if not path.exists():
+        rprint(f"[red]File not found: {path}[/red]")
+        raise typer.Exit(code=1)
+
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    text = extract_text_from_pdf(path)
+    paper_id = path.stem  # use filename as paper_id
+    paper = {
+        "paper_id": paper_id,
+        "arxiv_id": paper_id,
+        "title": path.stem,
+        "abstract": text[:1000] if text else "",
+        "authors": [],
+        "date": "2024-01-01",
+        "venue": None,
+        "citations": 0,
+        "quality_score": 0.0,
+        "extraction_status": "pending",
+        "embedding": [0.0] * 768,
+    }
+    store.add_papers([paper])
+    rprint(f"[green]Ingested {path.name} as paper '{paper_id}'[/green]")
 
 
 @acquire_app.command()
 def openalex(
     enrich: bool = typer.Option(False, "--enrich", help="Enrich existing papers with OpenAlex metadata."),
 ) -> None:
-    """Acquire papers from OpenAlex. [stub]"""
-    rprint("[yellow]acquire openalex not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Enrich papers with OpenAlex metadata (citations, venue)."""
+    if not enrich:
+        rprint("[yellow]Use --enrich to enrich existing papers with OpenAlex data[/yellow]")
+        return
+
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    df = store.get_table("papers").to_polars()
+    if len(df) == 0:
+        rprint("[yellow]No papers to enrich[/yellow]")
+        return
+
+    papers = df.drop("embedding").to_dicts()
+    enriched = asyncio.run(_enrich_openalex_async(papers))
+    rprint(f"[green]Enriched {len(enriched)} papers with OpenAlex data[/green]")
+
+
+async def _enrich_openalex_async(papers):
+    from lens.acquire.openalex import enrich_with_openalex
+    return await enrich_with_openalex(papers)
 
 
 # ---------------------------------------------------------------------------
