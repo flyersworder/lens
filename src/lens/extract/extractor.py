@@ -39,30 +39,30 @@ def _strip_code_fences(text: str) -> str:
     return text
 
 
-def _validate_tradeoff(raw: dict, paper_id: str) -> dict | None:
-    raw["paper_id"] = paper_id
+def _validate_tradeoff(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
     try:
-        return TradeoffExtraction(**raw).model_dump()
+        merged = {**raw, "paper_id": paper_id}
+        return TradeoffExtraction.model_validate(merged).model_dump()
     except (ValidationError, TypeError):
-        logger.warning(f"Invalid tradeoff for {paper_id}")
+        logger.warning("Invalid tradeoff for %s", paper_id)
         return None
 
 
-def _validate_architecture(raw: dict, paper_id: str) -> dict | None:
-    raw["paper_id"] = paper_id
+def _validate_architecture(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
     try:
-        return ArchitectureExtraction(**raw).model_dump()
+        merged = {**raw, "paper_id": paper_id}
+        return ArchitectureExtraction.model_validate(merged).model_dump()
     except (ValidationError, TypeError):
-        logger.warning(f"Invalid architecture for {paper_id}")
+        logger.warning("Invalid architecture for %s", paper_id)
         return None
 
 
-def _validate_agentic(raw: dict, paper_id: str) -> dict | None:
-    raw["paper_id"] = paper_id
+def _validate_agentic(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
     try:
-        return AgenticExtraction(**raw).model_dump()
+        merged = {**raw, "paper_id": paper_id}
+        return AgenticExtraction.model_validate(merged).model_dump()
     except (ValidationError, TypeError):
-        logger.warning(f"Invalid agentic for {paper_id}")
+        logger.warning("Invalid agentic for %s", paper_id)
         return None
 
 
@@ -136,26 +136,33 @@ async def extract_paper(
     return parse_extraction_response(response, paper_id)
 
 
+def _escape_sql_string(value: str) -> str:
+    """Escape single quotes in a string for LanceDB SQL filter expressions."""
+    return value.replace("'", "''")
+
+
 def _delete_old_extractions(store: LensStore, paper_id: str) -> None:
     """Delete previous extractions for a paper (idempotent re-extraction)."""
+    safe_id = _escape_sql_string(paper_id)
     for table_name in [
         "tradeoff_extractions",
         "architecture_extractions",
         "agentic_extractions",
     ]:
-        with contextlib.suppress(Exception):
-            store.get_table(table_name).delete(f"paper_id = '{paper_id}'")
+        with contextlib.suppress(OSError, ValueError):
+            store.get_table(table_name).delete(f"paper_id = '{safe_id}'")
 
 
 def _update_paper_status(store: LensStore, paper_id: str, status: str) -> None:
     """Update a paper's extraction_status."""
+    safe_id = _escape_sql_string(paper_id)
     try:
         store.get_table("papers").update(
-            where=f"paper_id = '{paper_id}'",
+            where=f"paper_id = '{safe_id}'",
             values={"extraction_status": status},
         )
     except Exception:
-        logger.warning(f"Failed to update status for {paper_id}")
+        logger.warning("Failed to update status for %s", paper_id)
 
 
 async def extract_papers(

@@ -164,6 +164,24 @@ async def test_extract_paper_returns_none_after_retries():
 
 
 @pytest.mark.asyncio
+async def test_extract_paper_handles_llm_exception():
+    from lens.extract.extractor import extract_paper
+
+    mock_client = AsyncMock()
+    mock_client.complete.side_effect = RuntimeError("API down")
+
+    result = await extract_paper(
+        paper_id="test",
+        title="Test",
+        abstract="Test",
+        llm_client=mock_client,
+    )
+    assert result is None
+    # Should not retry when the LLM itself throws
+    assert mock_client.complete.call_count == 1
+
+
+@pytest.mark.asyncio
 async def test_extract_papers_batch(tmp_path):
     import polars as pl
 
