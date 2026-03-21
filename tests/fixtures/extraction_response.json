@@ -1,0 +1,22 @@
+{
+  "tradeoffs": [
+    {
+      "improves": "model quality across benchmarks",
+      "worsens": "training compute cost",
+      "technique": "scaling model parameters",
+      "context": "GPT-3 175B vs smaller variants",
+      "confidence": 0.92,
+      "evidence_quote": "We find that scaling up language models greatly improves task-agnostic, few-shot performance"
+    }
+  ],
+  "architecture": [
+    {
+      "component_slot": "architecture class",
+      "variant_name": "autoregressive transformer decoder",
+      "replaces": null,
+      "key_properties": "decoder-only transformer with learned positional embeddings, 175B parameters",
+      "confidence": 0.95
+    }
+  ],
+  "agentic": []
+}

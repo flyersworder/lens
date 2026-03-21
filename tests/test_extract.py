@@ -1,5 +1,12 @@
 """Tests for the extraction pipeline."""
 
+from pathlib import Path
+from unittest.mock import AsyncMock
+
+import pytest
+
+FIXTURE_DIR = Path(__file__).parent / "fixtures"
+
 
 def test_build_extraction_prompt_abstract_only():
     from lens.extract.prompts import build_extraction_prompt
@@ -49,3 +56,108 @@ def test_extraction_response_schema():
     assert "tradeoffs" in schema
     assert "architecture" in schema
     assert "agentic" in schema
+
+
+def test_parse_extraction_response():
+    from lens.extract.extractor import parse_extraction_response
+
+    fixture = (FIXTURE_DIR / "extraction_response.json").read_text()
+    result = parse_extraction_response(fixture, paper_id="2005.14165")
+    assert result is not None
+    tradeoffs, architecture, agentic = result
+
+    assert len(tradeoffs) == 1
+    assert tradeoffs[0]["paper_id"] == "2005.14165"
+    assert tradeoffs[0]["improves"] == "model quality across benchmarks"
+    assert tradeoffs[0]["confidence"] == 0.92
+
+    assert len(architecture) == 1
+    assert architecture[0]["component_slot"] == "architecture class"
+    assert architecture[0]["replaces"] is None
+
+    assert len(agentic) == 0
+
+
+def test_parse_extraction_response_malformed():
+    from lens.extract.extractor import parse_extraction_response
+
+    result = parse_extraction_response("not json at all", paper_id="test")
+    assert result is None
+
+
+def test_parse_extraction_response_partial():
+    from lens.extract.extractor import parse_extraction_response
+
+    partial = (
+        '{"tradeoffs": [{"improves": "a", "worsens": "b", "technique": "c",'
+        ' "context": "", "confidence": 0.8, "evidence_quote": "q"}]}'
+    )
+    result = parse_extraction_response(partial, paper_id="test")
+    assert result is not None
+    tradeoffs, architecture, agentic = result
+    assert len(tradeoffs) == 1
+    assert len(architecture) == 0
+    assert len(agentic) == 0
+
+
+def test_parse_extraction_response_strips_markdown_fences():
+    from lens.extract.extractor import parse_extraction_response
+
+    fenced = '```json\n{"tradeoffs": [], "architecture": [], "agentic": []}\n```'
+    result = parse_extraction_response(fenced, paper_id="test")
+    assert result is not None
+
+
+@pytest.mark.asyncio
+async def test_extract_paper():
+    from lens.extract.extractor import extract_paper
+
+    fixture = (FIXTURE_DIR / "extraction_response.json").read_text()
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = fixture
+
+    result = await extract_paper(
+        paper_id="2005.14165",
+        title="Language Models are Few-Shot Learners",
+        abstract="We demonstrate that scaling up language models...",
+        llm_client=mock_client,
+    )
+    assert result is not None
+    tradeoffs, architecture, agentic = result
+    assert len(tradeoffs) == 1
+    assert len(architecture) == 1
+
+
+@pytest.mark.asyncio
+async def test_extract_paper_retries_on_malformed():
+    from lens.extract.extractor import extract_paper
+
+    fixture = (FIXTURE_DIR / "extraction_response.json").read_text()
+    mock_client = AsyncMock()
+    mock_client.complete.side_effect = ["not json", fixture]
+
+    result = await extract_paper(
+        paper_id="2005.14165",
+        title="Test",
+        abstract="Test abstract",
+        llm_client=mock_client,
+    )
+    assert result is not None
+    assert mock_client.complete.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_extract_paper_returns_none_after_retries():
+    from lens.extract.extractor import extract_paper
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = "still not json"
+
+    result = await extract_paper(
+        paper_id="test",
+        title="Test",
+        abstract="Test",
+        llm_client=mock_client,
+    )
+    assert result is None
+    assert mock_client.complete.call_count == 2
