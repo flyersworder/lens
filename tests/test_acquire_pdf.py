@@ -1,23 +1,34 @@
-"""Tests for PDF text extraction."""
+"""Tests for local PDF file ingestion."""
 import pytest
 from pathlib import Path
 
-FIXTURE_DIR = Path(__file__).parent / "fixtures"
+
+def test_ingest_pdf(tmp_path):
+    from lens.acquire.pdf import ingest_pdf
+    # Create a dummy PDF file (content doesn't matter — we just store the path)
+    pdf = tmp_path / "attention-is-all-you-need.pdf"
+    pdf.write_bytes(b"%PDF-1.4 dummy")
+
+    paper = ingest_pdf(pdf)
+    assert paper["paper_id"] == "attention-is-all-you-need"
+    assert paper["title"] == "attention is all you need"
+    assert paper["extraction_status"] == "pending"
+    assert paper["abstract"] == ""
+    assert len(paper["embedding"]) == 768
 
 
-def test_extract_text_from_pdf():
-    from lens.acquire.pdf import extract_text_from_pdf
-    text = extract_text_from_pdf(FIXTURE_DIR / "sample.pdf")
-    assert "Test Paper Title" in text or len(text) > 0
+def test_ingest_pdf_returns_dict(tmp_path):
+    from lens.acquire.pdf import ingest_pdf
+    pdf = tmp_path / "test-paper.pdf"
+    pdf.write_bytes(b"%PDF-1.4 dummy")
+
+    paper = ingest_pdf(pdf)
+    assert isinstance(paper, dict)
+    assert "paper_id" in paper
+    assert "arxiv_id" in paper
 
 
-def test_extract_text_returns_string():
-    from lens.acquire.pdf import extract_text_from_pdf
-    text = extract_text_from_pdf(FIXTURE_DIR / "sample.pdf")
-    assert isinstance(text, str)
-
-
-def test_extract_text_nonexistent_file():
-    from lens.acquire.pdf import extract_text_from_pdf
+def test_ingest_pdf_nonexistent_file():
+    from lens.acquire.pdf import ingest_pdf
     with pytest.raises(FileNotFoundError):
-        extract_text_from_pdf(Path("/nonexistent/file.pdf"))
+        ingest_pdf(Path("/nonexistent/file.pdf"))

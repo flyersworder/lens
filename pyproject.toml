@@ -12,6 +12,9 @@ dependencies = [
     "pyyaml>=6.0",
     "litellm>=1.40",
     "rich>=13.0",
+    "pandas>=3.0.1",
+    "httpx>=0.28.1",
+    "tenacity>=9.1.4",
 ]
 
 [project.scripts]

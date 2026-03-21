@@ -171,8 +171,11 @@ async def _fetch_arxiv_async(query, categories, since, max_results):
 def file(
     path: Path = typer.Argument(..., help="Path to PDF file."),
 ) -> None:
-    """Ingest a single paper from a local PDF."""
-    from lens.acquire.pdf import extract_text_from_pdf
+    """Ingest a single paper from a local PDF.
+
+    Stores metadata now; full text is read by the LLM during extraction.
+    """
+    from lens.acquire.pdf import ingest_pdf
 
     if not path.exists():
         rprint(f"[red]File not found: {path}[/red]")
@@ -183,23 +186,9 @@ def file(
     store = LensStore(str(data_dir))
     store.init_tables()
 
-    text = extract_text_from_pdf(path)
-    paper_id = path.stem  # use filename as paper_id
-    paper = {
-        "paper_id": paper_id,
-        "arxiv_id": paper_id,
-        "title": path.stem,
-        "abstract": text[:1000] if text else "",
-        "authors": [],
-        "date": "2024-01-01",
-        "venue": None,
-        "citations": 0,
-        "quality_score": 0.0,
-        "extraction_status": "pending",
-        "embedding": [0.0] * 768,
-    }
+    paper = ingest_pdf(path)
     store.add_papers([paper])
-    rprint(f"[green]Ingested {path.name} as paper '{paper_id}'[/green]")
+    rprint(f"[green]Ingested {path.name} as paper '{paper['paper_id']}'[/green]")
 
 
 @acquire_app.command()

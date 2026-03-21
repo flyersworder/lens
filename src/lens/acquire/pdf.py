@@ -1,22 +1,26 @@
-"""PDF text extraction using PyMuPDF.
+"""Local PDF file ingestion.
 
-Extracts full text from PDF files for seed papers and local file ingestion.
+Stores PDF path and basic metadata. Full text extraction is deferred to the
+extract phase (Plan 3), where multimodal LLMs read the PDF directly — this
+produces better results since the LLM sees formatting, figures, and tables.
 """
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 
-import fitz  # pymupdf
 
+def ingest_pdf(pdf_path: Path | str) -> dict[str, Any]:
+    """Create a paper dict from a local PDF file.
 
-def extract_text_from_pdf(pdf_path: Path | str) -> str:
-    """Extract all text from a PDF file.
+    Stores the file path for later multimodal LLM extraction.
+    Title is derived from the filename.
 
     Args:
         pdf_path: Path to the PDF file.
 
     Returns:
-        Concatenated text from all pages.
+        Paper dict ready for LensStore.add_papers().
 
     Raises:
         FileNotFoundError: If the PDF file does not exist.
@@ -25,11 +29,17 @@ def extract_text_from_pdf(pdf_path: Path | str) -> str:
     if not path.exists():
         raise FileNotFoundError(f"PDF not found: {path}")
 
-    doc = fitz.open(str(path))
-    try:
-        text_parts = []
-        for page in doc:
-            text_parts.append(page.get_text())
-        return "\n".join(text_parts).strip()
-    finally:
-        doc.close()
+    paper_id = path.stem
+    return {
+        "paper_id": paper_id,
+        "arxiv_id": paper_id,
+        "title": paper_id.replace("-", " ").replace("_", " "),
+        "abstract": "",  # will be populated during LLM extraction from PDF
+        "authors": [],
+        "date": "2024-01-01",
+        "venue": None,
+        "citations": 0,
+        "quality_score": 0.0,
+        "extraction_status": "pending",
+        "embedding": [0.0] * 768,
+    }
