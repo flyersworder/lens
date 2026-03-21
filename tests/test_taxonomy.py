@@ -178,3 +178,112 @@ def test_next_id_with_existing_data(tmp_path):
         ],
     )
     assert _next_id(store, "parameters") == 43
+
+
+@pytest.mark.asyncio
+async def test_normalize_slots():
+    import json
+
+    from lens.taxonomy.labeler import normalize_slots
+
+    raw_strings = ["attention mechanism", "self-attention", "positional encoding", "pos embedding"]
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = json.dumps(
+        {
+            "attention mechanism": "Attention",
+            "self-attention": "Attention",
+            "positional encoding": "Positional Encoding",
+            "pos embedding": "Positional Encoding",
+        }
+    )
+    mapping = await normalize_slots(raw_strings, mock_client)
+    assert mapping["attention mechanism"] == "Attention"
+    assert mapping["self-attention"] == "Attention"
+    assert mapping["positional encoding"] == "Positional Encoding"
+
+
+@pytest.mark.asyncio
+async def test_normalize_slots_malformed_fallback():
+    from lens.taxonomy.labeler import normalize_slots
+
+    raw_strings = ["attention mechanism"]
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = "not json"
+    mapping = await normalize_slots(raw_strings, mock_client)
+    assert mapping["attention mechanism"] == "Attention Mechanism"
+
+
+@pytest.mark.asyncio
+async def test_summarize_variant_properties_single():
+    from lens.taxonomy.labeler import summarize_variant_properties
+
+    mock_client = AsyncMock()
+    result = await summarize_variant_properties(
+        ["Uses sparse attention"], "Sparse Transformer", mock_client
+    )
+    assert result == "Uses sparse attention"
+    mock_client.complete.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_summarize_variant_properties_multiple():
+    from lens.taxonomy.labeler import summarize_variant_properties
+
+    expected = (
+        "Combines sparse attention with local context windows"
+        " for efficient long-sequence modeling."
+    )
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = expected
+    props = ["uses sparse attention", "local context windows", "efficient for long sequences"]
+    result = await summarize_variant_properties(props, "Sparse Transformer", mock_client)
+    assert result == expected
+
+
+@pytest.mark.asyncio
+async def test_summarize_variant_properties_fallback():
+    from lens.taxonomy.labeler import summarize_variant_properties
+
+    mock_client = AsyncMock()
+    mock_client.complete.side_effect = Exception("LLM error")
+    props = ["prop a", "prop b", "prop a"]
+    result = await summarize_variant_properties(props, "Some Variant", mock_client)
+    # Fallback: join unique properties
+    assert "prop a" in result
+    assert "prop b" in result
+
+
+@pytest.mark.asyncio
+async def test_label_clusters_with_category():
+    import json
+
+    from lens.taxonomy.labeler import label_clusters_with_category
+
+    clusters = {0: ["ReAct", "react pattern", "reasoning and acting"]}
+    structures = {0: ["LLM agent with tool use and reasoning loop"]}
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = json.dumps(
+        {
+            "name": "ReAct",
+            "description": "Reasoning and acting pattern for tool-using agents",
+            "category": "Reasoning",
+        }
+    )
+    labels = await label_clusters_with_category(clusters, structures, mock_client)
+    assert labels[0]["name"] == "ReAct"
+    assert labels[0]["category"] == "Reasoning"
+    assert "description" in labels[0]
+
+
+@pytest.mark.asyncio
+async def test_label_clusters_with_category_fallback():
+    from lens.taxonomy.labeler import label_clusters_with_category
+
+    clusters = {0: ["some concept"]}
+    structures = {0: ["some structure description"]}
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = "not json"
+    labels = await label_clusters_with_category(clusters, structures, mock_client)
+    assert labels[0]["name"] is not None
+    assert labels[0]["category"] == "Uncategorized"
+    assert "description" in labels[0]
