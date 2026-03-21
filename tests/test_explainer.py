@@ -134,4 +134,10 @@ async def test_explain_full(explain_store):
         )
     assert result is not None
     assert result.resolved_name == "Inference Latency"
+    assert result.resolved_type == "parameter"
     assert len(result.narrative) > 0
+    assert isinstance(result.tradeoffs, list)
+    assert isinstance(result.connections, list)
+    assert isinstance(result.paper_refs, list)
+    assert isinstance(result.alternatives, list)
+    assert isinstance(result.evolution, list)

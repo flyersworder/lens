@@ -80,6 +80,12 @@ def analyze(
     type_: str | None = typer.Option(None, "--type", help="Query type."),
 ) -> None:
     """Analyze a tradeoff and suggest resolution techniques."""
+    if type_ in ("architecture", "agentic"):
+        rprint(
+            f"[yellow]--type {type_} not yet implemented. "
+            f"Using default tradeoff analysis.[/yellow]"
+        )
+
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir))
