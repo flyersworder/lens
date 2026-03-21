@@ -1,6 +1,9 @@
 """Tests for the taxonomy pipeline."""
 
+from unittest.mock import AsyncMock
+
 import numpy as np
+import pytest
 
 
 def test_embed_strings_returns_array():
@@ -61,3 +64,37 @@ def test_cluster_embeddings_fallback_to_kmeans():
     unique = set(labels)
     unique.discard(-1)
     assert len(unique) >= 1
+
+
+@pytest.mark.asyncio
+async def test_label_clusters():
+    from lens.taxonomy.labeler import label_clusters
+
+    clusters = {
+        0: ["inference latency", "inference speed", "generation time"],
+        1: ["model accuracy", "benchmark performance", "task accuracy"],
+    }
+    mock_client = AsyncMock()
+    mock_client.complete.side_effect = [
+        '{"name": "Inference Latency", "description": "Speed of generating output tokens"}',
+        '{"name": "Model Accuracy", "description": "Performance on evaluation benchmarks"}',
+    ]
+
+    labels = await label_clusters(clusters, mock_client)
+    assert len(labels) == 2
+    assert labels[0]["name"] == "Inference Latency"
+    assert labels[1]["name"] == "Model Accuracy"
+    assert "description" in labels[0]
+
+
+@pytest.mark.asyncio
+async def test_label_clusters_handles_malformed():
+    from lens.taxonomy.labeler import label_clusters
+
+    clusters = {0: ["test string"]}
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = "not json"
+
+    labels = await label_clusters(clusters, mock_client)
+    assert len(labels) == 1
+    assert labels[0]["name"] is not None
