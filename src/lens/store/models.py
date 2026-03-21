@@ -180,6 +180,9 @@ class TaxonomyVersion(LanceModel):
     paper_count: int
     param_count: int
     principle_count: int
+    slot_count: int = 0
+    variant_count: int = 0
+    pattern_count: int = 0
 
 
 # ---------------------------------------------------------------------------

@@ -239,6 +239,43 @@ def test_ideation_report_model():
     assert report.gap_count == 10
 
 
+def test_taxonomy_version_with_catalog_counts():
+    from datetime import datetime
+
+    from lens.store.models import TaxonomyVersion
+
+    tv = TaxonomyVersion(
+        version_id=1,
+        created_at=datetime.now(),
+        paper_count=10,
+        param_count=5,
+        principle_count=10,
+        slot_count=3,
+        variant_count=12,
+        pattern_count=8,
+    )
+    assert tv.slot_count == 3
+    assert tv.variant_count == 12
+    assert tv.pattern_count == 8
+
+
+def test_taxonomy_version_defaults_backward_compat():
+    from datetime import datetime
+
+    from lens.store.models import TaxonomyVersion
+
+    tv = TaxonomyVersion(
+        version_id=1,
+        created_at=datetime.now(),
+        paper_count=10,
+        param_count=5,
+        principle_count=10,
+    )
+    assert tv.slot_count == 0
+    assert tv.variant_count == 0
+    assert tv.pattern_count == 0
+
+
 def test_explanation_result_model():
     from lens.store.models import ExplanationResult
 

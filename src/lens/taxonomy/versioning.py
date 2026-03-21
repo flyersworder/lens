@@ -27,6 +27,9 @@ def record_version(
     paper_count: int,
     param_count: int,
     principle_count: int,
+    slot_count: int = 0,
+    variant_count: int = 0,
+    pattern_count: int = 0,
 ) -> None:
     """Record a taxonomy version in the store."""
     store.add_rows(
@@ -38,6 +41,9 @@ def record_version(
                 "paper_count": paper_count,
                 "param_count": param_count,
                 "principle_count": principle_count,
+                "slot_count": slot_count,
+                "variant_count": variant_count,
+                "pattern_count": pattern_count,
             }
         ],
     )

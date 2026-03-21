@@ -65,6 +65,9 @@ def explain_store(tmp_path):
                 "paper_count": 10,
                 "param_count": 1,
                 "principle_count": 1,
+                "slot_count": 0,
+                "variant_count": 0,
+                "pattern_count": 0,
             },
         ],
     )
