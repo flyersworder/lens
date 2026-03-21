@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
+import contextlib
 import json
 import logging
 from typing import Any
 
+import polars as pl
 from pydantic import ValidationError
 
 from lens.extract.prompts import build_extraction_prompt
@@ -15,6 +18,7 @@ from lens.store.models import (
     ArchitectureExtraction,
     TradeoffExtraction,
 )
+from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
 
@@ -130,3 +134,88 @@ async def extract_paper(
         return None
 
     return parse_extraction_response(response, paper_id)
+
+
+def _delete_old_extractions(store: LensStore, paper_id: str) -> None:
+    """Delete previous extractions for a paper (idempotent re-extraction)."""
+    for table_name in [
+        "tradeoff_extractions",
+        "architecture_extractions",
+        "agentic_extractions",
+    ]:
+        with contextlib.suppress(Exception):
+            store.get_table(table_name).delete(f"paper_id = '{paper_id}'")
+
+
+def _update_paper_status(store: LensStore, paper_id: str, status: str) -> None:
+    """Update a paper's extraction_status."""
+    try:
+        store.get_table("papers").update(
+            where=f"paper_id = '{paper_id}'",
+            values={"extraction_status": status},
+        )
+    except Exception:
+        logger.warning(f"Failed to update status for {paper_id}")
+
+
+async def extract_papers(
+    store: LensStore,
+    llm_client: LLMClient,
+    concurrency: int = 5,
+    paper_id: str | None = None,
+) -> int:
+    """Extract knowledge from all pending papers in the store.
+
+    Idempotent: re-extraction deletes old results before storing new ones.
+    Updates extraction_status to 'complete' or 'incomplete'.
+    """
+    papers_df = store.get_table("papers").to_polars()
+
+    if paper_id:
+        papers_df = papers_df.filter(pl.col("paper_id") == paper_id)
+    else:
+        papers_df = papers_df.filter(pl.col("extraction_status").is_in(["pending", "incomplete"]))
+
+    if len(papers_df) == 0:
+        logger.info("No papers to extract")
+        return 0
+
+    semaphore = asyncio.Semaphore(concurrency)
+
+    async def process_one(row: dict) -> bool:
+        async with semaphore:
+            pid = row["paper_id"]
+            _delete_old_extractions(store, pid)
+
+            result = await extract_paper(
+                paper_id=pid,
+                title=row["title"],
+                abstract=row["abstract"],
+                llm_client=llm_client,
+            )
+
+            if result is None:
+                _update_paper_status(store, pid, "incomplete")
+                logger.warning(f"Extraction failed for {pid}")
+                return False
+
+            tradeoffs, architecture, agentic = result
+            if tradeoffs:
+                store.add_rows("tradeoff_extractions", tradeoffs)
+            if architecture:
+                store.add_rows("architecture_extractions", architecture)
+            if agentic:
+                store.add_rows("agentic_extractions", agentic)
+
+            _update_paper_status(store, pid, "complete")
+            logger.info(
+                f"Extracted {pid}: "
+                f"{len(tradeoffs)} tradeoffs, "
+                f"{len(architecture)} arch, "
+                f"{len(agentic)} agentic"
+            )
+            return True
+
+    tasks = [process_one(row) for row in papers_df.to_dicts()]
+    results = await asyncio.gather(*tasks)
+    return sum(1 for r in results if r)

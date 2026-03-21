@@ -161,3 +161,84 @@ async def test_extract_paper_returns_none_after_retries():
     )
     assert result is None
     assert mock_client.complete.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_extract_papers_batch(tmp_path):
+    import polars as pl
+
+    from lens.extract.extractor import extract_papers
+    from lens.store.store import LensStore
+
+    fixture = (FIXTURE_DIR / "extraction_response.json").read_text()
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = fixture
+
+    store = LensStore(str(tmp_path / "test.lance"))
+    store.init_tables()
+
+    store.add_papers(
+        [
+            {
+                "paper_id": "2005.14165",
+                "arxiv_id": "2005.14165",
+                "title": "Language Models are Few-Shot Learners",
+                "abstract": "We demonstrate that scaling up language models...",
+                "authors": ["Brown"],
+                "date": "2020-05-28",
+                "venue": None,
+                "citations": 0,
+                "quality_score": 0.5,
+                "extraction_status": "pending",
+                "embedding": [0.0] * 768,
+            }
+        ]
+    )
+
+    count = await extract_papers(store, mock_client, concurrency=1)
+    assert count == 1
+
+    # Check extractions were stored
+    tradeoffs = store.get_table("tradeoff_extractions").to_polars()
+    assert len(tradeoffs) == 1
+
+    arch = store.get_table("architecture_extractions").to_polars()
+    assert len(arch) == 1
+
+    # Check paper status updated to 'complete'
+    papers = store.get_table("papers").to_polars()
+    status = papers.filter(pl.col("paper_id") == "2005.14165")["extraction_status"][0]
+    assert status == "complete"
+
+
+@pytest.mark.asyncio
+async def test_extract_papers_skips_completed(tmp_path):
+    from lens.extract.extractor import extract_papers
+    from lens.store.store import LensStore
+
+    mock_client = AsyncMock()
+
+    store = LensStore(str(tmp_path / "test.lance"))
+    store.init_tables()
+
+    store.add_papers(
+        [
+            {
+                "paper_id": "already_done",
+                "arxiv_id": "already_done",
+                "title": "Already extracted",
+                "abstract": "Test",
+                "authors": [],
+                "date": "2024-01-01",
+                "venue": None,
+                "citations": 0,
+                "quality_score": 0.0,
+                "extraction_status": "complete",
+                "embedding": [0.0] * 768,
+            }
+        ]
+    )
+
+    count = await extract_papers(store, mock_client, concurrency=1)
+    assert count == 0
+    mock_client.complete.assert_not_called()
