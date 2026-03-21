@@ -9,6 +9,7 @@ from typing import Any
 import polars as pl
 
 from lens.llm.client import LLMClient
+from lens.llm.utils import strip_code_fences
 from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
@@ -62,12 +63,7 @@ async def analyze(
     prompt = _build_classify_prompt(query, param_names)
     try:
         response = await llm_client.complete([{"role": "user", "content": prompt}])
-        text = response.strip()
-        if text.startswith("```"):
-            start = text.find("{")
-            end = text.rfind("}")
-            if start != -1 and end != -1:
-                text = text[start : end + 1]
+        text = strip_code_fences(response.strip())
         classification = json.loads(text)
     except Exception:
         logger.warning("Failed to classify query: %s", query)

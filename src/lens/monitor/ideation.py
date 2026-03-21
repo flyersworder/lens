@@ -214,7 +214,7 @@ def run_ideation(
             "related_slots": [],
             "score": 1.0 - (gap["count"] / min_principles),
             "llm_hypothesis": None,
-            "created_at": now.isoformat(),
+            "created_at": now,
             "taxonomy_version": taxonomy_version,
         }
         all_gaps.append(gap_record)
@@ -242,7 +242,7 @@ def run_ideation(
             "related_slots": [],
             "score": cand["similarity"],
             "llm_hypothesis": None,
-            "created_at": now.isoformat(),
+            "created_at": now,
             "taxonomy_version": taxonomy_version,
         }
         all_gaps.append(gap_record)
@@ -255,7 +255,7 @@ def run_ideation(
     # Persist report
     report_record = {
         "id": report_id,
-        "created_at": now.isoformat(),
+        "created_at": now,
         "taxonomy_version": taxonomy_version,
         "paper_batch_size": 0,
         "gap_count": len(all_gaps),

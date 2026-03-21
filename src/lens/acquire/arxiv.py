@@ -14,7 +14,8 @@ from typing import Any
 from urllib.parse import quote
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential_jitter
+
+from lens.acquire.http import fetch_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -101,15 +102,6 @@ def build_query_url(
     )
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=30))
-async def _fetch_with_retry(client: httpx.AsyncClient, url: str) -> httpx.Response:
-    """Fetch a URL with exponential backoff and jitter."""
-    resp = await client.get(url)
-    if resp.status_code >= 400:
-        resp.raise_for_status()
-    return resp
-
-
 async def fetch_arxiv_papers(
     query: str,
     categories: list[str],
@@ -119,6 +111,6 @@ async def fetch_arxiv_papers(
     """Fetch papers from arxiv API with rate limiting and retry."""
     url = build_query_url(query, categories, since=since, max_results=max_results)
     async with httpx.AsyncClient(timeout=30.0) as client:
-        resp = await _fetch_with_retry(client, url)
+        resp = await fetch_with_retry(client, url)
     await asyncio.sleep(RATE_LIMIT_SECONDS)
     return parse_arxiv_response(resp.text)

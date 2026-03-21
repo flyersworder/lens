@@ -41,6 +41,11 @@ TABLE_SCHEMAS: dict[str, type] = {
 }
 
 
+def escape_sql_string(value: str) -> str:
+    """Escape single quotes in a string for LanceDB SQL filter expressions."""
+    return value.replace("'", "''")
+
+
 class _TableWrapper:
     """Thin wrapper around a LanceDB table that normalises the to_polars() API.
 
@@ -78,7 +83,7 @@ class _DatabaseWrapper:
     def table_names(self, **kwargs: object) -> list[str]:
         """Return all table names, bypassing the default page-size limit."""
         result = self._db.list_tables(limit=10_000)  # type: ignore[attr-defined]
-        return result.tables
+        return result.tables if hasattr(result, "tables") else list(result)
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._db, name)

@@ -3,7 +3,9 @@
 from datetime import datetime
 
 from lancedb.pydantic import LanceModel, Vector
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
+
+VALID_EXTRACTION_STATUSES = {"pending", "complete", "incomplete", "failed"}
 
 # ---------------------------------------------------------------------------
 # Layer 0 — Raw ingested papers
@@ -24,6 +26,15 @@ class Paper(LanceModel):
     quality_score: float = 0.0
     extraction_status: str = "pending"
     embedding: Vector(768)  # type: ignore[valid-type]
+
+    @field_validator("extraction_status")
+    @classmethod
+    def _check_extraction_status(cls, v: str) -> str:
+        if v not in VALID_EXTRACTION_STATUSES:
+            raise ValueError(
+                f"extraction_status must be one of {VALID_EXTRACTION_STATUSES}, got '{v}'"
+            )
+        return v
 
 
 # ---------------------------------------------------------------------------

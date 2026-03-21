@@ -13,12 +13,13 @@ from pydantic import ValidationError
 
 from lens.extract.prompts import build_extraction_prompt
 from lens.llm.client import LLMClient
+from lens.llm.utils import strip_code_fences
 from lens.store.models import (
     AgenticExtraction,
     ArchitectureExtraction,
     TradeoffExtraction,
 )
-from lens.store.store import LensStore
+from lens.store.store import LensStore, escape_sql_string
 
 logger = logging.getLogger(__name__)
 
@@ -29,14 +30,7 @@ ExtractionTuple = tuple[
 ]
 
 
-def _strip_code_fences(text: str) -> str:
-    text = text.strip()
-    if text.startswith("```"):
-        start = text.find("{")
-        end = text.rfind("}")
-        if start != -1 and end != -1:
-            return text[start : end + 1]
-    return text
+_strip_code_fences = strip_code_fences  # backwards-compatible alias
 
 
 def _validate_tradeoff(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
@@ -136,14 +130,9 @@ async def extract_paper(
     return parse_extraction_response(response, paper_id)
 
 
-def _escape_sql_string(value: str) -> str:
-    """Escape single quotes in a string for LanceDB SQL filter expressions."""
-    return value.replace("'", "''")
-
-
 def _delete_old_extractions(store: LensStore, paper_id: str) -> None:
     """Delete previous extractions for a paper (idempotent re-extraction)."""
-    safe_id = _escape_sql_string(paper_id)
+    safe_id = escape_sql_string(paper_id)
     for table_name in [
         "tradeoff_extractions",
         "architecture_extractions",
@@ -155,7 +144,7 @@ def _delete_old_extractions(store: LensStore, paper_id: str) -> None:
 
 def _update_paper_status(store: LensStore, paper_id: str, status: str) -> None:
     """Update a paper's extraction_status."""
-    safe_id = _escape_sql_string(paper_id)
+    safe_id = escape_sql_string(paper_id)
     try:
         store.get_table("papers").update(
             where=f"paper_id = '{safe_id}'",
@@ -189,40 +178,48 @@ async def extract_papers(
 
     semaphore = asyncio.Semaphore(concurrency)
 
-    async def process_one(row: dict) -> bool:
+    async def extract_one(row: dict) -> tuple[str, ExtractionTuple | None]:
+        """Run LLM extraction concurrently; return (paper_id, result)."""
         async with semaphore:
             pid = row["paper_id"]
-            _delete_old_extractions(store, pid)
-
             result = await extract_paper(
                 paper_id=pid,
                 title=row["title"],
                 abstract=row["abstract"],
                 llm_client=llm_client,
             )
+            return pid, result
 
-            if result is None:
-                _update_paper_status(store, pid, "incomplete")
-                logger.warning(f"Extraction failed for {pid}")
-                return False
+    # Phase 1: Run all LLM calls concurrently
+    tasks = [extract_one(row) for row in papers_df.to_dicts()]
+    extraction_results = await asyncio.gather(*tasks)
 
-            tradeoffs, architecture, agentic = result
-            if tradeoffs:
-                store.add_rows("tradeoff_extractions", tradeoffs)
-            if architecture:
-                store.add_rows("architecture_extractions", architecture)
-            if agentic:
-                store.add_rows("agentic_extractions", agentic)
+    # Phase 2: Write results to LanceDB sequentially (avoids concurrent writes)
+    success_count = 0
+    for pid, result in extraction_results:
+        _delete_old_extractions(store, pid)
 
-            _update_paper_status(store, pid, "complete")
-            logger.info(
-                f"Extracted {pid}: "
-                f"{len(tradeoffs)} tradeoffs, "
-                f"{len(architecture)} arch, "
-                f"{len(agentic)} agentic"
-            )
-            return True
+        if result is None:
+            _update_paper_status(store, pid, "incomplete")
+            logger.warning("Extraction failed for %s", pid)
+            continue
 
-    tasks = [process_one(row) for row in papers_df.to_dicts()]
-    results = await asyncio.gather(*tasks)
-    return sum(1 for r in results if r)
+        tradeoffs, architecture, agentic = result
+        if tradeoffs:
+            store.add_rows("tradeoff_extractions", tradeoffs)
+        if architecture:
+            store.add_rows("architecture_extractions", architecture)
+        if agentic:
+            store.add_rows("agentic_extractions", agentic)
+
+        _update_paper_status(store, pid, "complete")
+        logger.info(
+            "Extracted %s: %d tradeoffs, %d arch, %d agentic",
+            pid,
+            len(tradeoffs),
+            len(architecture),
+            len(agentic),
+        )
+        success_count += 1
+
+    return success_count

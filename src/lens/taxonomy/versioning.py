@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from lens.store.store import LensStore
 
@@ -34,7 +34,7 @@ def record_version(
         [
             {
                 "version_id": version_id,
-                "created_at": datetime.now(),
+                "created_at": datetime.now(UTC),
                 "paper_count": paper_count,
                 "param_count": param_count,
                 "principle_count": principle_count,

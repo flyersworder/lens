@@ -12,6 +12,7 @@ import logging
 from collections import Counter
 
 from lens.llm.client import LLMClient
+from lens.llm.utils import strip_code_fences
 
 logger = logging.getLogger(__name__)
 
@@ -45,12 +46,7 @@ async def label_clusters(
         prompt = _build_label_prompt(strings)
         try:
             response = await llm_client.complete([{"role": "user", "content": prompt}])
-            text = response.strip()
-            if text.startswith("```"):
-                start = text.find("{")
-                end = text.rfind("}")
-                if start != -1 and end != -1:
-                    text = text[start : end + 1]
+            text = strip_code_fences(response.strip())
             data = json.loads(text)
             labels[cluster_id] = {
                 "name": data.get("name", strings[0]),

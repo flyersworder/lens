@@ -12,7 +12,8 @@ import re
 from typing import Any
 
 import httpx
-from tenacity import retry, stop_after_attempt, wait_exponential_jitter
+
+from lens.acquire.http import fetch_with_retry
 
 logger = logging.getLogger(__name__)
 
@@ -52,17 +53,6 @@ def parse_openalex_works(works: list[dict[str, Any]]) -> list[dict[str, Any]]:
     return results
 
 
-@retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=30))
-async def _fetch_with_retry(client: httpx.AsyncClient, url: str) -> httpx.Response:
-    """Fetch with exponential backoff and jitter."""
-    resp = await client.get(url)
-    if resp.status_code >= 400:
-        raise httpx.HTTPStatusError(
-            f"HTTP {resp.status_code}", request=resp.request, response=resp
-        )
-    return resp
-
-
 async def enrich_with_openalex(
     papers: list[dict[str, Any]],
     batch_size: int = 50,
@@ -88,7 +78,7 @@ async def enrich_with_openalex(
                 f"&mailto={effective_mailto}&per-page={batch_size}"
             )
             try:
-                resp = await _fetch_with_retry(client, url)
+                resp = await fetch_with_retry(client, url)
                 data = resp.json()
                 all_works.extend(data.get("results", []))
             except httpx.HTTPError as e:

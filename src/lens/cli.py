@@ -11,7 +11,7 @@ import yaml
 from rich import print as rprint
 
 from lens.config import load_config, resolve_data_dir, save_config, set_config_value
-from lens.store.store import LensStore
+from lens.store.store import LensStore, escape_sql_string
 
 # ---------------------------------------------------------------------------
 # App and subcommand groups
@@ -317,6 +317,13 @@ def file(
     store.init_tables()
 
     paper = ingest_pdf(path)
+
+    # Check for duplicate paper_id
+    existing_df = store.get_table("papers").to_polars()
+    if len(existing_df) > 0 and paper["paper_id"] in existing_df["paper_id"].to_list():
+        rprint(f"[yellow]Paper '{paper['paper_id']}' already exists. Skipping.[/yellow]")
+        return
+
     store.add_papers([paper])
     rprint(f"[green]Ingested {path.name} as paper '{paper['paper_id']}'[/green]")
 
@@ -350,7 +357,7 @@ def openalex(
     papers_table = store.get_table("papers")
     updated_count = 0
     for paper in enriched:
-        pid = paper.get("paper_id", "")
+        pid = escape_sql_string(paper.get("paper_id", ""))
         papers_table.update(
             where=f"paper_id = '{pid}'",
             values={"citations": paper.get("citations", 0), "venue": paper.get("venue")},
