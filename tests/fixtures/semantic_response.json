@@ -1,0 +1,6 @@
+{
+  "paperId": "204e3073870fae3d05bcbc2f6a8e263d9b72e776",
+  "externalIds": {"ArXiv": "1706.03762"},
+  "title": "Attention Is All You Need",
+  "embedding": {"model": "specter2", "vector": [0.1, 0.2, 0.3]}
+}
