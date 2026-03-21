@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
 
 from lens.store.store import LensStore
+
+logger = logging.getLogger(__name__)
 
 
 def find_sparse_cells(
@@ -181,11 +184,11 @@ def run_ideation(
 
     # Determine next report_id
     reports_df = store.get_table("ideation_reports").to_polars()
-    report_id = int(str(reports_df["id"].max())) + 1 if len(reports_df) > 0 else 1
+    report_id = int(reports_df["id"].max()) + 1 if len(reports_df) > 0 else 1  # type: ignore[arg-type]
 
     # Determine next gap_id
     gaps_df = store.get_table("ideation_gaps").to_polars()
-    next_gap_id = int(str(gaps_df["id"].max())) + 1 if len(gaps_df) > 0 else 1
+    next_gap_id = int(gaps_df["id"].max()) + 1 if len(gaps_df) > 0 else 1  # type: ignore[arg-type]
 
     all_gaps: list[dict[str, Any]] = []
 
@@ -254,6 +257,14 @@ def run_ideation(
     }
     store.add_rows("ideation_reports", [report_record])
 
+    logger.info(
+        "Ideation v%d: %d gaps (%d sparse, %d cross-pollination)",
+        taxonomy_version,
+        len(all_gaps),
+        sum(1 for g in all_gaps if g["gap_type"] == "sparse_cell"),
+        sum(1 for g in all_gaps if g["gap_type"] == "cross_pollination"),
+    )
+
     return {
         "report_id": report_id,
         "gap_count": len(all_gaps),
@@ -296,15 +307,21 @@ async def run_ideation_with_llm(
                 ),
             },
         ]
-        hypothesis = await llm_client.complete(messages)
-        gap["llm_hypothesis"] = hypothesis
+        try:
+            hypothesis = await llm_client.complete(messages)
+            gap["llm_hypothesis"] = hypothesis
 
-        # Update the gap in LanceDB
-        gap_id = int(gap["id"])
-        table = store.get_table("ideation_gaps")
-        table.update(
-            where=f"id = {gap_id}",
-            values={"llm_hypothesis": hypothesis},
-        )
+            # Update the gap in LanceDB
+            gap_id = int(gap["id"])
+            table = store.get_table("ideation_gaps")
+            table.update(
+                where=f"id = {gap_id}",
+                values={"llm_hypothesis": hypothesis},
+            )
+        except Exception:
+            logger.warning(
+                "LLM enrichment failed for gap %d",
+                gap.get("id", -1),
+            )
 
     return report
