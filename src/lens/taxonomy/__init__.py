@@ -12,7 +12,11 @@ from lens.llm.client import LLMClient
 from lens.store.store import LensStore
 from lens.taxonomy.clusterer import cluster_embeddings
 from lens.taxonomy.embedder import embed_strings
-from lens.taxonomy.labeler import label_clusters
+from lens.taxonomy.labeler import (
+    label_clusters,
+    label_clusters_with_category,
+    normalize_slots,
+)
 from lens.taxonomy.versioning import get_next_version, record_version
 
 logger = logging.getLogger(__name__)
@@ -136,6 +140,8 @@ async def build_taxonomy(
     min_cluster_size: int = 3,
     target_parameters: int = 25,
     target_principles: int = 35,
+    target_arch_variants: int = 20,
+    target_agentic_patterns: int = 15,
 ) -> int:
     """Build taxonomy from current extractions. Full rebuild.
 
@@ -201,6 +207,198 @@ async def build_taxonomy(
         if principle_entries:
             store.add_rows("principles", principle_entries)
 
+    # --- Architecture slots + variants ---
+    arch_strings = _collect_strings_from_table(
+        store, "architecture_extractions", ["component_slot"]
+    )
+    slot_entries: list[dict[str, Any]] = []
+    variant_entries: list[dict[str, Any]] = []
+
+    if arch_strings:
+        # Normalize slot names via LLM
+        slot_mapping = await normalize_slots(arch_strings, llm_client)
+        canonical_names = sorted(set(slot_mapping.values()))
+
+        # Create ArchitectureSlot entries
+        slot_start_id = _next_id(store, "architecture_slots")
+        slot_id_by_name: dict[str, int] = {}
+        for i, canonical in enumerate(canonical_names):
+            sid = slot_start_id + i
+            slot_id_by_name[canonical] = sid
+            slot_entries.append(
+                {
+                    "id": sid,
+                    "name": canonical,
+                    "description": "",
+                    "taxonomy_version": version_id,
+                }
+            )
+
+        # Write slots to DB immediately so they exist
+        if slot_entries:
+            store.add_rows("architecture_slots", slot_entries)
+
+        # Load architecture extractions for variant aggregation
+        arch_df = store.get_table("architecture_extractions").to_polars()
+        if "confidence" in arch_df.columns:
+            arch_df = arch_df.filter(pl.col("confidence") >= 0.5)
+
+        # Initialize running variant ID counter ONCE before the loop
+        next_var_id = _next_id(store, "architecture_variants")
+
+        for canonical in canonical_names:
+            slot_id = slot_id_by_name[canonical]
+            # Find raw slot strings that map to this canonical name
+            raw_slots_for_canonical = [
+                raw for raw, canon in slot_mapping.items() if canon == canonical
+            ]
+            # Collect variant_name strings from extractions matching this slot
+            matching_rows = arch_df.filter(pl.col("component_slot").is_in(raw_slots_for_canonical))
+            var_strings = list(set(s for s in matching_rows["variant_name"].to_list() if s))
+
+            if not var_strings:
+                continue
+
+            if len(var_strings) < 2:
+                # Create variant directly, no clustering
+                vname = var_strings[0]
+                # Aggregate properties
+                props = [
+                    r["key_properties"]
+                    for r in matching_rows.to_dicts()
+                    if r.get("variant_name") == vname and r.get("key_properties")
+                ]
+                # Aggregate paper_ids
+                pids = list(
+                    set(
+                        r["paper_id"]
+                        for r in matching_rows.to_dicts()
+                        if r.get("variant_name") == vname
+                    )
+                )
+                emb = embed_strings([vname])
+                centroid = emb[0]
+                if len(centroid) < 768:
+                    centroid = np.pad(centroid, (0, 768 - len(centroid)))
+                elif len(centroid) > 768:
+                    centroid = centroid[:768]
+
+                variant_entries.append(
+                    {
+                        "id": next_var_id,
+                        "slot_id": slot_id,
+                        "name": vname.title(),
+                        "replaces": [],
+                        "properties": "; ".join(set(props)) if props else "",
+                        "paper_ids": pids,
+                        "taxonomy_version": version_id,
+                        "embedding": centroid.tolist(),
+                    }
+                )
+                next_var_id += 1
+            else:
+                # Embed → cluster → label
+                var_emb = embed_strings(var_strings)
+                var_labels = cluster_embeddings(
+                    var_emb,
+                    min_cluster_size=min_cluster_size,
+                    target_clusters=target_arch_variants,
+                )
+                var_clusters = _group_by_cluster(var_strings, var_labels)
+                var_paper_ids = _build_paper_id_map(
+                    store, "architecture_extractions", ["variant_name"]
+                )
+                var_label_info = await label_clusters(var_clusters, llm_client)
+                entries = _build_taxonomy_entries(
+                    var_label_info,
+                    var_clusters,
+                    var_strings,
+                    var_emb,
+                    version_id,
+                    var_paper_ids,
+                    start_id=next_var_id,
+                )
+                for entry in entries:
+                    entry["slot_id"] = slot_id
+                    # Aggregate properties from source extractions
+                    raw_members = entry.get("raw_strings", [])
+                    props = []
+                    for r in matching_rows.to_dicts():
+                        if r.get("variant_name") in raw_members and r.get("key_properties"):
+                            props.append(r["key_properties"])
+                    entry["properties"] = "; ".join(set(props)) if props else ""
+                    entry["replaces"] = []
+                    del entry["raw_strings"]
+                    del entry["description"]
+                variant_entries.extend(entries)
+                next_var_id += len(entries)
+
+        if variant_entries:
+            store.add_rows("architecture_variants", variant_entries)
+
+    # --- Agentic patterns ---
+    agentic_strings = _collect_strings_from_table(store, "agentic_extractions", ["pattern_name"])
+    pattern_entries: list[dict[str, Any]] = []
+
+    if agentic_strings:
+        ag_emb = embed_strings(agentic_strings)
+        ag_labels = cluster_embeddings(
+            ag_emb,
+            min_cluster_size=min_cluster_size,
+            target_clusters=target_agentic_patterns,
+        )
+        ag_clusters = _group_by_cluster(agentic_strings, ag_labels)
+        ag_paper_ids = _build_paper_id_map(store, "agentic_extractions", ["pattern_name"])
+
+        # Build structures context for label_clusters_with_category
+        ag_df = store.get_table("agentic_extractions").to_polars()
+        if "confidence" in ag_df.columns:
+            ag_df = ag_df.filter(pl.col("confidence") >= 0.5)
+        # Map cluster_id -> list of structure strings
+        structures: dict[int, list[str]] = {}
+        for cluster_id, members in ag_clusters.items():
+            structs: list[str] = []
+            for r in ag_df.to_dicts():
+                if r.get("pattern_name") in members and r.get("structure"):
+                    structs.append(r["structure"])
+            structures[cluster_id] = structs
+
+        ag_label_info = await label_clusters_with_category(ag_clusters, structures, llm_client)
+        entries = _build_taxonomy_entries(
+            ag_label_info,
+            ag_clusters,
+            agentic_strings,
+            ag_emb,
+            version_id,
+            ag_paper_ids,
+            start_id=_next_id(store, "agentic_patterns"),
+        )
+        for entry in entries:
+            raw_members = entry.get("raw_strings", [])
+            # Get category from label info
+            # Find matching cluster_id for this entry
+            entry_category = "Uncategorized"
+            for _cid, info in ag_label_info.items():
+                if info["name"] == entry["name"]:
+                    entry_category = info.get("category", "Uncategorized")
+                    break
+            entry["category"] = entry_category
+            # Aggregate components and use_cases from source extractions
+            components: list[str] = []
+            use_cases: list[str] = []
+            for r in ag_df.to_dicts():
+                if r.get("pattern_name") in raw_members:
+                    if r.get("components"):
+                        components.extend(r["components"])
+                    if r.get("use_case"):
+                        use_cases.append(r["use_case"])
+            entry["components"] = list(set(components))
+            entry["use_cases"] = list(set(use_cases))
+            del entry["raw_strings"]
+        pattern_entries = entries
+        if pattern_entries:
+            store.add_rows("agentic_patterns", pattern_entries)
+
     # Record version
     paper_count = len(store.get_table("papers").to_polars())
     record_version(
@@ -209,12 +407,18 @@ async def build_taxonomy(
         paper_count=paper_count,
         param_count=len(param_entries),
         principle_count=len(principle_entries),
+        slot_count=len(slot_entries),
+        variant_count=len(variant_entries),
+        pattern_count=len(pattern_entries),
     )
 
     logger.info(
-        "Taxonomy v%d: %d parameters, %d principles",
+        "Taxonomy v%d: %d parameters, %d principles, %d slots, %d variants, %d patterns",
         version_id,
         len(param_entries),
         len(principle_entries),
+        len(slot_entries),
+        len(variant_entries),
+        len(pattern_entries),
     )
     return version_id

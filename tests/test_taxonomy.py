@@ -276,6 +276,122 @@ async def test_label_clusters_with_category():
 
 
 @pytest.mark.asyncio
+async def test_build_taxonomy_with_architecture(tmp_path):
+    from lens.store.store import LensStore
+    from lens.taxonomy import build_taxonomy
+
+    store = LensStore(str(tmp_path / "test.lance"))
+    store.init_tables()
+    store.add_rows(
+        "tradeoff_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "improves": "speed",
+                "worsens": "size",
+                "technique": "quantization",
+                "context": "t",
+                "confidence": 0.8,
+                "evidence_quote": "q",
+            },
+        ]
+        * 5,
+    )
+    store.add_rows(
+        "architecture_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "component_slot": "attention mechanism",
+                "variant_name": "multi-head attention",
+                "replaces": None,
+                "key_properties": "parallel heads",
+                "confidence": 0.9,
+            },
+            {
+                "paper_id": "p2",
+                "component_slot": "attention mechanism",
+                "variant_name": "grouped-query attention",
+                "replaces": "multi-head attention",
+                "key_properties": "shared KV cache",
+                "confidence": 0.85,
+            },
+            {
+                "paper_id": "p3",
+                "component_slot": "positional encoding",
+                "variant_name": "RoPE",
+                "replaces": None,
+                "key_properties": "relative position",
+                "confidence": 0.9,
+            },
+        ],
+    )
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = '{"name": "Test", "description": "test"}'
+    version = await build_taxonomy(store, mock_client, min_cluster_size=2)
+    slots = store.get_table("architecture_slots").to_polars()
+    slots = slots.filter(slots["taxonomy_version"] == version)
+    assert len(slots) >= 1
+    variants = store.get_table("architecture_variants").to_polars()
+    variants = variants.filter(variants["taxonomy_version"] == version)
+    assert len(variants) >= 1
+
+
+@pytest.mark.asyncio
+async def test_build_taxonomy_with_agentic(tmp_path):
+    from lens.store.store import LensStore
+    from lens.taxonomy import build_taxonomy
+
+    store = LensStore(str(tmp_path / "test.lance"))
+    store.init_tables()
+    store.add_rows(
+        "tradeoff_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "improves": "speed",
+                "worsens": "size",
+                "technique": "quantization",
+                "context": "t",
+                "confidence": 0.8,
+                "evidence_quote": "q",
+            },
+        ]
+        * 5,
+    )
+    store.add_rows(
+        "agentic_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "pattern_name": "ReAct",
+                "structure": "reasoning and acting loop",
+                "use_case": "tool use",
+                "components": ["LLM", "tools", "memory"],
+                "confidence": 0.9,
+            },
+            {
+                "paper_id": "p2",
+                "pattern_name": "Reflexion",
+                "structure": "self-critique loop",
+                "use_case": "code generation",
+                "components": ["actor", "evaluator", "memory"],
+                "confidence": 0.85,
+            },
+        ],
+    )
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = (
+        '{"name": "Test Pattern", "description": "test", "category": "Reasoning"}'
+    )
+    version = await build_taxonomy(store, mock_client, min_cluster_size=2)
+    patterns = store.get_table("agentic_patterns").to_polars()
+    patterns = patterns.filter(patterns["taxonomy_version"] == version)
+    assert len(patterns) >= 1
+    assert "category" in patterns.columns
+
+
+@pytest.mark.asyncio
 async def test_label_clusters_with_category_fallback():
     from lens.taxonomy.labeler import label_clusters_with_category
 
