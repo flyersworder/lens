@@ -75,3 +75,19 @@ def test_cli_explore_group_exists():
 def test_cli_monitor_exists():
     result = runner.invoke(app, ["monitor", "--help"])
     assert result.exit_code == 0
+
+
+def test_explore_architecture_help():
+    result = runner.invoke(app, ["explore", "architecture", "--help"])
+    assert result.exit_code == 0
+    assert "architecture" in result.output.lower()
+
+
+def test_explore_agents_help():
+    result = runner.invoke(app, ["explore", "agents", "--help"])
+    assert result.exit_code == 0
+
+
+def test_explore_evolution_help():
+    result = runner.invoke(app, ["explore", "evolution", "--help"])
+    assert result.exit_code == 0

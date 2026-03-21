@@ -81,19 +81,12 @@ def analyze(
     type_: str | None = typer.Option(None, "--type", help="Query type."),
 ) -> None:
     """Analyze a tradeoff and suggest resolution techniques."""
-    if type_ in ("architecture", "agentic"):
-        rprint(
-            f"[yellow]--type {type_} not yet implemented. "
-            f"Using default tradeoff analysis.[/yellow]"
-        )
-
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir))
     store.init_tables()
 
     from lens.llm.client import LLMClient
-    from lens.serve.analyzer import analyze as do_analyze
     from lens.taxonomy.versioning import get_latest_version
 
     version = get_latest_version(store)
@@ -102,19 +95,45 @@ def analyze(
         raise typer.Exit(code=1)
 
     client = LLMClient(model=config["llm"]["default_model"])
-    result = asyncio.run(do_analyze(query, store, client, taxonomy_version=version))
 
-    rprint(f"\n[bold]Query:[/bold] {result['query']}")
-    rprint(f"[bold]Improving:[/bold] {result['improving']}")
-    rprint(f"[bold]Worsening:[/bold] {result['worsening']}")
-    if result["principles"]:
-        rprint("\n[bold]Suggested techniques:[/bold]")
-        for p in result["principles"]:
-            rprint(
-                f"  • {p['name']} (evidence: {p['count']}, confidence: {p['avg_confidence']:.2f})"
-            )
+    if type_ == "architecture":
+        from lens.serve.analyzer import analyze_architecture
+
+        result = asyncio.run(analyze_architecture(query, store, client, taxonomy_version=version))
+        rprint(f"\n[bold]Query:[/bold] {result['query']}")
+        rprint(f"[bold]Slot:[/bold] {result.get('slot')}")
+        if result["variants"]:
+            rprint("\n[bold]Matching architecture variants:[/bold]")
+            for v in result["variants"]:
+                props = v.get("properties") or {}
+                rprint(f"  • {v['name']} {props}")
+        else:
+            rprint("[yellow]No matching architecture variants found.[/yellow]")
+    elif type_ == "agentic":
+        from lens.serve.analyzer import analyze_agentic
+
+        result = asyncio.run(analyze_agentic(query, store, client, taxonomy_version=version))
+        rprint(f"\n[bold]Query:[/bold] {result['query']}")
+        if result["patterns"]:
+            rprint("\n[bold]Matching agentic patterns:[/bold]")
+            for p in result["patterns"]:
+                rprint(f"  • [{p.get('category')}] {p['name']} — {p.get('description', '')}")
+        else:
+            rprint("[yellow]No matching agentic patterns found.[/yellow]")
     else:
-        rprint("[yellow]No matching techniques found.[/yellow]")
+        from lens.serve.analyzer import analyze as do_analyze
+
+        result = asyncio.run(do_analyze(query, store, client, taxonomy_version=version))
+        rprint(f"\n[bold]Query:[/bold] {result['query']}")
+        rprint(f"[bold]Improving:[/bold] {result['improving']}")
+        rprint(f"[bold]Worsening:[/bold] {result['worsening']}")
+        if result["principles"]:
+            rprint("\n[bold]Suggested techniques:[/bold]")
+            for p in result["principles"]:
+                conf = p["avg_confidence"]
+                rprint(f"  • {p['name']} (evidence: {p['count']}, confidence: {conf:.2f})")
+        else:
+            rprint("[yellow]No matching techniques found.[/yellow]")
 
 
 @app.command()
@@ -398,6 +417,8 @@ def taxonomy() -> None:
             min_cluster_size=tax_config["min_cluster_size"],
             target_parameters=tax_config["target_parameters"],
             target_principles=tax_config["target_principles"],
+            target_arch_variants=tax_config["target_arch_variants"],
+            target_agentic_patterns=tax_config["target_agentic_patterns"],
         )
     )
     rprint(f"[green]Built taxonomy version {version}[/green]")
@@ -444,6 +465,8 @@ def build_all() -> None:
             min_cluster_size=tax_config["min_cluster_size"],
             target_parameters=tax_config["target_parameters"],
             target_principles=tax_config["target_principles"],
+            target_arch_variants=tax_config["target_arch_variants"],
+            target_agentic_patterns=tax_config["target_agentic_patterns"],
         )
     )
     build_matrix(store, taxonomy_version=version)
@@ -551,27 +574,104 @@ def matrix(
 def architecture(
     slot: str | None = typer.Argument(None, help="Architecture slot to explore."),
 ) -> None:
-    """Explore architecture slots. [stub]"""
-    rprint("[yellow]explore architecture not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Explore architecture slots."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.serve.explorer import list_architecture_slots, list_architecture_variants
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+
+    if slot is None:
+        slots = list_architecture_slots(store, taxonomy_version=version)
+        if not slots:
+            rprint("[yellow]No architecture slots found.[/yellow]")
+            return
+        for s in slots:
+            rprint(f"[bold]{s['name']}[/bold] — {s.get('variant_count', 0)} variant(s)")
+    else:
+        variants = list_architecture_variants(store, slot_name=slot, taxonomy_version=version)
+        if not variants:
+            rprint(f"[yellow]No variants found for slot '{slot}'.[/yellow]")
+            return
+        for v in variants:
+            props = v.get("properties") or {}
+            rprint(f"  [bold]{v['name']}[/bold] {props}")
 
 
 @explore_app.command()
 def agents(
     category: str | None = typer.Argument(None, help="Agentic pattern category."),
 ) -> None:
-    """Explore agentic patterns. [stub]"""
-    rprint("[yellow]explore agents not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Explore agentic patterns."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.serve.explorer import list_agentic_patterns
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+
+    patterns = list_agentic_patterns(store, taxonomy_version=version, category=category)
+    if not patterns:
+        rprint("[yellow]No agentic patterns found.[/yellow]")
+        return
+
+    # Group by category when no category filter provided
+    if category is None:
+        by_cat: dict[str, list] = {}
+        for p in patterns:
+            cat = p.get("category") or "uncategorized"
+            by_cat.setdefault(cat, []).append(p)
+        for cat, pats in sorted(by_cat.items()):
+            rprint(f"\n[bold]{cat}[/bold]")
+            for p in pats:
+                rprint(f"  • {p['name']} — {p.get('description', '')}")
+    else:
+        for p in patterns:
+            rprint(f"  • {p['name']} — {p.get('description', '')}")
 
 
 @explore_app.command()
 def evolution(
     slot: str = typer.Argument(..., help="Architecture slot to trace evolution for."),
 ) -> None:
-    """Explore evolution of an architecture slot over time. [stub]"""
-    rprint("[yellow]explore evolution not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Explore evolution of an architecture slot over time."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.serve.explorer import get_architecture_timeline
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+
+    timeline = get_architecture_timeline(store, slot_name=slot, taxonomy_version=version)
+    if not timeline:
+        rprint(f"[yellow]No variants found for slot '{slot}'.[/yellow]")
+        return
+
+    rprint(f"\n[bold]Evolution of '{slot}':[/bold]")
+    for v in timeline:
+        date_str = v.get("earliest_date") or "unknown date"
+        replaces = v.get("replaces")
+        replaces_str = f" (replaces: {replaces})" if replaces else ""
+        rprint(f"  {date_str}  [bold]{v['name']}[/bold]{replaces_str}")
 
 
 @explore_app.command()
