@@ -20,6 +20,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     },
     "acquire": {
         "arxiv_categories": ["cs.CL", "cs.LG", "cs.AI"],
+        "openalex_mailto": "",
         "quality_min_citations": 0,
         "quality_venue_tiers": {
             "tier1": ["ICML", "NeurIPS", "ICLR", "ACL", "EMNLP", "COLM"],

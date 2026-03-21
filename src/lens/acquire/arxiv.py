@@ -7,6 +7,7 @@ Includes retry with exponential backoff (spec requirement).
 from __future__ import annotations
 
 import asyncio
+import logging
 import re
 import xml.etree.ElementTree as ET
 from typing import Any
@@ -15,7 +16,9 @@ from urllib.parse import quote
 import httpx
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 
-ARXIV_API_URL = "http://export.arxiv.org/api/query"
+logger = logging.getLogger(__name__)
+
+ARXIV_API_URL = "https://export.arxiv.org/api/query"
 RATE_LIMIT_SECONDS = 3.0
 
 NS = {
@@ -35,7 +38,11 @@ def _extract_arxiv_id(id_url: str) -> str:
 
 def parse_arxiv_response(xml_text: str) -> list[dict[str, Any]]:
     """Parse an arxiv Atom feed response into paper dicts."""
-    root = ET.fromstring(xml_text)
+    try:
+        root = ET.fromstring(xml_text)
+    except ET.ParseError:
+        logger.warning("Failed to parse arxiv response as XML (possibly a rate-limit page)")
+        return []
     papers = []
     for entry in root.findall("atom:entry", NS):
         id_el = entry.find("atom:id", NS)

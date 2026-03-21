@@ -7,6 +7,7 @@ produces better results since the LLM sees formatting, figures, and tables.
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -37,7 +38,7 @@ def ingest_pdf(pdf_path: Path | str) -> dict[str, Any]:
         "title": paper_id.replace("-", " ").replace("_", " "),
         "abstract": "",  # will be populated during LLM extraction from PDF
         "authors": [],
-        "date": "2024-01-01",
+        "date": datetime.fromtimestamp(path.stat().st_mtime, tz=UTC).strftime("%Y-%m-%d"),
         "venue": None,
         "citations": 0,
         "quality_score": 0.0,

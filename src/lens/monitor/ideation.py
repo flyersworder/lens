@@ -44,7 +44,7 @@ def find_sparse_cells(
                 continue
             key = (imp_id, wors_id)
             existing = pair_principles.get(key, [])
-            if 0 < len(existing) < min_principles:
+            if len(existing) < min_principles:
                 gaps.append(
                     {
                         "improving_param_id": imp_id,
@@ -195,7 +195,12 @@ def run_ideation(
     for gap in sparse:
         imp_name = param_names.get(gap["improving_param_id"], "?")
         wors_name = param_names.get(gap["worsening_param_id"], "?")
-        desc = f"Sparse cell: {imp_name} vs {wors_name} has only {gap['count']} principle(s)"
+        count = gap["count"]
+        desc = (
+            f"Sparse cell: {imp_name} vs {wors_name} has no principles"
+            if count == 0
+            else f"Sparse cell: {imp_name} vs {wors_name} has only {count} principle(s)"
+        )
         gap_record = {
             "id": next_gap_id,
             "report_id": report_id,

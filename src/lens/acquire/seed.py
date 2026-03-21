@@ -34,7 +34,7 @@ def load_seed_manifest(manifest_path: Path | str | None = None) -> list[dict[str
 async def _fetch_with_retry(client: httpx.AsyncClient, url: str) -> httpx.Response:
     """Fetch with exponential backoff and jitter."""
     resp = await client.get(url)
-    if resp.status_code >= 500:
+    if resp.status_code >= 400:
         raise httpx.HTTPStatusError(
             f"HTTP {resp.status_code}", request=resp.request, response=resp
         )
@@ -56,8 +56,8 @@ async def _fetch_paper_metadata(arxiv_id: str) -> dict[str, Any] | None:
                 return None
             papers = parse_arxiv_response(resp.text)
             return papers[0] if papers else None
-        except (httpx.HTTPError, Exception):
-            logger.warning(f"Failed to fetch arxiv metadata for {arxiv_id} after retries")
+        except httpx.HTTPError as e:
+            logger.warning("Failed to fetch arxiv metadata for %s after retries: %s", arxiv_id, e)
             return None
         finally:
             await asyncio.sleep(3.0)  # rate limit

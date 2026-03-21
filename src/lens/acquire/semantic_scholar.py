@@ -41,7 +41,7 @@ def parse_embedding_response(data: dict[str, Any]) -> dict[str, Any]:
 async def _fetch_with_retry(client: httpx.AsyncClient, url: str, headers: dict) -> httpx.Response:
     """Fetch with exponential backoff and jitter."""
     resp = await client.get(url, headers=headers)
-    if resp.status_code >= 500:
+    if resp.status_code == 429 or resp.status_code >= 500:
         raise httpx.HTTPStatusError(
             f"HTTP {resp.status_code}", request=resp.request, response=resp
         )
@@ -67,8 +67,8 @@ async def fetch_embedding(
                 return None
             data = resp.json()
             return parse_embedding_response(data)
-        except (httpx.HTTPError, Exception):
-            logger.warning(f"Failed to fetch S2 embedding for {arxiv_id}")
+        except httpx.HTTPError as e:
+            logger.warning("Failed to fetch S2 embedding for %s: %s", arxiv_id, e)
             return None
         finally:
             await asyncio.sleep(RATE_LIMIT_SECONDS)

@@ -39,4 +39,10 @@ class LLMClient:
             max_tokens=self.max_tokens,
             **kwargs,
         )
-        return response.choices[0].message.content
+        content = response.choices[0].message.content
+        if content is None:
+            raise ValueError(
+                f"LLM returned null content (model={self.model}). "
+                "This may indicate content filtering or an unsupported response type."
+            )
+        return content

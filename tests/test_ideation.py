@@ -97,10 +97,22 @@ def test_find_sparse_cells(ideation_store):
 
 
 def test_find_sparse_cells_no_gaps(ideation_store):
+    """With min_principles=0, no pair qualifies as sparse."""
+    from lens.monitor.ideation import find_sparse_cells
+
+    gaps = find_sparse_cells(ideation_store, taxonomy_version=1, min_principles=0)
+    assert len(gaps) == 0
+
+
+def test_find_sparse_cells_includes_zero_evidence(ideation_store):
+    """Pairs with zero principles should be reported as gaps."""
     from lens.monitor.ideation import find_sparse_cells
 
     gaps = find_sparse_cells(ideation_store, taxonomy_version=1, min_principles=1)
-    assert len(gaps) == 0
+    # The fixture has 3 params and only 1 matrix cell (1→2), so 5 other directed
+    # pairs have 0 principles and should all be reported.
+    assert len(gaps) == 5
+    assert all(g["count"] == 0 for g in gaps)
 
 
 def test_find_cross_pollination(ideation_store):

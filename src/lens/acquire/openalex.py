@@ -17,7 +17,7 @@ from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 logger = logging.getLogger(__name__)
 
 OPENALEX_API_URL = "https://api.openalex.org/works"
-MAILTO = "lens-project@example.com"
+DEFAULT_MAILTO = "lens-project@example.com"
 
 
 def _extract_arxiv_id_from_doi(doi: str | None) -> str | None:
@@ -66,6 +66,7 @@ async def _fetch_with_retry(client: httpx.AsyncClient, url: str) -> httpx.Respon
 async def enrich_with_openalex(
     papers: list[dict[str, Any]],
     batch_size: int = 50,
+    mailto: str = "",
 ) -> list[dict[str, Any]]:
     """Enrich paper dicts with OpenAlex citation counts and venue info.
 
@@ -80,16 +81,18 @@ async def enrich_with_openalex(
     async with httpx.AsyncClient(timeout=30.0) as client:
         for i in range(0, len(arxiv_ids), batch_size):
             batch = arxiv_ids[i : i + batch_size]
+            effective_mailto = mailto or DEFAULT_MAILTO
             doi_filter = "|".join(f"https://doi.org/10.48550/arXiv.{aid}" for aid in batch)
             url = (
-                f"{OPENALEX_API_URL}?filter=doi:{doi_filter}&mailto={MAILTO}&per-page={batch_size}"
+                f"{OPENALEX_API_URL}?filter=doi:{doi_filter}"
+                f"&mailto={effective_mailto}&per-page={batch_size}"
             )
             try:
                 resp = await _fetch_with_retry(client, url)
                 data = resp.json()
                 all_works.extend(data.get("results", []))
-            except (httpx.HTTPError, Exception):
-                logger.warning(f"OpenAlex batch fetch failed for {len(batch)} papers")
+            except httpx.HTTPError as e:
+                logger.warning("OpenAlex batch fetch failed for %d papers: %s", len(batch), e)
                 continue
 
     # Parse and build lookup by arxiv_id

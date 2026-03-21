@@ -222,7 +222,15 @@ def monitor(
 
     client = LLMClient(model=config["llm"]["extract_model"])
     cats = config["acquire"]["arxiv_categories"]
-    result = asyncio.run(run_monitor_cycle(store, client, categories=cats))
+    monitor_cfg = config["monitor"]
+    result = asyncio.run(
+        run_monitor_cycle(
+            store,
+            client,
+            categories=cats,
+            run_ideation_flag=monitor_cfg["ideate"],
+        )
+    )
     rprint("[green]Monitor cycle complete:[/green]")
     rprint(f"  Papers acquired: {result['papers_acquired']}")
     rprint(f"  Papers extracted: {result['papers_extracted']}")
@@ -335,14 +343,26 @@ def openalex(
         return
 
     papers = df.drop("embedding").to_dicts()
-    enriched = asyncio.run(_enrich_openalex_async(papers))
-    rprint(f"[green]Enriched {len(enriched)} papers with OpenAlex data[/green]")
+    mailto = config["acquire"].get("openalex_mailto", "")
+    enriched = asyncio.run(_enrich_openalex_async(papers, mailto=mailto))
+
+    # Persist enrichment back to LanceDB
+    papers_table = store.get_table("papers")
+    updated_count = 0
+    for paper in enriched:
+        pid = paper.get("paper_id", "")
+        papers_table.update(
+            where=f"paper_id = '{pid}'",
+            values={"citations": paper.get("citations", 0), "venue": paper.get("venue")},
+        )
+        updated_count += 1
+    rprint(f"[green]Enriched {updated_count} papers with OpenAlex data[/green]")
 
 
-async def _enrich_openalex_async(papers):
+async def _enrich_openalex_async(papers, mailto: str = ""):
     from lens.acquire.openalex import enrich_with_openalex
 
-    return await enrich_with_openalex(papers)
+    return await enrich_with_openalex(papers, mailto=mailto)
 
 
 # ---------------------------------------------------------------------------
