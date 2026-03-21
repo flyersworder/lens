@@ -76,24 +76,83 @@ def init(
 
 @app.command()
 def analyze(
-    query: str = typer.Argument(..., help="Analysis query."),
-    type_: str | None = typer.Option(None, "--type", help="Analysis type."),
+    query: str = typer.Argument(..., help="Problem description."),
+    type_: str | None = typer.Option(None, "--type", help="Query type."),
 ) -> None:
-    """Analyze the LENS knowledge base. [stub]"""
-    rprint("[yellow]analyze not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Analyze a tradeoff and suggest resolution techniques."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.llm.client import LLMClient
+    from lens.serve.analyzer import analyze as do_analyze
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+
+    client = LLMClient(model=config["llm"]["default_model"])
+    result = asyncio.run(do_analyze(query, store, client, taxonomy_version=version))
+
+    rprint(f"\n[bold]Query:[/bold] {result['query']}")
+    rprint(f"[bold]Improving:[/bold] {result['improving']}")
+    rprint(f"[bold]Worsening:[/bold] {result['worsening']}")
+    if result["principles"]:
+        rprint("\n[bold]Suggested techniques:[/bold]")
+        for p in result["principles"]:
+            rprint(
+                f"  • {p['name']} (evidence: {p['count']}, confidence: {p['avg_confidence']:.2f})"
+            )
+    else:
+        rprint("[yellow]No matching techniques found.[/yellow]")
 
 
 @app.command()
 def explain(
     concept: str = typer.Argument(..., help="Concept to explain."),
-    related: bool = typer.Option(False, "--related", help="Show related concepts."),
-    evolution: bool = typer.Option(False, "--evolution", help="Show evolution over time."),
-    tradeoffs: bool = typer.Option(False, "--tradeoffs", help="Show tradeoffs."),
+    related: bool = typer.Option(False, "--related", help="Focus on related concepts."),
+    evolution: bool = typer.Option(False, "--evolution", help="Focus on evolution."),
+    tradeoffs: bool = typer.Option(False, "--tradeoffs", help="Focus on tradeoffs."),
 ) -> None:
-    """Explain a concept from the LENS knowledge base. [stub]"""
-    rprint("[yellow]explain not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Explain an LLM concept with adaptive depth."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.llm.client import LLMClient
+    from lens.serve.explainer import explain as do_explain
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+
+    focus = None
+    if tradeoffs:
+        focus = "tradeoffs"
+    elif related:
+        focus = "related"
+    elif evolution:
+        focus = "evolution"
+
+    client = LLMClient(model=config["llm"]["default_model"])
+    result = asyncio.run(do_explain(concept, store, client, taxonomy_version=version, focus=focus))
+
+    if result is None:
+        rprint(f"[yellow]Concept '{concept}' not found.[/yellow]")
+        raise typer.Exit(code=1)
+
+    rprint(f"\n[bold]{result.resolved_name}[/bold] ({result.resolved_type})\n")
+    rprint(result.narrative)
+    if result.connections:
+        rprint(f"\n[bold]Related:[/bold] {', '.join(result.connections)}")
+    if result.paper_refs:
+        rprint(f"[bold]Papers:[/bold] {', '.join(result.paper_refs[:5])}")
 
 
 @app.command()
@@ -328,26 +387,94 @@ def build_all() -> None:
 
 @explore_app.command()
 def parameters() -> None:
-    """Explore taxonomy parameters. [stub]"""
-    rprint("[yellow]explore parameters not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """List all taxonomy parameters."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.serve.explorer import list_parameters
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+
+    params = list_parameters(store, taxonomy_version=version)
+    if not params:
+        rprint("[yellow]No parameters found.[/yellow]")
+        return
+    for p in params:
+        rprint(f"[bold]{p['id']}[/bold] {p['name']} — {p['description']}")
 
 
 @explore_app.command()
 def principles() -> None:
-    """Explore taxonomy principles. [stub]"""
-    rprint("[yellow]explore principles not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """List all taxonomy principles."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.serve.explorer import list_principles
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+
+    princs = list_principles(store, taxonomy_version=version)
+    if not princs:
+        rprint("[yellow]No principles found.[/yellow]")
+        return
+    for p in princs:
+        rprint(f"[bold]{p['id']}[/bold] {p['name']} — {p['description']}")
 
 
 @explore_app.command()
 def matrix(
-    param_a: str | None = typer.Argument(None, help="First parameter."),
-    param_b: str | None = typer.Argument(None, help="Second parameter."),
+    param_a: int | None = typer.Argument(None, help="First parameter ID."),
+    param_b: int | None = typer.Argument(None, help="Second parameter ID."),
 ) -> None:
-    """Explore the parameter-principle matrix. [stub]"""
-    rprint("[yellow]explore matrix not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Explore the parameter-principle matrix."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.serve.explorer import get_matrix_cell, list_matrix_overview
+    from lens.taxonomy.versioning import get_latest_version
+
+    version = get_latest_version(store)
+    if version is None:
+        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+
+    if param_a is not None and param_b is not None:
+        cells = get_matrix_cell(store, param_a, param_b, taxonomy_version=version)
+        if not cells:
+            rprint("[yellow]No matrix cells found for that parameter pair.[/yellow]")
+            return
+        for cell in cells:
+            rprint(
+                f"principle_id={cell['principle_id']} "
+                f"count={cell['count']} "
+                f"avg_confidence={cell['avg_confidence']:.2f}"
+            )
+    else:
+        overview = list_matrix_overview(store, taxonomy_version=version)
+        if not overview:
+            rprint("[yellow]Matrix is empty. Run 'lens build matrix' first.[/yellow]")
+            return
+        for row in overview:
+            rprint(
+                f"improving={row['improving_param_id']} "
+                f"worsening={row['worsening_param_id']} "
+                f"principles={row['num_principles']} "
+                f"evidence={row['total_evidence']}"
+            )
 
 
 @explore_app.command()
@@ -381,9 +508,26 @@ def evolution(
 def paper(
     paper_id: str = typer.Argument(..., help="Paper ID to inspect."),
 ) -> None:
-    """Inspect a specific paper. [stub]"""
-    rprint("[yellow]explore paper not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Inspect a specific paper."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.serve.explorer import get_paper
+
+    result = get_paper(store, paper_id)
+    if result is None:
+        rprint(f"[yellow]Paper '{paper_id}' not found.[/yellow]")
+        raise typer.Exit(code=1)
+
+    rprint(f"\n[bold]{result.get('title', paper_id)}[/bold]")
+    if result.get("authors"):
+        rprint(f"[dim]Authors:[/dim] {result['authors']}")
+    if result.get("year"):
+        rprint(f"[dim]Year:[/dim] {result['year']}")
+    if result.get("abstract"):
+        rprint(f"\n{result['abstract']}")
 
 
 @explore_app.command()
