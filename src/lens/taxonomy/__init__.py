@@ -76,6 +76,7 @@ def _build_taxonomy_entries(
     embeddings: np.ndarray,
     version_id: int,
     paper_ids_by_string: dict[str, list[str]],
+    id_offset: int = 0,
 ) -> list[dict[str, Any]]:
     """Build taxonomy entry dicts from clusters."""
     entries: list[dict[str, Any]] = []
@@ -104,7 +105,7 @@ def _build_taxonomy_entries(
         for s in members:
             all_paper_ids.extend(paper_ids_by_string.get(s, []))
 
-        entry_id = version_id * 10000 + cluster_id
+        entry_id = version_id * 100000 + id_offset + cluster_id
         entries.append(
             {
                 "id": entry_id,
@@ -157,6 +158,7 @@ async def build_taxonomy(
             param_emb,
             version_id,
             param_paper_ids,
+            id_offset=0,
         )
         if param_entries:
             store.add_rows("parameters", param_entries)
@@ -182,6 +184,7 @@ async def build_taxonomy(
             princ_emb,
             version_id,
             principle_paper_ids,
+            id_offset=50000,
         )
         for entry in princ_entries_raw:
             entry["sub_techniques"] = list(entry.get("raw_strings", []))

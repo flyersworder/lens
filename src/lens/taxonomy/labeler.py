@@ -56,7 +56,7 @@ async def label_clusters(
                 "name": data.get("name", strings[0]),
                 "description": data.get("description", ""),
             }
-        except (json.JSONDecodeError, Exception):
+        except Exception:
             most_common = Counter(strings).most_common(1)[0][0]
             labels[cluster_id] = {
                 "name": most_common.title(),

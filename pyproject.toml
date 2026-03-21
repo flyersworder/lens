@@ -16,6 +16,7 @@ dependencies = [
     "httpx>=0.28.1",
     "tenacity>=9.1.4",
     "sentence-transformers>=5.3.0",
+    "hdbscan>=0.8.41",
 ]
 
 [project.scripts]

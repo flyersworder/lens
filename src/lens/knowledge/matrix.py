@@ -50,9 +50,15 @@ def get_ranked_matrix(
 
     return (
         cells.with_columns((pl.col("count") * pl.col("avg_confidence")).alias("score"))
-        .sort("score", descending=True)
-        .group_by(["improving_param_id", "worsening_param_id"])
-        .head(top_k)
+        .with_columns(
+            pl.col("score")
+            .rank(method="ordinal", descending=True)
+            .over(["improving_param_id", "worsening_param_id"])
+            .alias("rank")
+        )
+        .filter(pl.col("rank") <= top_k)
+        .sort("improving_param_id", "worsening_param_id", "rank")
+        .drop("rank")
     )
 
 

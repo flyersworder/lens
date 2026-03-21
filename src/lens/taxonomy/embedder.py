@@ -16,7 +16,8 @@ logger = logging.getLogger(__name__)
 _model_cache: dict[str, SentenceTransformer] = {}
 
 MODELS = [
-    "all-MiniLM-L6-v2",  # lightweight, fast, always available
+    "allenai-specter2",  # scientific embeddings (768d), preferred for research papers
+    "all-MiniLM-L6-v2",  # lightweight fallback (384d), always available
 ]
 
 
