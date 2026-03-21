@@ -250,23 +250,75 @@ async def _enrich_openalex_async(papers):
 
 @build_app.command()
 def taxonomy() -> None:
-    """Build the taxonomy from extracted data. [stub]"""
-    rprint("[yellow]build taxonomy not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Build taxonomy by clustering extraction strings."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.llm.client import LLMClient
+    from lens.taxonomy import build_taxonomy
+
+    llm_model = config["llm"]["label_model"]
+    client = LLMClient(model=llm_model)
+    tax_config = config["taxonomy"]
+    version = asyncio.run(
+        build_taxonomy(
+            store,
+            client,
+            min_cluster_size=tax_config["min_cluster_size"],
+            target_parameters=tax_config["target_parameters"],
+            target_principles=tax_config["target_principles"],
+        )
+    )
+    rprint(f"[green]Built taxonomy version {version}[/green]")
 
 
 @build_app.command(name="matrix")
-def build_matrix() -> None:
-    """Build the parameter-principle matrix. [stub]"""
-    rprint("[yellow]build matrix not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+def build_matrix_cmd() -> None:
+    """Build contradiction matrix from taxonomy."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.knowledge.matrix import build_matrix
+    from lens.taxonomy.versioning import get_next_version
+
+    version = get_next_version(store) - 1
+    if version < 1:
+        rprint("[red]No taxonomy yet. Run 'lens build taxonomy' first.[/red]")
+        raise typer.Exit(code=1)
+    build_matrix(store, taxonomy_version=version)
+    rprint(f"[green]Built matrix for taxonomy v{version}[/green]")
 
 
 @build_app.command(name="all")
 def build_all() -> None:
-    """Run all build steps in sequence. [stub]"""
-    rprint("[yellow]build all not yet implemented[/yellow]")
-    raise typer.Exit(code=0)
+    """Full rebuild: taxonomy + matrix."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir))
+    store.init_tables()
+
+    from lens.knowledge.matrix import build_matrix
+    from lens.llm.client import LLMClient
+    from lens.taxonomy import build_taxonomy
+
+    llm_model = config["llm"]["label_model"]
+    client = LLMClient(model=llm_model)
+    tax_config = config["taxonomy"]
+    version = asyncio.run(
+        build_taxonomy(
+            store,
+            client,
+            min_cluster_size=tax_config["min_cluster_size"],
+            target_parameters=tax_config["target_parameters"],
+            target_principles=tax_config["target_principles"],
+        )
+    )
+    build_matrix(store, taxonomy_version=version)
+    rprint(f"[green]Built taxonomy v{version} + matrix[/green]")
 
 
 # ---------------------------------------------------------------------------
