@@ -17,7 +17,16 @@ from lens.taxonomy.versioning import get_next_version, record_version
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["build_taxonomy"]
+__all__ = ["build_taxonomy", "_next_id"]
+
+
+def _next_id(store: LensStore, table_name: str) -> int:
+    """Return max(id) + 1 from the table, or 1 if the table is empty."""
+    df = store.get_table(table_name).to_polars()
+    if len(df) == 0:
+        return 1
+    max_id: int = df.select(pl.col("id").max()).item() or 0
+    return max_id + 1
 
 
 def _collect_strings_from_table(
@@ -76,7 +85,7 @@ def _build_taxonomy_entries(
     embeddings: np.ndarray,
     version_id: int,
     paper_ids_by_string: dict[str, list[str]],
-    id_offset: int = 0,
+    start_id: int = 1,
 ) -> list[dict[str, Any]]:
     """Build taxonomy entry dicts from clusters."""
     entries: list[dict[str, Any]] = []
@@ -105,7 +114,7 @@ def _build_taxonomy_entries(
         for s in members:
             all_paper_ids.extend(paper_ids_by_string.get(s, []))
 
-        entry_id = version_id * 100000 + id_offset + cluster_id
+        entry_id = start_id + len(entries)
         entries.append(
             {
                 "id": entry_id,
@@ -158,7 +167,7 @@ async def build_taxonomy(
             param_emb,
             version_id,
             param_paper_ids,
-            id_offset=0,
+            start_id=_next_id(store, "parameters"),
         )
         if param_entries:
             store.add_rows("parameters", param_entries)
@@ -184,7 +193,7 @@ async def build_taxonomy(
             princ_emb,
             version_id,
             principle_paper_ids,
-            id_offset=50000,
+            start_id=_next_id(store, "principles"),
         )
         for entry in princ_entries_raw:
             entry["sub_techniques"] = list(entry.get("raw_strings", []))

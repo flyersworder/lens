@@ -146,3 +146,35 @@ def test_get_next_version(tmp_path):
     store = LensStore(str(tmp_path / "test.lance"))
     store.init_tables()
     assert get_next_version(store) == 1
+
+
+def test_next_id_empty_table(tmp_path):
+    from lens.store.store import LensStore
+    from lens.taxonomy import _next_id
+
+    store = LensStore(str(tmp_path / "test.lance"))
+    store.init_tables()
+    assert _next_id(store, "parameters") == 1
+
+
+def test_next_id_with_existing_data(tmp_path):
+    from lens.store.store import LensStore
+    from lens.taxonomy import _next_id
+
+    store = LensStore(str(tmp_path / "test.lance"))
+    store.init_tables()
+    store.add_rows(
+        "parameters",
+        [
+            {
+                "id": 42,
+                "name": "Test",
+                "description": "d",
+                "raw_strings": ["t"],
+                "paper_ids": ["p1"],
+                "taxonomy_version": 1,
+                "embedding": [0.0] * 768,
+            }
+        ],
+    )
+    assert _next_id(store, "parameters") == 43
