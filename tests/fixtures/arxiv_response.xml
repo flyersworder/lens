@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"
+      xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/"
+      xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <opensearch:totalResults>1</opensearch:totalResults>
+  <entry>
+    <id>http://arxiv.org/abs/1706.03762v7</id>
+    <title>Attention Is All You Need</title>
+    <summary>The dominant sequence transduction models are based on complex recurrent or convolutional neural networks.</summary>
+    <published>2017-06-12T17:57:34Z</published>
+    <updated>2023-08-02T00:41:18Z</updated>
+    <author><name>Ashish Vaswani</name></author>
+    <author><name>Noam Shazeer</name></author>
+    <arxiv:primary_category term="cs.CL"/>
+    <category term="cs.CL"/>
+    <category term="cs.LG"/>
+  </entry>
+</feed>
