@@ -2,6 +2,7 @@
 
 Rate limit: 1 request per 3 seconds. Retry with exponential backoff per spec.
 """
+
 from __future__ import annotations
 
 import asyncio

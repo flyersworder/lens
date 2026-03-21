@@ -1,14 +1,17 @@
 """Tests for Semantic Scholar API client."""
+
 import json
-import pytest
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
+
+import pytest
 
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 
 def test_parse_semantic_paper():
     from lens.acquire.semantic_scholar import parse_embedding_response
+
     data = json.loads((FIXTURE_DIR / "semantic_response.json").read_text())
     result = parse_embedding_response(data)
     assert result["arxiv_id"] == "1706.03762"
@@ -18,7 +21,13 @@ def test_parse_semantic_paper():
 
 def test_parse_semantic_paper_no_embedding():
     from lens.acquire.semantic_scholar import parse_embedding_response
-    data = {"paperId": "abc", "externalIds": {"ArXiv": "2401.12345"}, "title": "T", "embedding": None}
+
+    data = {
+        "paperId": "abc",
+        "externalIds": {"ArXiv": "2401.12345"},
+        "title": "T",
+        "embedding": None,
+    }
     result = parse_embedding_response(data)
     assert result["embedding"] is None
 
@@ -26,6 +35,7 @@ def test_parse_semantic_paper_no_embedding():
 @pytest.mark.asyncio
 async def test_fetch_embeddings():
     import httpx
+
     from lens.acquire.semantic_scholar import fetch_embedding
 
     fixture = (FIXTURE_DIR / "semantic_response.json").read_text()

@@ -3,6 +3,7 @@
 Uses the arxiv Atom feed API. Rate limit: 1 request per 3 seconds.
 Includes retry with exponential backoff (spec requirement).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,25 +47,29 @@ def parse_arxiv_response(xml_text: str) -> list[dict[str, Any]]:
             continue
 
         arxiv_id = _extract_arxiv_id(id_el.text or "")
-        authors = [
-            a.find("atom:name", NS).text
-            for a in entry.findall("atom:author", NS)
-            if a.find("atom:name", NS) is not None and a.find("atom:name", NS).text
-        ]
-        published = (published_el.text or "")[:10]
+        authors = []
+        for a in entry.findall("atom:author", NS):
+            name_el = a.find("atom:name", NS)
+            if name_el is not None and name_el.text:
+                authors.append(name_el.text)
+        published = ((published_el.text or "") if published_el is not None else "")[:10]
 
-        papers.append({
-            "paper_id": arxiv_id,
-            "arxiv_id": arxiv_id,
-            "title": " ".join((title_el.text or "").split()),
-            "abstract": " ".join((summary_el.text or "").split()) if summary_el is not None else "",
-            "authors": authors,
-            "date": published,
-            "venue": None,
-            "citations": 0,
-            "quality_score": 0.0,
-            "extraction_status": "pending",
-        })
+        papers.append(
+            {
+                "paper_id": arxiv_id,
+                "arxiv_id": arxiv_id,
+                "title": " ".join((title_el.text or "").split()),
+                "abstract": (
+                    " ".join((summary_el.text or "").split()) if summary_el is not None else ""
+                ),
+                "authors": authors,
+                "date": published,
+                "venue": None,
+                "citations": 0,
+                "quality_score": 0.0,
+                "extraction_status": "pending",
+            }
+        )
     return papers
 
 
@@ -82,7 +87,11 @@ def build_query_url(
         date_clean = since.replace("-", "")
         search += f" AND submittedDate:[{date_clean}0000 TO 99991231]"
     encoded = quote(search)
-    return f"{ARXIV_API_URL}?search_query={encoded}&start={start}&max_results={max_results}&sortBy=submittedDate&sortOrder=descending"
+    return (
+        f"{ARXIV_API_URL}?search_query={encoded}"
+        f"&start={start}&max_results={max_results}"
+        f"&sortBy=submittedDate&sortOrder=descending"
+    )
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=1, max=30))

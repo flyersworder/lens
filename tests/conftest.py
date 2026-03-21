@@ -1,11 +1,15 @@
 """Shared test fixtures."""
+
 import pytest
+
 from lens.store.store import LensStore
+
 
 @pytest.fixture
 def store(tmp_path):
     """Create a LensStore backed by a temporary directory."""
     return LensStore(str(tmp_path / "test.lance"))
+
 
 @pytest.fixture
 def sample_paper_data():

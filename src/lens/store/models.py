@@ -1,10 +1,9 @@
 """Pydantic LanceModel schemas for all LENS data types."""
+
 from datetime import datetime
-from typing import Optional
 
 from lancedb.pydantic import LanceModel, Vector
 from pydantic import BaseModel
-
 
 # ---------------------------------------------------------------------------
 # Layer 0 — Raw ingested papers
@@ -18,7 +17,7 @@ class Paper(LanceModel):
     title: str
     abstract: str
     authors: list[str]
-    venue: Optional[str] = None
+    venue: str | None = None
     date: str
     arxiv_id: str
     citations: int = 0
@@ -50,7 +49,7 @@ class ArchitectureExtraction(LanceModel):
     paper_id: str
     component_slot: str
     variant_name: str
-    replaces: Optional[str] = None
+    replaces: str | None = None
     key_properties: str
     confidence: float
 
@@ -180,7 +179,7 @@ class IdeationGap(LanceModel):
     related_principles: list[int]
     related_slots: list[int]
     score: float
-    llm_hypothesis: Optional[str] = None
+    llm_hypothesis: str | None = None
     created_at: datetime
     taxonomy_version: int
 

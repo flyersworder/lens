@@ -3,6 +3,7 @@
 Config is stored as YAML at ~/.lens/config.yaml by default.
 Missing keys fall back to defaults. Nested keys are accessed with dot notation.
 """
+
 from __future__ import annotations
 
 import copy

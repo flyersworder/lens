@@ -4,6 +4,7 @@ Provides citation counts and venue information.
 Rate limit: polite pool (~10 req/s with mailto parameter).
 Retry with exponential backoff per spec.
 """
+
 from __future__ import annotations
 
 import logging
@@ -40,12 +41,14 @@ def parse_openalex_works(works: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
         arxiv_id = _extract_arxiv_id_from_doi(work.get("doi"))
 
-        results.append({
-            "arxiv_id": arxiv_id,
-            "openalex_id": work.get("id", ""),
-            "citations": work.get("cited_by_count", 0),
-            "venue": venue,
-        })
+        results.append(
+            {
+                "arxiv_id": arxiv_id,
+                "openalex_id": work.get("id", ""),
+                "citations": work.get("cited_by_count", 0),
+                "venue": venue,
+            }
+        )
     return results
 
 
@@ -77,10 +80,10 @@ async def enrich_with_openalex(
     async with httpx.AsyncClient(timeout=30.0) as client:
         for i in range(0, len(arxiv_ids), batch_size):
             batch = arxiv_ids[i : i + batch_size]
-            doi_filter = "|".join(
-                f"https://doi.org/10.48550/arXiv.{aid}" for aid in batch
+            doi_filter = "|".join(f"https://doi.org/10.48550/arXiv.{aid}" for aid in batch)
+            url = (
+                f"{OPENALEX_API_URL}?filter=doi:{doi_filter}&mailto={MAILTO}&per-page={batch_size}"
             )
-            url = f"{OPENALEX_API_URL}?filter=doi:{doi_filter}&mailto={MAILTO}&per-page={batch_size}"
             try:
                 resp = await _fetch_with_retry(client, url)
                 data = resp.json()

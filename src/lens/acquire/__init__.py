@@ -2,10 +2,10 @@
 
 from lens.acquire.arxiv import fetch_arxiv_papers
 from lens.acquire.openalex import enrich_with_openalex
+from lens.acquire.pdf import ingest_pdf
 from lens.acquire.quality import quality_score
 from lens.acquire.seed import acquire_seed, load_seed_manifest
 from lens.acquire.semantic_scholar import fetch_embedding, fetch_embeddings_batch
-from lens.acquire.pdf import ingest_pdf
 
 __all__ = [
     "acquire_seed",

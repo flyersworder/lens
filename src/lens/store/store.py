@@ -1,5 +1,8 @@
 """LensStore — LanceDB connection and table management."""
+
 from __future__ import annotations
+
+from typing import Any
 
 import lancedb
 import polars as pl
@@ -56,7 +59,7 @@ class _TableWrapper:
             return result.collect()
         return result
 
-    def __getattr__(self, name: str) -> object:
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._table, name)
 
 
@@ -75,9 +78,9 @@ class _DatabaseWrapper:
     def table_names(self, **kwargs: object) -> list[str]:
         """Return all table names, bypassing the default page-size limit."""
         result = self._db.list_tables(limit=10_000)  # type: ignore[attr-defined]
-        return result.tables  # type: ignore[attr-defined]
+        return result.tables
 
-    def __getattr__(self, name: str) -> object:
+    def __getattr__(self, name: str) -> Any:
         return getattr(self._db, name)
 
 

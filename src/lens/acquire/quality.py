@@ -2,11 +2,11 @@
 
 Combines citation count, venue tier, and recency into a 0-1 score.
 """
+
 from __future__ import annotations
 
 import math
 from datetime import date, datetime
-from typing import Any
 
 DEFAULT_VENUE_TIERS: dict[str, list[str]] = {
     "tier1": ["ICML", "NeurIPS", "ICLR", "ACL", "EMNLP", "COLM"],

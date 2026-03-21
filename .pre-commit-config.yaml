@@ -1,0 +1,49 @@
+repos:
+  # Linting + formatting (Astral)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.6
+    hooks:
+      - id: ruff
+        args: [--fix]
+      - id: ruff-format
+
+  # File quality + security
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-ast
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: debug-statements
+      - id: detect-private-key
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+
+  # Validate pyproject.toml against PEP 621
+  - repo: https://github.com/abravalheri/validate-pyproject
+    rev: v0.25
+    hooks:
+      - id: validate-pyproject
+
+  # Local hooks
+  - repo: local
+    hooks:
+      # Type checking (Astral's ty)
+      - id: ty-check
+        name: ty type check
+        entry: uvx ty check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      # Fast unit tests
+      - id: pytest-fast
+        name: pytest (fast)
+        entry: uv run pytest tests/ -x -q --timeout=10
+        language: system
+        types: [python]
+        pass_filenames: false
+        stages: [pre-push]

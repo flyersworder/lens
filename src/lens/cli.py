@@ -1,9 +1,9 @@
 """LENS CLI — LLM Engineering Navigation System command-line interface."""
+
 import asyncio
 import os
 import shutil
 from pathlib import Path
-from typing import Optional
 
 import typer
 import yaml
@@ -33,6 +33,7 @@ app.add_typer(config_app, name="config")
 # Helper
 # ---------------------------------------------------------------------------
 
+
 def _get_data_dir(config: dict) -> Path:
     """Return the data directory, with LENS_DATA_DIR env-var override."""
     env_override = os.environ.get("LENS_DATA_DIR")
@@ -41,7 +42,7 @@ def _get_data_dir(config: dict) -> Path:
     return Path(resolve_data_dir(config))
 
 
-def _get_config_path() -> Optional[Path]:
+def _get_config_path() -> Path | None:
     """Return config path override from LENS_CONFIG_PATH env-var, or None."""
     env_override = os.environ.get("LENS_CONFIG_PATH")
     if env_override:
@@ -52,6 +53,7 @@ def _get_config_path() -> Optional[Path]:
 # ---------------------------------------------------------------------------
 # Top-level commands
 # ---------------------------------------------------------------------------
+
 
 @app.command()
 def init(
@@ -75,7 +77,7 @@ def init(
 @app.command()
 def analyze(
     query: str = typer.Argument(..., help="Analysis query."),
-    type_: Optional[str] = typer.Option(None, "--type", help="Analysis type."),
+    type_: str | None = typer.Option(None, "--type", help="Analysis type."),
 ) -> None:
     """Analyze the LENS knowledge base. [stub]"""
     rprint("[yellow]analyze not yet implemented[/yellow]")
@@ -96,8 +98,8 @@ def explain(
 
 @app.command()
 def extract(
-    paper_id: Optional[str] = typer.Option(None, "--paper-id", help="Paper ID to extract from."),
-    model: Optional[str] = typer.Option(None, "--model", help="LLM model to use."),
+    paper_id: str | None = typer.Option(None, "--paper-id", help="Paper ID to extract from."),
+    model: str | None = typer.Option(None, "--model", help="LLM model to use."),
     concurrency: int = typer.Option(1, "--concurrency", help="Number of concurrent extractions."),
 ) -> None:
     """Extract structured data from papers. [stub]"""
@@ -119,6 +121,7 @@ def monitor(
 # Acquire subcommands
 # ---------------------------------------------------------------------------
 
+
 @acquire_app.command()
 def seed() -> None:
     """Ingest curated seed papers from the manifest."""
@@ -132,13 +135,16 @@ def seed() -> None:
 
 async def _acquire_seed_async(store: LensStore) -> int:
     from lens.acquire.seed import acquire_seed
+
     return await acquire_seed(store)
 
 
 @acquire_app.command()
 def arxiv(
-    query: Optional[str] = typer.Option("LLM", "--query", help="ArXiv search query."),
-    since: Optional[str] = typer.Option(None, "--since", help="Fetch papers since date (YYYY-MM-DD)."),
+    query: str | None = typer.Option("LLM", "--query", help="ArXiv search query."),
+    since: str | None = typer.Option(
+        None, "--since", help="Fetch papers since date (YYYY-MM-DD)."
+    ),
     max_results: int = typer.Option(100, "--max-results", help="Maximum papers to fetch."),
 ) -> None:
     """Fetch papers from arxiv."""
@@ -164,12 +170,15 @@ def arxiv(
 
 async def _fetch_arxiv_async(query, categories, since, max_results):
     from lens.acquire.arxiv import fetch_arxiv_papers
-    return await fetch_arxiv_papers(query=query, categories=categories, since=since, max_results=max_results)
+
+    return await fetch_arxiv_papers(
+        query=query, categories=categories, since=since, max_results=max_results
+    )
 
 
 @acquire_app.command()
 def file(
-    path: Path = typer.Argument(..., help="Path to PDF file."),
+    path: Path = typer.Argument(..., help="Path to PDF file."),  # noqa: B008
 ) -> None:
     """Ingest a single paper from a local PDF.
 
@@ -193,7 +202,9 @@ def file(
 
 @acquire_app.command()
 def openalex(
-    enrich: bool = typer.Option(False, "--enrich", help="Enrich existing papers with OpenAlex metadata."),
+    enrich: bool = typer.Option(
+        False, "--enrich", help="Enrich existing papers with OpenAlex metadata."
+    ),
 ) -> None:
     """Enrich papers with OpenAlex metadata (citations, venue)."""
     if not enrich:
@@ -217,12 +228,14 @@ def openalex(
 
 async def _enrich_openalex_async(papers):
     from lens.acquire.openalex import enrich_with_openalex
+
     return await enrich_with_openalex(papers)
 
 
 # ---------------------------------------------------------------------------
 # Build subcommands
 # ---------------------------------------------------------------------------
+
 
 @build_app.command()
 def taxonomy() -> None:
@@ -231,8 +244,8 @@ def taxonomy() -> None:
     raise typer.Exit(code=0)
 
 
-@build_app.command()
-def matrix() -> None:
+@build_app.command(name="matrix")
+def build_matrix() -> None:
     """Build the parameter-principle matrix. [stub]"""
     rprint("[yellow]build matrix not yet implemented[/yellow]")
     raise typer.Exit(code=0)
@@ -248,6 +261,7 @@ def build_all() -> None:
 # ---------------------------------------------------------------------------
 # Explore subcommands
 # ---------------------------------------------------------------------------
+
 
 @explore_app.command()
 def parameters() -> None:
@@ -265,8 +279,8 @@ def principles() -> None:
 
 @explore_app.command()
 def matrix(
-    param_a: Optional[str] = typer.Argument(None, help="First parameter."),
-    param_b: Optional[str] = typer.Argument(None, help="Second parameter."),
+    param_a: str | None = typer.Argument(None, help="First parameter."),
+    param_b: str | None = typer.Argument(None, help="Second parameter."),
 ) -> None:
     """Explore the parameter-principle matrix. [stub]"""
     rprint("[yellow]explore matrix not yet implemented[/yellow]")
@@ -275,7 +289,7 @@ def matrix(
 
 @explore_app.command()
 def architecture(
-    slot: Optional[str] = typer.Argument(None, help="Architecture slot to explore."),
+    slot: str | None = typer.Argument(None, help="Architecture slot to explore."),
 ) -> None:
     """Explore architecture slots. [stub]"""
     rprint("[yellow]explore architecture not yet implemented[/yellow]")
@@ -284,7 +298,7 @@ def architecture(
 
 @explore_app.command()
 def agents(
-    category: Optional[str] = typer.Argument(None, help="Agentic pattern category."),
+    category: str | None = typer.Argument(None, help="Agentic pattern category."),
 ) -> None:
     """Explore agentic patterns. [stub]"""
     rprint("[yellow]explore agents not yet implemented[/yellow]")
@@ -311,7 +325,7 @@ def paper(
 
 @explore_app.command()
 def ideas(
-    type_: Optional[str] = typer.Option(None, "--type", help="Idea type filter."),
+    type_: str | None = typer.Option(None, "--type", help="Idea type filter."),
 ) -> None:
     """Explore generated research ideas. [stub]"""
     rprint("[yellow]explore ideas not yet implemented[/yellow]")
@@ -321,6 +335,7 @@ def ideas(
 # ---------------------------------------------------------------------------
 # Config subcommands
 # ---------------------------------------------------------------------------
+
 
 @config_app.command()
 def show() -> None:

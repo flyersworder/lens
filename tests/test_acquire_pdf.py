@@ -1,10 +1,13 @@
 """Tests for local PDF file ingestion."""
-import pytest
+
 from pathlib import Path
+
+import pytest
 
 
 def test_ingest_pdf(tmp_path):
     from lens.acquire.pdf import ingest_pdf
+
     # Create a dummy PDF file (content doesn't matter — we just store the path)
     pdf = tmp_path / "attention-is-all-you-need.pdf"
     pdf.write_bytes(b"%PDF-1.4 dummy")
@@ -19,6 +22,7 @@ def test_ingest_pdf(tmp_path):
 
 def test_ingest_pdf_returns_dict(tmp_path):
     from lens.acquire.pdf import ingest_pdf
+
     pdf = tmp_path / "test-paper.pdf"
     pdf.write_bytes(b"%PDF-1.4 dummy")
 
@@ -30,5 +34,6 @@ def test_ingest_pdf_returns_dict(tmp_path):
 
 def test_ingest_pdf_nonexistent_file():
     from lens.acquire.pdf import ingest_pdf
+
     with pytest.raises(FileNotFoundError):
         ingest_pdf(Path("/nonexistent/file.pdf"))

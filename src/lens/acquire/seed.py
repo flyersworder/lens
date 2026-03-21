@@ -1,4 +1,5 @@
 """Seed paper loader — reads YAML manifest and orchestrates acquisition."""
+
 from __future__ import annotations
 
 import asyncio
@@ -10,7 +11,7 @@ import httpx
 import yaml
 from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 
-from lens.acquire.arxiv import parse_arxiv_response, ARXIV_API_URL
+from lens.acquire.arxiv import ARXIV_API_URL, parse_arxiv_response
 from lens.acquire.openalex import enrich_with_openalex
 from lens.acquire.quality import quality_score
 from lens.acquire.semantic_scholar import fetch_embedding
@@ -43,12 +44,15 @@ async def _fetch_with_retry(client: httpx.AsyncClient, url: str) -> httpx.Respon
 async def _fetch_paper_metadata(arxiv_id: str) -> dict[str, Any] | None:
     """Fetch paper metadata from arxiv for a single paper with retry."""
     from urllib.parse import quote
+
     url = f"{ARXIV_API_URL}?id_list={quote(arxiv_id)}&max_results=1"
     async with httpx.AsyncClient(timeout=30.0) as client:
         try:
             resp = await _fetch_with_retry(client, url)
             if resp.status_code >= 400:
-                logger.warning(f"Failed to fetch arxiv metadata for {arxiv_id}: HTTP {resp.status_code}")
+                logger.warning(
+                    f"Failed to fetch arxiv metadata for {arxiv_id}: HTTP {resp.status_code}"
+                )
                 return None
             papers = parse_arxiv_response(resp.text)
             return papers[0] if papers else None

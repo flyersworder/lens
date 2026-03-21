@@ -4,6 +4,7 @@ Stores PDF path and basic metadata. Full text extraction is deferred to the
 extract phase (Plan 3), where multimodal LLMs read the PDF directly — this
 produces better results since the LLM sees formatting, figures, and tables.
 """
+
 from __future__ import annotations
 
 from pathlib import Path
