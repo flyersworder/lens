@@ -137,7 +137,7 @@ async def analyze(
 
 
 def _build_slot_identify_prompt(query: str, slot_names: list[str]) -> str:
-    """Build prompt to identify the most relevant architecture slot for a query."""
+    """Build prompt to identify the relevant architecture slot and constraints."""
     slots_list = "\n".join(f"- {s}" for s in slot_names)
     return (
         "You are an LLM architecture expert. A user is asking about a specific "
@@ -145,9 +145,10 @@ def _build_slot_identify_prompt(query: str, slot_names: list[str]) -> str:
         f"User query: {query}\n\n"
         "Available architecture slots:\n"
         f"{slots_list}\n\n"
-        "Identify which slot is most relevant to the user's query.\n"
+        "Identify which slot is most relevant and extract any technical constraints "
+        "from the query (e.g., 'sub-quadratic', 'bounded KV cache', 'long context').\n"
         "Respond with JSON only:\n"
-        '{"slot": "Slot Name"}'
+        '{"slot": "Slot Name", "constraints": "extracted technical constraints"}'
     )
 
 
@@ -158,6 +159,7 @@ async def analyze_architecture(
     taxonomy_version: int,
 ) -> dict[str, Any]:
     """Analyze a query about transformer architecture and return matching variants."""
+    taxonomy_version = int(taxonomy_version)  # defense-in-depth: ensure int for SQL filter
     # Load architecture slots for the version
     slots_df = store.get_table("architecture_slots").to_polars()
     slots_df = slots_df.filter(pl.col("taxonomy_version") == taxonomy_version)
@@ -239,6 +241,7 @@ async def analyze_agentic(
     taxonomy_version: int,
 ) -> dict[str, Any]:
     """Analyze a query about agentic design patterns and return matching patterns."""
+    taxonomy_version = int(taxonomy_version)  # defense-in-depth: ensure int for SQL filter
     # Embed query for vector search
     query_embeddings = embed_strings([query])
     if len(query_embeddings) == 0:

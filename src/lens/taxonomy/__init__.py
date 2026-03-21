@@ -243,6 +243,9 @@ async def build_taxonomy(
         if "confidence" in arch_df.columns:
             arch_df = arch_df.filter(pl.col("confidence") >= 0.5)
 
+        # Build paper_id map ONCE (not per-slot) to avoid repeated table scans
+        var_paper_ids = _build_paper_id_map(store, "architecture_extractions", ["variant_name"])
+
         # Initialize running variant ID counter ONCE before the loop
         next_var_id = _next_id(store, "architecture_variants")
 
@@ -305,9 +308,6 @@ async def build_taxonomy(
                     target_clusters=target_arch_variants,
                 )
                 var_clusters = _group_by_cluster(var_strings, var_labels)
-                var_paper_ids = _build_paper_id_map(
-                    store, "architecture_extractions", ["variant_name"]
-                )
                 var_label_info = await label_clusters(var_clusters, llm_client)
                 entries = _build_taxonomy_entries(
                     var_label_info,
@@ -326,14 +326,34 @@ async def build_taxonomy(
                     for r in matching_rows.to_dicts():
                         if r.get("variant_name") in raw_members and r.get("key_properties"):
                             props.append(r["key_properties"])
+                    # Properties are concatenated here; for LLM-summarized properties,
+                    # use labeler.summarize_variant_properties (omitted to reduce LLM cost)
                     entry["properties"] = "; ".join(set(props)) if props else ""
                     entry["replaces"] = []
                     del entry["raw_strings"]
+                    # ArchitectureVariant has no description field (uses properties instead)
                     del entry["description"]
                 variant_entries.extend(entries)
                 next_var_id += len(entries)
 
+        # Best-effort resolution of replaces links: match raw replaces strings
+        # to variant names. Unresolved references are dropped.
         if variant_entries:
+            variant_name_to_id = {e["name"].lower(): e["id"] for e in variant_entries}
+            arch_rows = arch_df.to_dicts()
+            for entry in variant_entries:
+                raw_replaces: set[str] = set()
+                # Find source extractions that contributed to this variant
+                for r in arch_rows:
+                    vn = (r.get("variant_name") or "").title()
+                    if vn.lower() == entry["name"].lower() and r.get("replaces"):
+                        raw_replaces.add(r["replaces"].lower())
+                # Resolve to IDs
+                resolved = [
+                    variant_name_to_id[rr] for rr in raw_replaces if rr in variant_name_to_id
+                ]
+                entry["replaces"] = resolved
+
             store.add_rows("architecture_variants", variant_entries)
 
     # --- Agentic patterns ---
@@ -355,12 +375,15 @@ async def build_taxonomy(
         if "confidence" in ag_df.columns:
             ag_df = ag_df.filter(pl.col("confidence") >= 0.5)
         # Map cluster_id -> list of structure strings
+        ag_rows = ag_df.to_dicts()  # materialize once, reused below
         structures: dict[int, list[str]] = {}
         for cluster_id, members in ag_clusters.items():
-            structs: list[str] = []
-            for r in ag_df.to_dicts():
-                if r.get("pattern_name") in members and r.get("structure"):
-                    structs.append(r["structure"])
+            member_set = set(members)
+            structs = [
+                r["structure"]
+                for r in ag_rows
+                if r.get("pattern_name") in member_set and r.get("structure")
+            ]
             structures[cluster_id] = structs
 
         ag_label_info = await label_clusters_with_category(ag_clusters, structures, llm_client)
@@ -384,10 +407,11 @@ async def build_taxonomy(
                     break
             entry["category"] = entry_category
             # Aggregate components and use_cases from source extractions
+            raw_member_set = set(raw_members)
             components: list[str] = []
             use_cases: list[str] = []
-            for r in ag_df.to_dicts():
-                if r.get("pattern_name") in raw_members:
+            for r in ag_rows:
+                if r.get("pattern_name") in raw_member_set:
                     if r.get("components"):
                         components.extend(r["components"])
                     if r.get("use_case"):

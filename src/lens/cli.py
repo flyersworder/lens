@@ -105,8 +105,8 @@ def analyze(
         if result["variants"]:
             rprint("\n[bold]Matching architecture variants:[/bold]")
             for v in result["variants"]:
-                props = v.get("properties") or {}
-                rprint(f"  • {v['name']} {props}")
+                props = v.get("properties") or ""
+                rprint(f"  • {v['name']} — {props}" if props else f"  • {v['name']}")
         else:
             rprint("[yellow]No matching architecture variants found.[/yellow]")
     elif type_ == "agentic":
@@ -601,8 +601,10 @@ def architecture(
             rprint(f"[yellow]No variants found for slot '{slot}'.[/yellow]")
             return
         for v in variants:
-            props = v.get("properties") or {}
-            rprint(f"  [bold]{v['name']}[/bold] {props}")
+            props = v.get("properties") or ""
+            rprint(
+                f"  [bold]{v['name']}[/bold] — {props}" if props else f"  [bold]{v['name']}[/bold]"
+            )
 
 
 @explore_app.command()
