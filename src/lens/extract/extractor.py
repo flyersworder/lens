@@ -30,9 +30,6 @@ ExtractionTuple = tuple[
 ]
 
 
-_strip_code_fences = strip_code_fences  # backwards-compatible alias
-
-
 def _validate_tradeoff(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
     try:
         merged = {**raw, "paper_id": paper_id}
@@ -64,7 +61,7 @@ def parse_extraction_response(
     response_text: str,
     paper_id: str,
 ) -> ExtractionTuple | None:
-    text = _strip_code_fences(response_text)
+    text = strip_code_fences(response_text)
     try:
         data = json.loads(text)
     except json.JSONDecodeError:

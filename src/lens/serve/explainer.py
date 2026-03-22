@@ -22,6 +22,7 @@ def resolve_concept(
     top_k: int = 3,
 ) -> dict[str, Any] | None:
     """Resolve a query to the best matching taxonomy entry."""
+    taxonomy_version = int(taxonomy_version)  # defense-in-depth for SQL filters
     query_embedding = embed_strings([query])[0].tolist()
 
     best_match: dict[str, Any] | None = None

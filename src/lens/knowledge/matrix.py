@@ -71,6 +71,7 @@ def build_matrix(
     Full rebuild — deletes existing cells for this version first.
     Filters extractions to confidence >= 0.5 (spec requirement).
     """
+    taxonomy_version = int(taxonomy_version)  # defense-in-depth for SQL filters
     # Delete old cells for idempotent rebuild
     with contextlib.suppress(OSError, ValueError):
         store.get_table("matrix_cells").delete(f"taxonomy_version = {taxonomy_version}")
