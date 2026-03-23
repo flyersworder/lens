@@ -11,6 +11,7 @@ import yaml
 from rich import print as rprint
 
 from lens.config import load_config, resolve_data_dir, save_config, set_config_value
+from lens.store.models import EMBEDDING_DIM
 from lens.store.store import LensStore, escape_sql_string
 
 # ---------------------------------------------------------------------------
@@ -302,7 +303,7 @@ def arxiv(
     # Add placeholder embeddings for papers without them
     for p in papers:
         if "embedding" not in p:
-            p["embedding"] = [0.0] * 768
+            p["embedding"] = [0.0] * EMBEDDING_DIM
 
     store.add_papers(papers)
     rprint(f"[green]Acquired {len(papers)} papers from arxiv[/green]")

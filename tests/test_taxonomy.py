@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock
 import numpy as np
 import pytest
 
+from lens.store.models import EMBEDDING_DIM
+
 
 def test_embed_strings_returns_array():
     from lens.taxonomy.embedder import embed_strings
@@ -173,7 +175,7 @@ def test_next_id_with_existing_data(tmp_path):
                 "raw_strings": ["t"],
                 "paper_ids": ["p1"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             }
         ],
     )

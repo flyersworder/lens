@@ -11,6 +11,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from lens.store.models import EMBEDDING_DIM
+
 
 def ingest_pdf(pdf_path: Path | str) -> dict[str, Any]:
     """Create a paper dict from a local PDF file.
@@ -43,5 +45,5 @@ def ingest_pdf(pdf_path: Path | str) -> dict[str, Any]:
         "citations": 0,
         "quality_score": 0.0,
         "extraction_status": "pending",
-        "embedding": [0.0] * 768,
+        "embedding": [0.0] * EMBEDDING_DIM,
     }

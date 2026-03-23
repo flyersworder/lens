@@ -6,6 +6,14 @@ from datetime import datetime
 from lancedb.pydantic import LanceModel, Vector
 from pydantic import BaseModel, field_validator
 
+EMBEDDING_DIM = 768
+"""Default embedding vector dimension. All Vector fields use this value.
+
+To change the dimension, set this before importing any model classes
+or calling init_tables(). Changing it after tables are created requires
+reinitializing the database (``lens init --force``).
+"""
+
 VALID_EXTRACTION_STATUSES = {"pending", "complete", "incomplete", "failed"}
 
 # ---------------------------------------------------------------------------
@@ -26,7 +34,7 @@ class Paper(LanceModel):
     citations: int = 0
     quality_score: float = 0.0
     extraction_status: str = "pending"
-    embedding: Vector(768)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
 
     @field_validator("date")
     @classmethod
@@ -98,7 +106,7 @@ class Parameter(LanceModel):
     raw_strings: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(768)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
 
 
 class Principle(LanceModel):
@@ -111,7 +119,7 @@ class Principle(LanceModel):
     raw_strings: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(768)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
 
 
 class ArchitectureSlot(LanceModel):
@@ -133,7 +141,7 @@ class ArchitectureVariant(LanceModel):
     properties: str
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(768)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
 
 
 class AgenticPattern(LanceModel):
@@ -147,7 +155,7 @@ class AgenticPattern(LanceModel):
     use_cases: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(768)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
 
 
 # ---------------------------------------------------------------------------

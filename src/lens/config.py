@@ -33,7 +33,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "target_arch_variants": 20,
         "target_agentic_patterns": 15,
         "min_cluster_size": 3,
+        "embedding_provider": "local",
         "embedding_model": "specter2",
+        "embedding_dim": 768,
     },
     "monitor": {
         "ideate": True,

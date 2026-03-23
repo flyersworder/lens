@@ -2,6 +2,8 @@
 
 import pytest
 
+from lens.store.models import EMBEDDING_DIM
+
 
 @pytest.fixture
 def populated_store(tmp_path):
@@ -21,7 +23,7 @@ def populated_store(tmp_path):
                 "raw_strings": ["latency"],
                 "paper_ids": ["p1"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "id": 2,
@@ -30,7 +32,7 @@ def populated_store(tmp_path):
                 "raw_strings": ["accuracy"],
                 "paper_ids": ["p1", "p2"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )
@@ -45,7 +47,7 @@ def populated_store(tmp_path):
                 "raw_strings": ["quantization"],
                 "paper_ids": ["p1"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )
@@ -130,7 +132,7 @@ def test_get_paper(populated_store):
                 "citations": 0,
                 "quality_score": 0.0,
                 "extraction_status": "complete",
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             }
         ]
     )
@@ -187,7 +189,7 @@ def arch_store(tmp_path):
                 "properties": "parallel heads",
                 "paper_ids": ["p1"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "id": 11,
@@ -197,7 +199,7 @@ def arch_store(tmp_path):
                 "properties": "shared KV cache",
                 "paper_ids": ["p2"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "id": 12,
@@ -207,7 +209,7 @@ def arch_store(tmp_path):
                 "properties": "relative position",
                 "paper_ids": ["p3"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )
@@ -223,7 +225,7 @@ def arch_store(tmp_path):
                 "use_cases": ["tool use"],
                 "paper_ids": ["p1"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "id": 21,
@@ -234,7 +236,7 @@ def arch_store(tmp_path):
                 "use_cases": ["code generation"],
                 "paper_ids": ["p2"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )
@@ -251,7 +253,7 @@ def arch_store(tmp_path):
                 "citations": 0,
                 "quality_score": 0.0,
                 "extraction_status": "complete",
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "paper_id": "p2",
@@ -263,7 +265,7 @@ def arch_store(tmp_path):
                 "citations": 0,
                 "quality_score": 0.0,
                 "extraction_status": "complete",
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "paper_id": "p3",
@@ -275,7 +277,7 @@ def arch_store(tmp_path):
                 "citations": 0,
                 "quality_score": 0.0,
                 "extraction_status": "complete",
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )

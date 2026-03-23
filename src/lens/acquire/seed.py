@@ -15,6 +15,7 @@ from lens.acquire.http import fetch_with_retry
 from lens.acquire.openalex import enrich_with_openalex
 from lens.acquire.quality import quality_score
 from lens.acquire.semantic_scholar import fetch_embedding
+from lens.store.models import EMBEDDING_DIM
 from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
@@ -47,7 +48,7 @@ async def _fetch_paper_metadata(arxiv_id: str) -> dict[str, Any] | None:
             await asyncio.sleep(3.0)  # rate limit
 
 
-def _normalize_embedding(embedding: list[float], dim: int = 768) -> list[float]:
+def _normalize_embedding(embedding: list[float], dim: int = EMBEDDING_DIM) -> list[float]:
     """Pad or truncate embedding to target dimensionality."""
     if len(embedding) < dim:
         return embedding + [0.0] * (dim - len(embedding))
@@ -91,7 +92,7 @@ async def acquire_seed(
         if emb_result and emb_result.get("embedding"):
             paper["embedding"] = _normalize_embedding(emb_result["embedding"])
         else:
-            paper["embedding"] = [0.0] * 768
+            paper["embedding"] = [0.0] * EMBEDDING_DIM
             logger.warning(f"No SPECTER2 embedding for {arxiv_id}")
 
         papers_to_store.append(paper)

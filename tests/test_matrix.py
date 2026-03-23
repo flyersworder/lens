@@ -3,6 +3,8 @@
 import polars as pl
 import pytest
 
+from lens.store.models import EMBEDDING_DIM
+
 
 def test_build_matrix(tmp_path):
     from lens.knowledge.matrix import build_matrix
@@ -21,7 +23,7 @@ def test_build_matrix(tmp_path):
                 "raw_strings": ["latency", "speed"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "id": 2,
@@ -30,7 +32,7 @@ def test_build_matrix(tmp_path):
                 "raw_strings": ["accuracy", "performance"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )
@@ -46,7 +48,7 @@ def test_build_matrix(tmp_path):
                 "raw_strings": ["quantization"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )
@@ -106,7 +108,7 @@ def test_build_matrix_filters_low_confidence(tmp_path):
                 "raw_strings": ["a"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "id": 2,
@@ -115,7 +117,7 @@ def test_build_matrix_filters_low_confidence(tmp_path):
                 "raw_strings": ["b"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )
@@ -130,7 +132,7 @@ def test_build_matrix_filters_low_confidence(tmp_path):
                 "raw_strings": ["t"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             }
         ],
     )
@@ -182,7 +184,7 @@ def test_get_ranked_matrix(tmp_path):
                 "raw_strings": ["a"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
             {
                 "id": 2,
@@ -191,7 +193,7 @@ def test_get_ranked_matrix(tmp_path):
                 "raw_strings": ["b"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )
@@ -206,7 +208,7 @@ def test_get_ranked_matrix(tmp_path):
                 "raw_strings": [f"p{i}"],
                 "paper_ids": [],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             }
             for i in range(1, 7)  # 6 principles
         ],

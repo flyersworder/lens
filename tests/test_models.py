@@ -2,6 +2,8 @@
 
 from datetime import datetime
 
+from lens.store.models import EMBEDDING_DIM
+
 
 def test_paper_model_valid():
     from lens.store.models import Paper
@@ -38,7 +40,7 @@ def test_paper_model_nullable_venue():
         citations=0,
         quality_score=0.1,
         extraction_status="pending",
-        embedding=[0.0] * 768,
+        embedding=[0.0] * EMBEDDING_DIM,
     )
     assert paper.venue is None
 

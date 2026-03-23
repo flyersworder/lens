@@ -13,6 +13,7 @@ from lens.acquire.arxiv import fetch_arxiv_papers
 from lens.extract.extractor import extract_papers
 from lens.llm.client import LLMClient
 from lens.monitor.ideation import run_ideation
+from lens.store.models import EMBEDDING_DIM
 from lens.store.store import LensStore
 from lens.taxonomy.versioning import get_latest_version
 
@@ -48,7 +49,7 @@ async def run_monitor_cycle(
 
     for p in new_papers:
         if "embedding" not in p:
-            p["embedding"] = [0.0] * 768
+            p["embedding"] = [0.0] * EMBEDDING_DIM
 
     papers_acquired = len(new_papers)
     if new_papers:

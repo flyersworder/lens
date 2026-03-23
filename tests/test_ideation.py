@@ -4,6 +4,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from lens.store.models import EMBEDDING_DIM
+
 
 @pytest.fixture
 def ideation_store(tmp_path):
@@ -55,7 +57,7 @@ def ideation_store(tmp_path):
                 "raw_strings": ["quantization"],
                 "paper_ids": ["p1"],
                 "taxonomy_version": 1,
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             },
         ],
     )

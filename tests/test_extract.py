@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock
 
 import pytest
 
+from lens.store.models import EMBEDDING_DIM
+
 FIXTURE_DIR = Path(__file__).parent / "fixtures"
 
 
@@ -208,7 +210,7 @@ async def test_extract_papers_batch(tmp_path):
                 "citations": 0,
                 "quality_score": 0.5,
                 "extraction_status": "pending",
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             }
         ]
     )
@@ -252,7 +254,7 @@ async def test_extract_papers_skips_completed(tmp_path):
                 "citations": 0,
                 "quality_score": 0.0,
                 "extraction_status": "complete",
-                "embedding": [0.0] * 768,
+                "embedding": [0.0] * EMBEDDING_DIM,
             }
         ]
     )

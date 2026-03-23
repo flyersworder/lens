@@ -9,6 +9,7 @@ import numpy as np
 import polars as pl
 
 from lens.llm.client import LLMClient
+from lens.store.models import EMBEDDING_DIM
 from lens.store.store import LensStore
 from lens.taxonomy.clusterer import cluster_embeddings
 from lens.taxonomy.embedder import embed_strings
@@ -107,11 +108,11 @@ def _build_taxonomy_entries(
         else:
             centroid = np.zeros(embeddings.shape[1])
 
-        # Pad/truncate to 768
-        if len(centroid) < 768:
-            centroid = np.pad(centroid, (0, 768 - len(centroid)))
-        elif len(centroid) > 768:
-            centroid = centroid[:768]
+        # Pad/truncate to EMBEDDING_DIM
+        if len(centroid) < EMBEDDING_DIM:
+            centroid = np.pad(centroid, (0, EMBEDDING_DIM - len(centroid)))
+        elif len(centroid) > EMBEDDING_DIM:
+            centroid = centroid[:EMBEDDING_DIM]
 
         # Collect paper_ids
         all_paper_ids: list[str] = []
@@ -281,10 +282,10 @@ async def build_taxonomy(
                 )
                 emb = embed_strings([vname])
                 centroid = emb[0]
-                if len(centroid) < 768:
-                    centroid = np.pad(centroid, (0, 768 - len(centroid)))
-                elif len(centroid) > 768:
-                    centroid = centroid[:768]
+                if len(centroid) < EMBEDDING_DIM:
+                    centroid = np.pad(centroid, (0, EMBEDDING_DIM - len(centroid)))
+                elif len(centroid) > EMBEDDING_DIM:
+                    centroid = centroid[:EMBEDDING_DIM]
 
                 variant_entries.append(
                     {
