@@ -2,7 +2,7 @@
 
 Design spec for a system that automatically discovers recurring solution patterns, contradiction resolutions, architecture innovations, and agentic design patterns from LLM research papers (arxiv), inspired by TRIZ methodology.
 
-**Status**: Implemented (Phase 1 — Contradiction Matrix + Monitor/Ideation)
+**Status**: Implemented (Contradiction Matrix + Architecture Catalog + Agentic Catalog + Monitor/Ideation)
 **Date**: 2026-03-21
 
 ---
@@ -65,7 +65,7 @@ Catalogs recurring patterns for building and orchestrating LLM-based agents.
 | Database | LanceDB | Embedded, native vector search, Arrow-native, multimodal-ready, Pydantic schemas |
 | Analytics | Polars | Zero-copy from Arrow/Lance, fast groupby/join/agg for matrix construction |
 | Clustering | HDBSCAN + KMeans fallback | Density-based clustering with degenerate-case handling |
-| Embeddings | sentence-transformers (SPECTER2 / MiniLM fallback) | Scientific document embeddings |
+| Embeddings | sentence-transformers (local) or litellm (cloud) | Configurable: local for offline/free, cloud for scalability |
 | Data validation | Pydantic | Structured LLM output validation + LanceDB schema definition |
 | Paper sources | arxiv API, OpenAlex, Semantic Scholar | Complementary metadata and embeddings |
 
@@ -565,8 +565,12 @@ acquire:
 taxonomy:
   target_parameters: 25
   target_principles: 35
+  target_arch_variants: 20
+  target_agentic_patterns: 15
   min_cluster_size: 3
-  embedding_model: specter2
+  embedding_provider: local     # "local" (sentence-transformers) or "cloud" (litellm)
+  embedding_model: specter2     # local: model name; cloud: litellm model string
+  embedding_dim: 768            # vector dimension (change requires lens init --force)
 
 monitor:
   ideate: true              # enable ideation in monitor (default: true)

@@ -8,13 +8,13 @@ Inspired by [TRIZ](https://en.wikipedia.org/wiki/TRIZ) methodology — but with 
 
 1. **Contradiction Matrix** — Maps LLM tradeoffs (e.g., accuracy vs. latency) to resolution techniques (e.g., distillation, speculative decoding). Parameters and principles are discovered automatically from papers.
 
-2. **Architecture Catalog** — Tracks the evolution of LLM architecture components (attention, positional encoding, FFN, etc.) as taxonomy trees of variants with replaces/generalizes relationships. *(scaffolded, not yet implemented)*
+2. **Architecture Catalog** — Organizes LLM architecture components (attention, positional encoding, FFN, etc.) by slot with property-based comparison across variants. Answers "what are my options for component X?"
 
-3. **Agentic Pattern Catalog** — Catalogs recurring patterns for building and orchestrating LLM-based agents (ReAct, Reflexion, multi-agent debate, etc.). *(scaffolded, not yet implemented)*
+3. **Agentic Pattern Catalog** — Catalogs recurring patterns for building LLM-based agents (ReAct, Reflexion, multi-agent debate, etc.) with emergent categories discovered from data.
 
 ## Status
 
-**Phase 1 implemented.** The contradiction matrix pipeline (acquire → extract → taxonomy → matrix → serve) and the monitor/ideation system are fully functional. Architecture and agentic catalogs are scaffolded in the data model but not yet populated.
+**Core pipeline implemented.** All three knowledge structures are functional: contradiction matrix, architecture catalog (property-based comparison), and agentic pattern catalog (emergent categories). Monitor/ideation pipeline operational.
 
 See [docs/specs/design.md](docs/specs/design.md) for the full design spec.
 
@@ -27,13 +27,13 @@ uv sync
 # Initialize the database and config
 uv run lens init
 
-# Acquire seed papers (~200 landmark LLM papers)
+# Acquire seed papers (10 landmark LLM papers)
 uv run lens acquire seed
 
 # Extract tradeoffs, architecture, and agentic patterns from papers
 uv run lens extract
 
-# Build taxonomy (cluster raw extractions into parameters and principles)
+# Build taxonomy (parameters, principles, architecture slots/variants, agentic patterns)
 uv run lens build taxonomy
 
 # Build contradiction matrix
@@ -49,6 +49,12 @@ uv run lens build all
 # Analyze a tradeoff — suggests resolution techniques from the matrix
 uv run lens analyze "reduce hallucination without hurting latency"
 
+# Analyze architecture — find matching variants by property
+uv run lens analyze --type architecture "efficient attention for long context"
+
+# Analyze agentic — find matching patterns
+uv run lens analyze --type agentic "reliable multi-step code generation"
+
 # Explain any LLM concept with adaptive depth
 uv run lens explain "grouped-query attention"
 uv run lens explain "knowledge distillation" --tradeoffs
@@ -58,16 +64,25 @@ uv run lens explain "MoE" --related
 uv run lens explore parameters
 uv run lens explore principles
 uv run lens explore matrix
-uv run lens explore matrix 12 8        # specific parameter pair
+uv run lens explore matrix 12 8             # specific parameter pair
 uv run lens explore paper 2401.12345
+
+# Browse architecture catalog
+uv run lens explore architecture            # list all slots with variant counts
+uv run lens explore architecture Attention  # compare variants with properties
+uv run lens explore evolution Attention     # timeline view by paper date
+
+# Browse agentic patterns
+uv run lens explore agents                  # list patterns by category
+uv run lens explore agents Reasoning        # filter by category
 
 # Acquire more papers from arxiv
 uv run lens acquire arxiv --query "LLM" --since 2025-01
-uv run lens acquire file paper.pdf     # ingest a local PDF
+uv run lens acquire file paper.pdf          # ingest a local PDF
 
 # Run a monitoring cycle (acquire → extract → ideate)
 uv run lens monitor
-uv run lens monitor --trending         # show ideation gaps
+uv run lens monitor --trending              # show ideation gaps
 
 # Browse research opportunities
 uv run lens explore ideas
@@ -78,14 +93,28 @@ uv run lens config show
 uv run lens config set llm.default_model openrouter/anthropic/claude-sonnet-4-6
 ```
 
+## Embeddings
+
+LENS supports two embedding providers, configurable via `~/.lens/config.yaml`:
+
+**Local (default)** — sentence-transformers (SPECTER2 / MiniLM fallback). Free, works offline, but requires ~400MB model download on first use.
+
+**Cloud** — Any embedding API via litellm (OpenAI, Cohere, Voyage, etc.). Fast, scalable, no local model needed.
+
+```bash
+# Switch to cloud embeddings
+uv run lens config set taxonomy.embedding_provider cloud
+uv run lens config set taxonomy.embedding_model openai/text-embedding-3-small
+```
+
 ## Architecture
 
 - **Python 3.12+** with `uv` package manager
 - **LanceDB** — embedded vector database with Pydantic schema definitions
 - **Polars** — zero-copy Arrow-native analytics for matrix construction
-- **litellm** — multi-provider LLM abstraction (async)
+- **litellm** — multi-provider LLM and embedding abstraction (async)
 - **HDBSCAN + KMeans** — density-based clustering with fallback
-- **sentence-transformers** — SPECTER2 / MiniLM embeddings
+- **sentence-transformers** or **cloud embeddings** — configurable provider
 - **Typer** — CLI framework
 
 Data flows through four layers:
@@ -95,7 +124,7 @@ Layer 0: Papers (arxiv, PDF, OpenAlex enrichment)
     ↓
 Layer 1: Raw Extractions (LLM-extracted tradeoffs, architecture, agentic patterns)
     ↓
-Layer 2: Taxonomy (clustered + labeled parameters, principles, versioned)
+Layer 2: Taxonomy (parameters, principles, architecture slots/variants, agentic patterns)
     ↓
 Layer 3: Knowledge Structures (contradiction matrix, ideation gaps)
 ```
