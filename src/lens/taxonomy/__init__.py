@@ -143,11 +143,17 @@ async def build_taxonomy(
     target_principles: int = 35,
     target_arch_variants: int = 20,
     target_agentic_patterns: int = 15,
+    embedding_provider: str = "local",
+    embedding_model: str | None = None,
 ) -> int:
     """Build taxonomy from current extractions. Full rebuild.
 
     Returns the new taxonomy version number.
     """
+
+    def _embed(strings: list[str]) -> np.ndarray:
+        return embed_strings(strings, provider=embedding_provider, model_name=embedding_model)
+
     version_id = get_next_version(store)
     logger.info("Building taxonomy version %d", version_id)
 
@@ -159,7 +165,7 @@ async def build_taxonomy(
 
     param_entries: list[dict[str, Any]] = []
     if param_strings:
-        param_emb = embed_strings(param_strings)
+        param_emb = _embed(param_strings)
         param_labels = cluster_embeddings(
             param_emb,
             min_cluster_size=min_cluster_size,
@@ -185,7 +191,7 @@ async def build_taxonomy(
 
     principle_entries: list[dict[str, Any]] = []
     if principle_strings:
-        princ_emb = embed_strings(principle_strings)
+        princ_emb = _embed(principle_strings)
         princ_labels = cluster_embeddings(
             princ_emb,
             min_cluster_size=min_cluster_size,
@@ -280,7 +286,7 @@ async def build_taxonomy(
                         if r.get("variant_name") == vname
                     )
                 )
-                emb = embed_strings([vname])
+                emb = _embed([vname])
                 centroid = emb[0]
                 if len(centroid) < EMBEDDING_DIM:
                     centroid = np.pad(centroid, (0, EMBEDDING_DIM - len(centroid)))
@@ -302,7 +308,7 @@ async def build_taxonomy(
                 next_var_id += 1
             else:
                 # Embed → cluster → label
-                var_emb = embed_strings(var_strings)
+                var_emb = _embed(var_strings)
                 var_labels = cluster_embeddings(
                     var_emb,
                     min_cluster_size=min_cluster_size,
@@ -362,7 +368,7 @@ async def build_taxonomy(
     pattern_entries: list[dict[str, Any]] = []
 
     if agentic_strings:
-        ag_emb = embed_strings(agentic_strings)
+        ag_emb = _embed(agentic_strings)
         ag_labels = cluster_embeddings(
             ag_emb,
             min_cluster_size=min_cluster_size,

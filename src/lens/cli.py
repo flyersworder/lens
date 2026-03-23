@@ -420,6 +420,8 @@ def taxonomy() -> None:
             target_principles=tax_config["target_principles"],
             target_arch_variants=tax_config["target_arch_variants"],
             target_agentic_patterns=tax_config["target_agentic_patterns"],
+            embedding_provider=tax_config.get("embedding_provider", "local"),
+            embedding_model=tax_config.get("embedding_model"),
         )
     )
     rprint(f"[green]Built taxonomy version {version}[/green]")
@@ -468,6 +470,8 @@ def build_all() -> None:
             target_principles=tax_config["target_principles"],
             target_arch_variants=tax_config["target_arch_variants"],
             target_agentic_patterns=tax_config["target_agentic_patterns"],
+            embedding_provider=tax_config.get("embedding_provider", "local"),
+            embedding_model=tax_config.get("embedding_model"),
         )
     )
     build_matrix(store, taxonomy_version=version)
