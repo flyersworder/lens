@@ -21,8 +21,12 @@ See [docs/specs/design.md](docs/specs/design.md) for the full design spec.
 ## Quick Start
 
 ```bash
-# Install
+# Install dependencies
 uv sync
+
+# Install pre-commit hooks (uses prek, a fast Rust-based pre-commit runner)
+uv tool install prek
+prek install
 
 # Initialize the database and config
 uv run lens init
