@@ -2,6 +2,7 @@
 
 ## Quick Reference
 - **Package manager**: `uv` — use `uv sync` to install, `uv add <pkg>` to add dependencies
+- **Pre-commit hooks**: `prek` (Rust-based pre-commit replacement) — install with `prek install`
 - **Run CLI**: `uv run lens <command>`
 - **Run tests**: `uv run pytest`
 - **Run single test**: `uv run pytest tests/test_file.py::test_name -v`
