@@ -427,6 +427,62 @@ rows = store.query_sql("SELECT MAX(version_id) AS max_id FROM taxonomy_versions"
 max_ver = rows[0]["max_id"] if rows and rows[0]["max_id"] is not None else 0
 ```
 
+## Config restructuring
+
+Move embedding config out of `taxonomy` into its own section. Embedding and LLM
+endpoints are configured independently (e.g., LLM via OpenRouter, embeddings via
+local vLLM).
+
+```yaml
+# ~/.lens/config.yaml
+llm:
+  default_model: "openrouter/anthropic/claude-sonnet-4-6"
+  extract_model: "openrouter/google/gemini-2.5-flash"
+  label_model: "openrouter/anthropic/claude-sonnet-4-6"
+  api_base: ""                       # OpenAI-compatible endpoint (gateway mode)
+  api_key: ""                        # API key for the endpoint
+
+embeddings:                          # NEW: dedicated section (was under taxonomy)
+  provider: "local"                  # "local" (sentence-transformers) or "cloud"
+  model: "specter2"                  # local model name or cloud model string
+  dimensions: 768                    # vector dimension
+  api_base: ""                       # can differ from llm.api_base
+  api_key: ""                        # can differ from llm.api_key
+
+taxonomy:
+  target_parameters: 25
+  target_principles: 35
+  target_arch_variants: 20
+  target_agentic_patterns: 15
+  min_cluster_size: 3
+  # embedding_provider, embedding_model, embedding_dim REMOVED — now in embeddings section
+
+monitor:
+  ideate: true
+  ideate_llm: false
+  ideate_top_n: 10
+  ideate_min_gap_score: 0.5
+
+storage:
+  data_dir: "~/.lens/data"
+```
+
+The `EMBEDDING_DIM` constant in `models.py` is still needed for vec table creation. It
+can be set from `config["embeddings"]["dimensions"]` at startup, or left at the 768
+default.
+
+### Embedder changes
+
+The embedder reads from the new config section:
+- `embeddings.provider` → `"local"` or `"cloud"`
+- `embeddings.model` → model name for either provider
+- `embeddings.dimensions` → passed to cloud providers that support it
+- `embeddings.api_base` / `embeddings.api_key` → independent from LLM endpoint
+
+The CLI passes these from config to `build_taxonomy` and the embedder, same
+pattern as before but reading from `config["embeddings"]` instead of
+`config["taxonomy"]`.
+
 ## Dependencies
 
 **Removed:**
@@ -435,10 +491,12 @@ max_ver = rows[0]["max_id"] if rows and rows[0]["max_id"] is not None else 0
 - `pandas>=3.0.1` (was only needed for LanceDB)
 
 **Added:**
-- `sqlite-vec>=0.1`
+- `sqlite-vec>=0.1.7`
 
 **Unchanged:**
 - `pydantic>=2.0` (still used for validation, response models)
+- `openai>=1.0` (core LLM/embedding client)
+- `sentence-transformers>=5.3.0` (local embedding provider)
 - All other dependencies
 
 ## models.py transformation
@@ -489,7 +547,7 @@ The `ExplanationResult` model is already a `BaseModel` — no change needed.
 | `cli.py` | Remove Polars imports, update store calls |
 | `acquire/seed.py` | Update store calls |
 | `acquire/pdf.py` | Remove EMBEDDING_DIM import if unused directly |
-| `config.py` | No change (storage.data_dir stays) |
+| `config.py` | Restructure: move embedding keys from taxonomy to new embeddings section |
 | `tests/*` | Update all fixtures and assertions |
 | `README.md`, `CLAUDE.md`, `design.md` | Update tech stack |
 
