@@ -29,15 +29,19 @@ DEFAULT_CONFIG: dict[str, Any] = {
             "tier2": ["AAAI", "NAACL", "EACL", "COLING"],
         },
     },
+    "embeddings": {
+        "provider": "local",
+        "model": "specter2",
+        "dimensions": 768,
+        "api_base": "",
+        "api_key": "",
+    },
     "taxonomy": {
         "target_parameters": 25,
         "target_principles": 35,
         "target_arch_variants": 20,
         "target_agentic_patterns": 15,
         "min_cluster_size": 3,
-        "embedding_provider": "local",
-        "embedding_model": "specter2",
-        "embedding_dim": 768,
     },
     "monitor": {
         "ideate": True,

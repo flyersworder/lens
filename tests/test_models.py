@@ -1,4 +1,4 @@
-"""Tests for Pydantic LanceModel schemas."""
+"""Tests for Pydantic BaseModel schemas."""
 
 from datetime import datetime
 

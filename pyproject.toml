@@ -5,14 +5,11 @@ description = "LLM Engineering Navigation System — discovers recurring solutio
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
-    "lancedb>=0.17",
-    "polars>=1.0",
     "pydantic>=2.0",
     "typer>=0.12",
     "pyyaml>=6.0",
     "openai>=1.0",
     "rich>=13.0",
-    "pandas>=3.0.1",
     "httpx>=0.28.1",
     "tenacity>=9.1.4",
     "sentence-transformers>=5.3.0",

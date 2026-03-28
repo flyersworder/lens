@@ -1,9 +1,8 @@
-"""Pydantic LanceModel schemas for all LENS data types."""
+"""Pydantic model schemas for all LENS data types."""
 
 import re
 from datetime import datetime
 
-from lancedb.pydantic import LanceModel, Vector
 from pydantic import BaseModel, field_validator
 
 EMBEDDING_DIM = 768
@@ -21,7 +20,7 @@ VALID_EXTRACTION_STATUSES = {"pending", "complete", "incomplete", "failed"}
 # ---------------------------------------------------------------------------
 
 
-class Paper(LanceModel):
+class Paper(BaseModel):
     """A research paper ingested into LENS."""
 
     paper_id: str
@@ -34,7 +33,7 @@ class Paper(LanceModel):
     citations: int = 0
     quality_score: float = 0.0
     extraction_status: str = "pending"
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    embedding: list[float] = []
 
     @field_validator("date")
     @classmethod
@@ -58,7 +57,7 @@ class Paper(LanceModel):
 # ---------------------------------------------------------------------------
 
 
-class TradeoffExtraction(LanceModel):
+class TradeoffExtraction(BaseModel):
     """A single tradeoff extracted from a paper."""
 
     paper_id: str
@@ -70,7 +69,7 @@ class TradeoffExtraction(LanceModel):
     evidence_quote: str
 
 
-class ArchitectureExtraction(LanceModel):
+class ArchitectureExtraction(BaseModel):
     """An architecture component extracted from a paper."""
 
     paper_id: str
@@ -81,7 +80,7 @@ class ArchitectureExtraction(LanceModel):
     confidence: float
 
 
-class AgenticExtraction(LanceModel):
+class AgenticExtraction(BaseModel):
     """An agentic pattern extracted from a paper."""
 
     paper_id: str
@@ -97,7 +96,7 @@ class AgenticExtraction(LanceModel):
 # ---------------------------------------------------------------------------
 
 
-class Parameter(LanceModel):
+class Parameter(BaseModel):
     """A canonicalised performance/cost parameter in the taxonomy."""
 
     id: int
@@ -106,10 +105,10 @@ class Parameter(LanceModel):
     raw_strings: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    embedding: list[float] = []
 
 
-class Principle(LanceModel):
+class Principle(BaseModel):
     """A design principle / technique in the taxonomy."""
 
     id: int
@@ -119,10 +118,10 @@ class Principle(LanceModel):
     raw_strings: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    embedding: list[float] = []
 
 
-class ArchitectureSlot(LanceModel):
+class ArchitectureSlot(BaseModel):
     """A named slot in the transformer architecture taxonomy."""
 
     id: int
@@ -131,7 +130,7 @@ class ArchitectureSlot(LanceModel):
     taxonomy_version: int
 
 
-class ArchitectureVariant(LanceModel):
+class ArchitectureVariant(BaseModel):
     """A concrete variant that fills an ArchitectureSlot."""
 
     id: int
@@ -141,10 +140,10 @@ class ArchitectureVariant(LanceModel):
     properties: str
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    embedding: list[float] = []
 
 
-class AgenticPattern(LanceModel):
+class AgenticPattern(BaseModel):
     """A named agentic design pattern in the taxonomy."""
 
     id: int
@@ -155,7 +154,7 @@ class AgenticPattern(LanceModel):
     use_cases: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
+    embedding: list[float] = []
 
 
 # ---------------------------------------------------------------------------
@@ -163,7 +162,7 @@ class AgenticPattern(LanceModel):
 # ---------------------------------------------------------------------------
 
 
-class MatrixCell(LanceModel):
+class MatrixCell(BaseModel):
     """One cell in the tradeoff matrix (improving × worsening × principle)."""
 
     improving_param_id: int
@@ -180,7 +179,7 @@ class MatrixCell(LanceModel):
 # ---------------------------------------------------------------------------
 
 
-class TaxonomyVersion(LanceModel):
+class TaxonomyVersion(BaseModel):
     """Metadata for a taxonomy snapshot."""
 
     version_id: int
@@ -198,7 +197,7 @@ class TaxonomyVersion(LanceModel):
 # ---------------------------------------------------------------------------
 
 
-class IdeationGap(LanceModel):
+class IdeationGap(BaseModel):
     """A gap or opportunity identified during ideation analysis."""
 
     id: int
@@ -214,7 +213,7 @@ class IdeationGap(LanceModel):
     taxonomy_version: int
 
 
-class IdeationReport(LanceModel):
+class IdeationReport(BaseModel):
     """Summary of one ideation run."""
 
     id: int
@@ -225,7 +224,7 @@ class IdeationReport(LanceModel):
 
 
 # ---------------------------------------------------------------------------
-# Query response (not stored in LanceDB)
+# Query response (not stored in DB)
 # ---------------------------------------------------------------------------
 
 
