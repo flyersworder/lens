@@ -36,13 +36,15 @@ async def _fetch_paper_metadata(arxiv_id: str) -> dict[str, Any] | None:
     from urllib.parse import quote
 
     url = f"{ARXIV_API_URL}?id_list={quote(arxiv_id)}&max_results=1"
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             resp = await fetch_with_retry(client, url)
             papers = parse_arxiv_response(resp.text)
             return papers[0] if papers else None
-        except httpx.HTTPError as e:
-            logger.warning("Failed to fetch arxiv metadata for %s after retries: %s", arxiv_id, e)
+        except (httpx.HTTPError, httpx.TimeoutException) as e:
+            logger.warning("Failed to fetch arxiv metadata for %s: %s", arxiv_id, e)
+        except Exception as e:
+            logger.warning("Unexpected error fetching %s: %s", arxiv_id, e)
             return None
         finally:
             await asyncio.sleep(3.0)  # rate limit

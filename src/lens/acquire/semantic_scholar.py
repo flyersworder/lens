@@ -48,12 +48,12 @@ async def fetch_embedding(
     if api_key:
         headers["x-api-key"] = api_key
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    async with httpx.AsyncClient(timeout=60.0) as client:
         try:
             resp = await fetch_with_retry(client, url, headers=headers)
             data = resp.json()
             return parse_embedding_response(data)
-        except httpx.HTTPError as e:
+        except Exception as e:
             logger.warning("Failed to fetch S2 embedding for %s: %s", arxiv_id, e)
             return None
         finally:
