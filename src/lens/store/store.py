@@ -59,7 +59,7 @@ class _TableWrapper:
         self._table = table
 
     def to_polars(self) -> pl.DataFrame:
-        result = self._table.to_polars()  # type: ignore[attr-defined]
+        result = self._table.to_polars()  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
         if hasattr(result, "collect"):
             return result.collect()
         return result
@@ -82,7 +82,7 @@ class _DatabaseWrapper:
 
     def table_names(self, **kwargs: object) -> list[str]:
         """Return all table names, bypassing the default page-size limit."""
-        result = self._db.list_tables(limit=10_000)  # type: ignore[attr-defined]
+        result = self._db.list_tables(limit=10_000)  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
         return result.tables if hasattr(result, "tables") else list(result)
 
     def __getattr__(self, name: str) -> Any:

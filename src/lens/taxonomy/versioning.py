@@ -12,7 +12,7 @@ def get_latest_version(store: LensStore) -> int | None:
     df = store.get_table("taxonomy_versions").to_polars()
     if len(df) == 0:
         return None
-    return int(df["version_id"].max())  # type: ignore[arg-type]
+    return int(df["version_id"].max())  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
 
 
 def get_next_version(store: LensStore) -> int:

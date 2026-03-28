@@ -34,7 +34,7 @@ class Paper(LanceModel):
     citations: int = 0
     quality_score: float = 0.0
     extraction_status: str = "pending"
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
 
     @field_validator("date")
     @classmethod
@@ -106,7 +106,7 @@ class Parameter(LanceModel):
     raw_strings: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
 
 
 class Principle(LanceModel):
@@ -119,7 +119,7 @@ class Principle(LanceModel):
     raw_strings: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
 
 
 class ArchitectureSlot(LanceModel):
@@ -141,7 +141,7 @@ class ArchitectureVariant(LanceModel):
     properties: str
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
 
 
 class AgenticPattern(LanceModel):
@@ -155,7 +155,7 @@ class AgenticPattern(LanceModel):
     use_cases: list[str]
     paper_ids: list[str]
     taxonomy_version: int
-    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]
+    embedding: Vector(EMBEDDING_DIM)  # type: ignore[valid-type]  # ty:ignore[invalid-type-form]
 
 
 # ---------------------------------------------------------------------------

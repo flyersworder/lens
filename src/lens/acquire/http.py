@@ -14,7 +14,7 @@ async def fetch_with_retry(
 
     Retries on any HTTP error status (>= 400), including rate limits (429).
     """
-    resp = await client.get(url, **kwargs)  # type: ignore[arg-type]
+    resp = await client.get(url, **kwargs)  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
     if resp.status_code >= 400:
         raise httpx.HTTPStatusError(
             f"HTTP {resp.status_code}",

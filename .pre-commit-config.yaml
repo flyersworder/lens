@@ -31,15 +31,13 @@ repos:
   # Local hooks
   - repo: local
     hooks:
-      # Type checking (Astral's ty) — informational only due to
-      # known false positives with LanceDB Vector(), Polars .max(), etc.
+      # Type checking (Astral's ty)
       - id: ty-check
         name: ty type check
-        entry: bash -c 'uvx ty check || true'
+        entry: uvx ty check
         language: system
         types: [python]
         pass_filenames: false
-        verbose: true
 
       # Fast unit tests
       - id: pytest-fast

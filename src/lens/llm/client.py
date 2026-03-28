@@ -15,7 +15,7 @@ import openai
 try:
     import litellm
 
-    litellm.suppress_debug_info = True  # type: ignore[assignment]
+    litellm.suppress_debug_info = True  # type: ignore[assignment]  # ty:ignore[invalid-assignment]
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("litellm").setLevel(logging.WARNING)
     HAS_LITELLM = True
@@ -95,7 +95,7 @@ class LLMClient:
             client = self._get_openai_client()
             response = await client.chat.completions.create(  # type: ignore[no-matching-overload]
                 model=self.model,
-                messages=messages,  # type: ignore[arg-type]
+                messages=messages,  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )
