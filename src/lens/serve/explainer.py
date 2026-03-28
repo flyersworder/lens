@@ -1,11 +1,9 @@
-"""Education: resolve → graph walk → LLM synthesis."""
+"""Education: resolve -> graph walk -> LLM synthesis."""
 
 from __future__ import annotations
 
 import logging
 from typing import Any
-
-import polars as pl
 
 from lens.llm.client import LLMClient
 from lens.store.models import ExplanationResult
@@ -34,12 +32,12 @@ def resolve_concept(
         ("principles", "principle"),
     ]:
         try:
-            results = (
-                store.get_table(table_name)
-                .search(query_embedding)
-                .where(f"taxonomy_version = {taxonomy_version}")
-                .limit(top_k)
-                .to_list()
+            results = store.vector_search(
+                table_name,
+                query_embedding,
+                limit=top_k,
+                where="taxonomy_version = ?",
+                params=(taxonomy_version,),
             )
             if not results:
                 continue
@@ -77,16 +75,14 @@ def graph_walk(
     walk: dict[str, Any] = {}
 
     # Pre-load taxonomy tables (filtered by version)
-    params_df = store.get_table("parameters").to_polars()
-    params_df = params_df.filter(pl.col("taxonomy_version") == taxonomy_version)
-    princs_df = store.get_table("principles").to_polars()
-    princs_df = princs_df.filter(pl.col("taxonomy_version") == taxonomy_version)
+    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
+    princs = store.query("principles", "taxonomy_version = ?", (taxonomy_version,))
 
     # Identity
     if resolved_type == "parameter":
-        entry = params_df.filter(pl.col("id") == resolved_id)
-        if len(entry) > 0:
-            row = entry.to_dicts()[0]
+        entry = [p for p in params if p["id"] == resolved_id]
+        if entry:
+            row = entry[0]
             walk["identity"] = {
                 "name": row["name"],
                 "description": row["description"],
@@ -94,9 +90,9 @@ def graph_walk(
                 "paper_ids": row.get("paper_ids", []),
             }
     elif resolved_type == "principle":
-        entry = princs_df.filter(pl.col("id") == resolved_id)
-        if len(entry) > 0:
-            row = entry.to_dicts()[0]
+        entry = [p for p in princs if p["id"] == resolved_id]
+        if entry:
+            row = entry[0]
             walk["identity"] = {
                 "name": row["name"],
                 "description": row["description"],
@@ -113,17 +109,17 @@ def graph_walk(
         }
 
     # Tradeoffs from matrix cells
-    cells = store.get_table("matrix_cells").to_polars()
-    cells = cells.filter(pl.col("taxonomy_version") == taxonomy_version)
+    cells = store.query("matrix_cells", "taxonomy_version = ?", (taxonomy_version,))
 
     tradeoff_cells: list[dict[str, Any]] = []
     if resolved_type == "parameter":
-        improving = cells.filter(pl.col("improving_param_id") == resolved_id)
-        worsening = cells.filter(pl.col("worsening_param_id") == resolved_id)
-        tradeoff_cells = improving.to_dicts() + worsening.to_dicts()
+        tradeoff_cells = [
+            c
+            for c in cells
+            if c["improving_param_id"] == resolved_id or c["worsening_param_id"] == resolved_id
+        ]
     elif resolved_type == "principle":
-        matching = cells.filter(pl.col("principle_id") == resolved_id)
-        tradeoff_cells = matching.to_dicts()
+        tradeoff_cells = [c for c in cells if c["principle_id"] == resolved_id]
     walk["tradeoffs"] = tradeoff_cells
 
     # Connections from shared matrix cells
@@ -134,22 +130,23 @@ def graph_walk(
         connected_ids.add(cell["principle_id"])
     connected_ids.discard(resolved_id)
 
+    # Build lookup maps
+    param_id_to_name = {p["id"]: p["name"] for p in params}
+    princ_id_to_name = {p["id"]: p["name"] for p in princs}
+
     connections: list[str] = []
     for pid in connected_ids:
-        match = params_df.filter(pl.col("id") == pid)
-        if len(match) > 0:
-            connections.append(match["name"][0])
-            continue
-        match = princs_df.filter(pl.col("id") == pid)
-        if len(match) > 0:
-            connections.append(match["name"][0])
+        if pid in param_id_to_name:
+            connections.append(param_id_to_name[pid])
+        elif pid in princ_id_to_name:
+            connections.append(princ_id_to_name[pid])
     walk["connections"] = connections
 
     # ID-to-name map for synthesis prompt
     id_map: list[dict[str, Any]] = []
-    for row in params_df.to_dicts():
+    for row in params:
         id_map.append({"id": row["id"], "name": row["name"]})
-    for row in princs_df.to_dicts():
+    for row in princs:
         id_map.append({"id": row["id"], "name": row["name"]})
     walk["_id_map"] = id_map
 

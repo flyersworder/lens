@@ -10,8 +10,6 @@ import contextlib
 import logging
 from typing import Any
 
-import polars as pl
-
 from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
@@ -19,12 +17,11 @@ logger = logging.getLogger(__name__)
 
 def _build_string_to_id_map(store: LensStore, table_name: str, version: int) -> dict[str, int]:
     """Build a map from raw_strings to taxonomy entry IDs."""
-    df = store.get_table(table_name).to_polars()
-    if len(df) == 0:
+    rows = store.query(table_name, "taxonomy_version = ?", (version,))
+    if not rows:
         return {}
-    df = df.filter(pl.col("taxonomy_version") == version)
     result: dict[str, int] = {}
-    for row in df.to_dicts():
+    for row in rows:
         entry_id = row["id"]
         for s in row.get("raw_strings", []):
             result[s] = entry_id
@@ -35,31 +32,35 @@ def get_ranked_matrix(
     store: LensStore,
     taxonomy_version: int,
     top_k: int = 4,
-) -> pl.DataFrame:
+) -> list[dict[str, Any]]:
     """Get the contradiction matrix with top-k principles per cell pair.
 
-    Returns a DataFrame ranked by score (count * avg_confidence)
+    Returns a list of dicts ranked by score (count * avg_confidence)
     within each (improving, worsening) pair, limited to top_k.
     """
-    cells = store.get_table("matrix_cells").to_polars()
-    if len(cells) == 0:
-        return cells
-    cells = cells.filter(pl.col("taxonomy_version") == taxonomy_version)
-    if len(cells) == 0:
-        return cells
+    cells = store.query("matrix_cells", "taxonomy_version = ?", (taxonomy_version,))
+    if not cells:
+        return []
 
-    return (
-        cells.with_columns((pl.col("count") * pl.col("avg_confidence")).alias("score"))
-        .with_columns(
-            pl.col("score")
-            .rank(method="ordinal", descending=True)
-            .over(["improving_param_id", "worsening_param_id"])
-            .alias("rank")
-        )
-        .filter(pl.col("rank") <= top_k)
-        .sort("improving_param_id", "worsening_param_id", "rank")
-        .drop("rank")
-    )
+    # Add score
+    for c in cells:
+        c["score"] = c["count"] * c["avg_confidence"]
+
+    # Group by (improving, worsening) pair, rank within each group
+    from collections import defaultdict
+
+    groups: dict[tuple[int, int], list[dict]] = defaultdict(list)
+    for c in cells:
+        key = (c["improving_param_id"], c["worsening_param_id"])
+        groups[key].append(c)
+
+    result: list[dict[str, Any]] = []
+    for _key, group in sorted(groups.items()):
+        group.sort(key=lambda x: x["score"], reverse=True)
+        result.extend(group[:top_k])
+
+    result.sort(key=lambda x: (x["improving_param_id"], x["worsening_param_id"]))
+    return result
 
 
 def build_matrix(
@@ -74,7 +75,7 @@ def build_matrix(
     taxonomy_version = int(taxonomy_version)  # defense-in-depth for SQL filters
     # Delete old cells for idempotent rebuild
     with contextlib.suppress(OSError, ValueError):
-        store.get_table("matrix_cells").delete(f"taxonomy_version = {taxonomy_version}")
+        store.delete("matrix_cells", "taxonomy_version = ?", (taxonomy_version,))
 
     param_map = _build_string_to_id_map(store, "parameters", taxonomy_version)
     principle_map = _build_string_to_id_map(store, "principles", taxonomy_version)
@@ -83,17 +84,17 @@ def build_matrix(
         logger.info("No taxonomy entries — skipping matrix build")
         return
 
-    extractions = store.get_table("tradeoff_extractions").to_polars()
-    if len(extractions) == 0:
+    extractions = store.query("tradeoff_extractions")
+    if not extractions:
         logger.info("No extractions — skipping matrix build")
         return
 
     # Filter to confidence >= 0.5
-    extractions = extractions.filter(pl.col("confidence") >= 0.5)
+    extractions = [e for e in extractions if e.get("confidence", 0) >= 0.5]
 
     # Map raw strings to taxonomy IDs and aggregate
     cells: dict[tuple[int, int, int], list[dict[str, Any]]] = {}
-    for row in extractions.to_dicts():
+    for row in extractions:
         imp_id = param_map.get(row["improves"])
         wors_id = param_map.get(row["worsens"])
         tech_id = principle_map.get(row["technique"])

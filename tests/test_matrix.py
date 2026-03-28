@@ -1,6 +1,5 @@
 """Tests for contradiction matrix construction."""
 
-import polars as pl
 import pytest
 
 from lens.store.models import EMBEDDING_DIM
@@ -79,16 +78,16 @@ def test_build_matrix(tmp_path):
 
     build_matrix(store, taxonomy_version=1)
 
-    cells = store.get_table("matrix_cells").to_polars()
+    cells = store.query("matrix_cells")
     assert len(cells) >= 1
-    cell = cells.filter(
-        (pl.col("improving_param_id") == 1)
-        & (pl.col("worsening_param_id") == 2)
-        & (pl.col("principle_id") == 1)
-    )
+    cell = [
+        c
+        for c in cells
+        if c["improving_param_id"] == 1 and c["worsening_param_id"] == 2 and c["principle_id"] == 1
+    ]
     assert len(cell) == 1
-    assert cell["count"][0] == 2
-    assert cell["avg_confidence"][0] == pytest.approx(0.85)
+    assert cell[0]["count"] == 2
+    assert cell[0]["avg_confidence"] == pytest.approx(0.85)
 
 
 def test_build_matrix_filters_low_confidence(tmp_path):
@@ -152,7 +151,7 @@ def test_build_matrix_filters_low_confidence(tmp_path):
     )
 
     build_matrix(store, taxonomy_version=1)
-    cells = store.get_table("matrix_cells").to_polars()
+    cells = store.query("matrix_cells")
     assert len(cells) == 0  # confidence 0.3 < 0.5 threshold
 
 
@@ -163,7 +162,7 @@ def test_build_matrix_empty(tmp_path):
     store = LensStore(str(tmp_path / "test.lance"))
     store.init_tables()
     build_matrix(store, taxonomy_version=1)
-    cells = store.get_table("matrix_cells").to_polars()
+    cells = store.query("matrix_cells")
     assert len(cells) == 0
 
 

@@ -5,14 +5,13 @@ import os
 import shutil
 from pathlib import Path
 
-import polars as pl
 import typer
 import yaml
 from rich import print as rprint
 
 from lens.config import load_config, resolve_data_dir, save_config, set_config_value
 from lens.store.models import EMBEDDING_DIM
-from lens.store.store import LensStore, escape_sql_string
+from lens.store.store import LensStore
 
 # ---------------------------------------------------------------------------
 # App and subcommand groups
@@ -220,7 +219,7 @@ def monitor(
     interval: str = typer.Option("weekly", "--interval", help="Check interval (not yet used)."),
     trending: bool = typer.Option(False, "--trending", help="Show ideation gaps."),
 ) -> None:
-    """Run one monitoring cycle: acquire → extract → ideate."""
+    """Run one monitoring cycle: acquire -> extract -> ideate."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir))
@@ -234,13 +233,13 @@ def monitor(
             rprint("[yellow]No taxonomy yet.[/yellow]")
             raise typer.Exit(code=0)
 
-        gaps = store.get_table("ideation_gaps").to_polars()
-        gaps = gaps.filter(pl.col("taxonomy_version") == version)
-        if len(gaps) == 0:
+        gaps = store.query("ideation_gaps", "taxonomy_version = ?", (version,))
+        if not gaps:
             rprint("[yellow]No ideation gaps found.[/yellow]")
         else:
             rprint(f"\n[bold]Ideation Gaps (v{version}):[/bold]")
-            for row in gaps.sort("score", descending=True).to_dicts():
+            gaps.sort(key=lambda x: x.get("score", 0), reverse=True)
+            for row in gaps:
                 hyp = ""
                 if row.get("llm_hypothesis"):
                     h = row["llm_hypothesis"][:80]
@@ -350,8 +349,8 @@ def file(
     paper = ingest_pdf(path)
 
     # Check for duplicate paper_id
-    existing_df = store.get_table("papers").to_polars()
-    if len(existing_df) > 0 and paper["paper_id"] in existing_df["paper_id"].to_list():
+    existing = store.query("papers", "paper_id = ?", (paper["paper_id"],))
+    if existing:
         rprint(f"[yellow]Paper '{paper['paper_id']}' already exists. Skipping.[/yellow]")
         return
 
@@ -375,23 +374,25 @@ def openalex(
     store = LensStore(str(data_dir))
     store.init_tables()
 
-    df = store.get_table("papers").to_polars()
-    if len(df) == 0:
+    papers = store.query("papers")
+    if not papers:
         rprint("[yellow]No papers to enrich[/yellow]")
         return
 
-    papers = df.drop("embedding").to_dicts()
+    # Remove embedding from dicts before sending to enrichment
+    papers_for_enrich = [{k: v for k, v in p.items() if k != "embedding"} for p in papers]
     mailto = config["acquire"].get("openalex_mailto", "")
-    enriched = asyncio.run(_enrich_openalex_async(papers, mailto=mailto))
+    enriched = asyncio.run(_enrich_openalex_async(papers_for_enrich, mailto=mailto))
 
-    # Persist enrichment back to LanceDB
-    papers_table = store.get_table("papers")
+    # Persist enrichment back to DB
     updated_count = 0
     for paper in enriched:
-        pid = escape_sql_string(paper.get("paper_id", ""))
-        papers_table.update(
-            where=f"paper_id = '{pid}'",
-            values={"citations": paper.get("citations", 0), "venue": paper.get("venue")},
+        pid = paper.get("paper_id", "")
+        store.update(
+            "papers",
+            "citations = ?, venue = ?",
+            "paper_id = ?",
+            (paper.get("citations", 0), paper.get("venue"), pid),
         )
         updated_count += 1
     rprint(f"[green]Enriched {updated_count} papers with OpenAlex data[/green]")
@@ -422,6 +423,7 @@ def taxonomy() -> None:
     llm_model = config["llm"]["label_model"]
     client = LLMClient(model=llm_model, **_llm_kwargs(config))
     tax_config = config["taxonomy"]
+    emb_config = config.get("embeddings", {})
     version = asyncio.run(
         build_taxonomy(
             store,
@@ -431,8 +433,8 @@ def taxonomy() -> None:
             target_principles=tax_config["target_principles"],
             target_arch_variants=tax_config["target_arch_variants"],
             target_agentic_patterns=tax_config["target_agentic_patterns"],
-            embedding_provider=tax_config.get("embedding_provider", "local"),
-            embedding_model=tax_config.get("embedding_model"),
+            embedding_provider=emb_config.get("provider", "local"),
+            embedding_model=emb_config.get("model"),
         )
     )
     rprint(f"[green]Built taxonomy version {version}[/green]")
@@ -472,6 +474,7 @@ def build_all() -> None:
     llm_model = config["llm"]["label_model"]
     client = LLMClient(model=llm_model, **_llm_kwargs(config))
     tax_config = config["taxonomy"]
+    emb_config = config.get("embeddings", {})
     version = asyncio.run(
         build_taxonomy(
             store,
@@ -481,8 +484,8 @@ def build_all() -> None:
             target_principles=tax_config["target_principles"],
             target_arch_variants=tax_config["target_arch_variants"],
             target_agentic_patterns=tax_config["target_agentic_patterns"],
-            embedding_provider=tax_config.get("embedding_provider", "local"),
-            embedding_model=tax_config.get("embedding_model"),
+            embedding_provider=emb_config.get("provider", "local"),
+            embedding_model=emb_config.get("model"),
         )
     )
     build_matrix(store, taxonomy_version=version)
@@ -734,18 +737,22 @@ def ideas(
         rprint("[yellow]No taxonomy yet.[/yellow]")
         raise typer.Exit(code=0)
 
-    gaps = store.get_table("ideation_gaps").to_polars()
-    gaps = gaps.filter(pl.col("taxonomy_version") == version)
-
     if type_:
-        gaps = gaps.filter(pl.col("gap_type") == type_)
+        gaps = store.query(
+            "ideation_gaps",
+            "taxonomy_version = ? AND gap_type = ?",
+            (version, type_),
+        )
+    else:
+        gaps = store.query("ideation_gaps", "taxonomy_version = ?", (version,))
 
-    if len(gaps) == 0:
+    if not gaps:
         rprint("[yellow]No ideation gaps found.[/yellow]")
         raise typer.Exit(code=0)
 
     rprint(f"\n[bold]Research Opportunities ({len(gaps)} gaps):[/bold]\n")
-    for row in gaps.sort("score", descending=True).to_dicts():
+    gaps.sort(key=lambda x: x.get("score", 0), reverse=True)
+    for row in gaps:
         rprint(f"  [bold][{row['gap_type']}][/bold] {row['description']}")
         if row.get("llm_hypothesis"):
             rprint(f"    → {row['llm_hypothesis']}")

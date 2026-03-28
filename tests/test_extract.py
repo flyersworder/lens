@@ -185,8 +185,6 @@ async def test_extract_paper_handles_llm_exception():
 
 @pytest.mark.asyncio
 async def test_extract_papers_batch(tmp_path):
-    import polars as pl
-
     from lens.extract.extractor import extract_papers
     from lens.store.store import LensStore
 
@@ -219,16 +217,15 @@ async def test_extract_papers_batch(tmp_path):
     assert count == 1
 
     # Check extractions were stored
-    tradeoffs = store.get_table("tradeoff_extractions").to_polars()
+    tradeoffs = store.query("tradeoff_extractions")
     assert len(tradeoffs) == 1
 
-    arch = store.get_table("architecture_extractions").to_polars()
+    arch = store.query("architecture_extractions")
     assert len(arch) == 1
 
     # Check paper status updated to 'complete'
-    papers = store.get_table("papers").to_polars()
-    status = papers.filter(pl.col("paper_id") == "2005.14165")["extraction_status"][0]
-    assert status == "complete"
+    papers = store.query("papers", "paper_id = ?", ("2005.14165",))
+    assert papers[0]["extraction_status"] == "complete"
 
 
 @pytest.mark.asyncio

@@ -1,4 +1,4 @@
-"""Monitor pipeline: acquire new papers → extract → ideate.
+"""Monitor pipeline: acquire new papers -> extract -> ideate.
 
 Runs one monitoring cycle: fetches new papers from arxiv,
 extracts knowledge, and optionally runs ideation gap analysis.
@@ -43,8 +43,8 @@ async def run_monitor_cycle(
         papers = []
 
     # Filter out already-stored papers
-    existing_df = store.get_table("papers").to_polars()
-    existing_ids = set(existing_df["paper_id"].to_list()) if len(existing_df) > 0 else set()
+    existing = store.query("papers")
+    existing_ids = {p["paper_id"] for p in existing}
     new_papers = [p for p in papers if p["paper_id"] not in existing_ids]
 
     for p in new_papers:

@@ -7,7 +7,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
-import polars as pl
 
 from lens.store.store import LensStore
 
@@ -24,17 +23,14 @@ def find_sparse_cells(
     Returns a list of dicts with keys:
         improving_param_id, worsening_param_id, existing_principle_ids, count
     """
-    params_df = store.get_table("parameters").to_polars()
-    params_df = params_df.filter(params_df["taxonomy_version"] == taxonomy_version)
-    param_ids = params_df["id"].to_list()
+    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
+    param_ids = [p["id"] for p in params]
 
-    cells_df = store.get_table("matrix_cells").to_polars()
-    cells_df = cells_df.filter(cells_df["taxonomy_version"] == taxonomy_version)
-    cells_list = cells_df.to_dicts()
+    cells = store.query("matrix_cells", "taxonomy_version = ?", (taxonomy_version,))
 
     # Build a mapping: (improving, worsening) -> list of principle_ids
     pair_principles: dict[tuple[int, int], list[int]] = {}
-    for cell in cells_list:
+    for cell in cells:
         key = (cell["improving_param_id"], cell["worsening_param_id"])
         pair_principles.setdefault(key, []).append(cell["principle_id"])
 
@@ -68,13 +64,43 @@ def find_cross_pollination(
     resolve (A', B), then (A', B, P) is a cross-pollination candidate.
     Checks BOTH improving and worsening roles.
     """
-    params_df = store.get_table("parameters").to_polars()
-    params_df = params_df.filter(params_df["taxonomy_version"] == taxonomy_version)
-    if len(params_df) == 0:
+    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
+    if not params:
         return []
 
-    param_ids = params_df["id"].to_list()
-    embeddings = np.array(params_df["embedding"].to_list())
+    param_ids = [p["id"] for p in params]
+
+    # Need to get embeddings from the vec table via raw SQL
+    # Since query() doesn't return embeddings (they're in the vec table), we need
+    # to get them from the parameters_vec table
+    import struct
+
+    vec_rows = store.conn.execute(
+        "SELECT pv.id, pv.embedding FROM parameters_vec pv "
+        "INNER JOIN parameters p ON pv.id = p.id "
+        "WHERE p.taxonomy_version = ?",
+        (taxonomy_version,),
+    ).fetchall()
+
+    if not vec_rows:
+        return []
+
+    # Build id -> embedding mapping
+    id_to_emb: dict[int, list[float]] = {}
+    from lens.store.models import EMBEDDING_DIM
+
+    for row in vec_rows:
+        pid = row[0]
+        emb_bytes = row[1]
+        emb = list(struct.unpack(f"{EMBEDDING_DIM}f", emb_bytes))
+        id_to_emb[pid] = emb
+
+    # Build ordered arrays matching param_ids
+    valid_param_ids = [pid for pid in param_ids if pid in id_to_emb]
+    if not valid_param_ids:
+        return []
+
+    embeddings = np.array([id_to_emb[pid] for pid in valid_param_ids])
 
     # Compute cosine similarity matrix
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
@@ -82,13 +108,11 @@ def find_cross_pollination(
     normalized = embeddings / norms
     similarity = normalized @ normalized.T
 
-    cells_df = store.get_table("matrix_cells").to_polars()
-    cells_df = cells_df.filter(cells_df["taxonomy_version"] == taxonomy_version)
-    cells_list = cells_df.to_dicts()
+    cells = store.query("matrix_cells", "taxonomy_version = ?", (taxonomy_version,))
 
     # Build set of existing (improving, worsening, principle) triples
     existing_triples: set[tuple[int, int, int]] = set()
-    for cell in cells_list:
+    for cell in cells:
         existing_triples.add(
             (
                 cell["improving_param_id"],
@@ -97,13 +121,13 @@ def find_cross_pollination(
             )
         )
 
-    # Build index from param_id -> position in param_ids list
-    id_to_idx = {pid: i for i, pid in enumerate(param_ids)}
+    # Build index from param_id -> position in valid_param_ids list
+    id_to_idx = {pid: i for i, pid in enumerate(valid_param_ids)}
 
     candidates: list[dict[str, Any]] = []
     seen: set[tuple[int, int, int]] = set()
 
-    for cell in cells_list:
+    for cell in cells:
         imp_id = cell["improving_param_id"]
         wors_id = cell["worsening_param_id"]
         principle_id = cell["principle_id"]
@@ -114,7 +138,7 @@ def find_cross_pollination(
             continue
 
         # Check improving role: find params similar to imp_id
-        for j, other_id in enumerate(param_ids):
+        for j, other_id in enumerate(valid_param_ids):
             if other_id == imp_id:
                 continue
             if similarity[imp_idx, j] >= similarity_threshold:
@@ -134,7 +158,7 @@ def find_cross_pollination(
                     )
 
         # Check worsening role: find params similar to wors_id
-        for j, other_id in enumerate(param_ids):
+        for j, other_id in enumerate(valid_param_ids):
             if other_id == wors_id:
                 continue
             if similarity[wors_idx, j] >= similarity_threshold:
@@ -164,7 +188,7 @@ def run_ideation(
 ) -> dict[str, Any]:
     """Run Layer 1 ideation: sparse cells + cross-pollination.
 
-    Persists gaps and report to LanceDB and returns a summary dict.
+    Persists gaps and report to DB and returns a summary dict.
     """
     now = datetime.now(UTC)
 
@@ -174,24 +198,20 @@ def run_ideation(
     )
 
     # Fetch param names for descriptions
-    params_df = store.get_table("parameters").to_polars()
-    params_df = params_df.filter(params_df["taxonomy_version"] == taxonomy_version)
-    param_names = {row["id"]: row["name"] for row in params_df.to_dicts()}
+    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
+    param_names = {row["id"]: row["name"] for row in params}
 
     # Fetch principle names for descriptions
-    principles_df = store.get_table("principles").to_polars()
-    principles_df = principles_df.filter(principles_df["taxonomy_version"] == taxonomy_version)
-    principle_names = {row["id"]: row["name"] for row in principles_df.to_dicts()}
+    principles = store.query("principles", "taxonomy_version = ?", (taxonomy_version,))
+    principle_names = {row["id"]: row["name"] for row in principles}
 
     # Determine next report_id
-    reports_df = store.get_table("ideation_reports").to_polars()
-    report_id = (
-        (reports_df.select(pl.col("id").max()).item() or 0) + 1 if len(reports_df) > 0 else 1
-    )
+    report_rows = store.query_sql("SELECT MAX(id) AS max_id FROM ideation_reports")
+    report_id = (int(report_rows[0]["max_id"]) + 1) if report_rows[0]["max_id"] is not None else 1
 
     # Determine next gap_id
-    gaps_df = store.get_table("ideation_gaps").to_polars()
-    next_gap_id = (gaps_df.select(pl.col("id").max()).item() or 0) + 1 if len(gaps_df) > 0 else 1
+    gap_rows = store.query_sql("SELECT MAX(id) AS max_id FROM ideation_gaps")
+    next_gap_id = (int(gap_rows[0]["max_id"]) + 1) if gap_rows[0]["max_id"] is not None else 1
 
     all_gaps: list[dict[str, Any]] = []
 
@@ -319,12 +339,13 @@ async def run_ideation_with_llm(
             hypothesis = await llm_client.complete(messages)
             gap["llm_hypothesis"] = hypothesis
 
-            # Update the gap in LanceDB
+            # Update the gap in DB
             gap_id = int(gap["id"])
-            table = store.get_table("ideation_gaps")
-            table.update(
-                where=f"id = {gap_id}",
-                values={"llm_hypothesis": hypothesis},
+            store.update(
+                "ideation_gaps",
+                "llm_hypothesis = ?",
+                "id = ?",
+                (hypothesis, gap_id),
             )
         except Exception:
             logger.warning(

@@ -68,8 +68,8 @@ async def acquire_seed(
 
     # Check which papers are already stored
     try:
-        existing_df = store.get_table("papers").to_polars()
-        existing_ids = set(existing_df["paper_id"].to_list()) if len(existing_df) > 0 else set()
+        existing = store.query("papers")
+        existing_ids = {p["paper_id"] for p in existing}
     except Exception:
         existing_ids = set()
 
@@ -109,7 +109,7 @@ async def acquire_seed(
             paper_date=paper.get("date", "2020-01-01"),
         )
 
-    # Store in LanceDB
+    # Store in DB
     if papers_to_store:
         store.add_papers(papers_to_store)
         logger.info(f"Stored {len(papers_to_store)} seed papers")

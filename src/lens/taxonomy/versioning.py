@@ -4,18 +4,16 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-import polars as pl
-
 from lens.store.store import LensStore
 
 
 def get_latest_version(store: LensStore) -> int | None:
     """Get the latest taxonomy version number, or None if no versions exist."""
-    df = store.get_table("taxonomy_versions").to_polars()
-    if len(df) == 0:
+    rows = store.query_sql("SELECT MAX(version_id) AS max_id FROM taxonomy_versions")
+    max_ver = rows[0]["max_id"] if rows else None
+    if max_ver is None:
         return None
-    max_ver: int = df.select(pl.col("version_id").max()).item() or 0
-    return max_ver
+    return int(max_ver)
 
 
 def get_next_version(store: LensStore) -> int:

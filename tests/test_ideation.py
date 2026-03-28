@@ -114,7 +114,7 @@ def test_find_sparse_cells_includes_zero_evidence(ideation_store):
     from lens.monitor.ideation import find_sparse_cells
 
     gaps = find_sparse_cells(ideation_store, taxonomy_version=1, min_principles=1)
-    # The fixture has 3 params and only 1 matrix cell (1→2), so 5 other directed
+    # The fixture has 3 params and only 1 matrix cell (1->2), so 5 other directed
     # pairs have 0 principles and should all be reported.
     assert len(gaps) == 5
     assert all(g["count"] == 0 for g in gaps)
@@ -136,11 +136,11 @@ def test_run_ideation(ideation_store):
     assert report["gap_count"] >= 1
     assert len(report["gaps"]) >= 1
 
-    gaps_df = ideation_store.get_table("ideation_gaps").to_polars()
-    assert len(gaps_df) >= 1
+    gaps = ideation_store.query("ideation_gaps")
+    assert len(gaps) >= 1
 
-    reports_df = ideation_store.get_table("ideation_reports").to_polars()
-    assert len(reports_df) == 1
+    reports = ideation_store.query("ideation_reports")
+    assert len(reports) == 1
 
 
 @pytest.mark.asyncio

@@ -8,7 +8,6 @@ import json
 import logging
 from typing import Any
 
-import polars as pl
 from pydantic import ValidationError
 
 from lens.extract.prompts import build_extraction_prompt
@@ -19,7 +18,7 @@ from lens.store.models import (
     ArchitectureExtraction,
     TradeoffExtraction,
 )
-from lens.store.store import LensStore, escape_sql_string
+from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
 
@@ -129,24 +128,19 @@ async def extract_paper(
 
 def _delete_old_extractions(store: LensStore, paper_id: str) -> None:
     """Delete previous extractions for a paper (idempotent re-extraction)."""
-    safe_id = escape_sql_string(paper_id)
     for table_name in [
         "tradeoff_extractions",
         "architecture_extractions",
         "agentic_extractions",
     ]:
         with contextlib.suppress(OSError, ValueError):
-            store.get_table(table_name).delete(f"paper_id = '{safe_id}'")
+            store.delete(table_name, "paper_id = ?", (paper_id,))
 
 
 def _update_paper_status(store: LensStore, paper_id: str, status: str) -> None:
     """Update a paper's extraction_status."""
-    safe_id = escape_sql_string(paper_id)
     try:
-        store.get_table("papers").update(
-            where=f"paper_id = '{safe_id}'",
-            values={"extraction_status": status},
-        )
+        store.update("papers", "extraction_status = ?", "paper_id = ?", (status, paper_id))
     except Exception:
         logger.warning("Failed to update status for %s", paper_id)
 
@@ -162,14 +156,12 @@ async def extract_papers(
     Idempotent: re-extraction deletes old results before storing new ones.
     Updates extraction_status to 'complete' or 'incomplete'.
     """
-    papers_df = store.get_table("papers").to_polars()
-
     if paper_id:
-        papers_df = papers_df.filter(pl.col("paper_id") == paper_id)
+        papers = store.query("papers", "paper_id = ?", (paper_id,))
     else:
-        papers_df = papers_df.filter(pl.col("extraction_status").is_in(["pending", "incomplete"]))
+        papers = store.query("papers", "extraction_status IN ('pending', 'incomplete')")
 
-    if len(papers_df) == 0:
+    if not papers:
         logger.info("No papers to extract")
         return 0
 
@@ -188,10 +180,10 @@ async def extract_papers(
             return pid, result
 
     # Phase 1: Run all LLM calls concurrently
-    tasks = [extract_one(row) for row in papers_df.to_dicts()]
+    tasks = [extract_one(row) for row in papers]
     extraction_results = await asyncio.gather(*tasks)
 
-    # Phase 2: Write results to LanceDB sequentially (avoids concurrent writes)
+    # Phase 2: Write results to DB sequentially (avoids concurrent writes)
     success_count = 0
     for pid, result in extraction_results:
         _delete_old_extractions(store, pid)

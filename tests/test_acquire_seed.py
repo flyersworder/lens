@@ -128,5 +128,5 @@ async def test_acquire_seed_papers(tmp_path):
         store.init_tables()
         count = await acquire_seed(store, manifest_path=manifest)
         assert count >= 1
-        papers = store.get_table("papers").to_polars()
+        papers = store.query("papers")
         assert len(papers) >= 1

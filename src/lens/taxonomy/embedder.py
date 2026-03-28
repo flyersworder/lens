@@ -20,7 +20,7 @@ from lens.store.models import EMBEDDING_DIM
 logger = logging.getLogger(__name__)
 
 try:
-    import litellm
+    import litellm  # ty: ignore[unresolved-import]
 
     HAS_LITELLM = True
 except ImportError:

@@ -6,7 +6,6 @@ import logging
 from typing import Any
 
 import numpy as np
-import polars as pl
 
 from lens.llm.client import LLMClient
 from lens.store.models import EMBEDDING_DIM
@@ -27,11 +26,11 @@ __all__ = ["build_taxonomy", "_next_id"]
 
 def _next_id(store: LensStore, table_name: str) -> int:
     """Return max(id) + 1 from the table, or 1 if the table is empty."""
-    df = store.get_table(table_name).to_polars()
-    if len(df) == 0:
+    rows = store.query_sql(f"SELECT MAX(id) AS max_id FROM {table_name}")
+    max_id = rows[0]["max_id"] if rows else None
+    if max_id is None:
         return 1
-    max_id: int = df.select(pl.col("id").max()).item() or 0
-    return max_id + 1
+    return int(max_id) + 1
 
 
 def _collect_strings_from_table(
@@ -44,15 +43,19 @@ def _collect_strings_from_table(
 
     Filters to rows with confidence >= min_confidence.
     """
-    df = store.get_table(table_name).to_polars()
-    if len(df) == 0:
+    rows = store.query(table_name)
+    if not rows:
         return []
-    if "confidence" in df.columns:
-        df = df.filter(pl.col("confidence") >= min_confidence)
+    # Check if table has a confidence column
+    has_confidence = "confidence" in rows[0]
+    if has_confidence:
+        rows = [r for r in rows if r.get("confidence", 0) >= min_confidence]
     strings: list[str] = []
-    for col in columns:
-        if col in df.columns:
-            strings.extend(df[col].to_list())
+    for row in rows:
+        for col in columns:
+            val = row.get(col)
+            if val:
+                strings.append(val)
     return list(set(s for s in strings if s))
 
 
@@ -70,11 +73,11 @@ def _build_paper_id_map(
     store: LensStore, table_name: str, columns: list[str]
 ) -> dict[str, list[str]]:
     """Build a mapping from raw strings to paper_ids."""
-    df = store.get_table(table_name).to_polars()
-    if len(df) == 0:
+    rows = store.query(table_name)
+    if not rows:
         return {}
     result: dict[str, list[str]] = {}
-    for row in df.to_dicts():
+    for row in rows:
         pid = row.get("paper_id", "")
         for col in columns:
             s = row.get(col, "")
@@ -246,9 +249,8 @@ async def build_taxonomy(
             store.add_rows("architecture_slots", slot_entries)
 
         # Load architecture extractions for variant aggregation
-        arch_df = store.get_table("architecture_extractions").to_polars()
-        if "confidence" in arch_df.columns:
-            arch_df = arch_df.filter(pl.col("confidence") >= 0.5)
+        arch_rows = store.query("architecture_extractions")
+        arch_rows = [r for r in arch_rows if r.get("confidence", 0) >= 0.5]
 
         # Build paper_id map ONCE (not per-slot) to avoid repeated table scans
         var_paper_ids = _build_paper_id_map(store, "architecture_extractions", ["variant_name"])
@@ -263,8 +265,10 @@ async def build_taxonomy(
                 raw for raw, canon in slot_mapping.items() if canon == canonical
             ]
             # Collect variant_name strings from extractions matching this slot
-            matching_rows = arch_df.filter(pl.col("component_slot").is_in(raw_slots_for_canonical))
-            var_strings = list(set(s for s in matching_rows["variant_name"].to_list() if s))
+            matching_rows = [
+                r for r in arch_rows if r.get("component_slot") in raw_slots_for_canonical
+            ]
+            var_strings = list(set(s for r in matching_rows for s in [r["variant_name"]] if s))
 
             if not var_strings:
                 continue
@@ -275,16 +279,12 @@ async def build_taxonomy(
                 # Aggregate properties
                 props = [
                     r["key_properties"]
-                    for r in matching_rows.to_dicts()
+                    for r in matching_rows
                     if r.get("variant_name") == vname and r.get("key_properties")
                 ]
                 # Aggregate paper_ids
                 pids = list(
-                    set(
-                        r["paper_id"]
-                        for r in matching_rows.to_dicts()
-                        if r.get("variant_name") == vname
-                    )
+                    set(r["paper_id"] for r in matching_rows if r.get("variant_name") == vname)
                 )
                 emb = _embed([vname])
                 centroid = emb[0]
@@ -307,7 +307,7 @@ async def build_taxonomy(
                 )
                 next_var_id += 1
             else:
-                # Embed → cluster → label
+                # Embed -> cluster -> label
                 var_emb = _embed(var_strings)
                 var_labels = cluster_embeddings(
                     var_emb,
@@ -330,32 +330,25 @@ async def build_taxonomy(
                     # Aggregate properties from source extractions
                     raw_members = entry.get("raw_strings", [])
                     props = []
-                    for r in matching_rows.to_dicts():
+                    for r in matching_rows:
                         if r.get("variant_name") in raw_members and r.get("key_properties"):
                             props.append(r["key_properties"])
-                    # Properties are concatenated here; for LLM-summarized properties,
-                    # use labeler.summarize_variant_properties (omitted to reduce LLM cost)
                     entry["properties"] = "; ".join(set(props)) if props else ""
                     entry["replaces"] = []
                     del entry["raw_strings"]
-                    # ArchitectureVariant has no description field (uses properties instead)
                     del entry["description"]
                 variant_entries.extend(entries)
                 next_var_id += len(entries)
 
-        # Best-effort resolution of replaces links: match raw replaces strings
-        # to variant names. Unresolved references are dropped.
+        # Best-effort resolution of replaces links
         if variant_entries:
             variant_name_to_id = {e["name"].lower(): e["id"] for e in variant_entries}
-            arch_rows = arch_df.to_dicts()
             for entry in variant_entries:
                 raw_replaces: set[str] = set()
-                # Find source extractions that contributed to this variant
                 for r in arch_rows:
                     vn = (r.get("variant_name") or "").title()
                     if vn.lower() == entry["name"].lower() and r.get("replaces"):
                         raw_replaces.add(r["replaces"].lower())
-                # Resolve to IDs
                 resolved = [
                     variant_name_to_id[rr] for rr in raw_replaces if rr in variant_name_to_id
                 ]
@@ -378,11 +371,10 @@ async def build_taxonomy(
         ag_paper_ids = _build_paper_id_map(store, "agentic_extractions", ["pattern_name"])
 
         # Build structures context for label_clusters_with_category
-        ag_df = store.get_table("agentic_extractions").to_polars()
-        if "confidence" in ag_df.columns:
-            ag_df = ag_df.filter(pl.col("confidence") >= 0.5)
+        ag_rows = store.query("agentic_extractions")
+        ag_rows = [r for r in ag_rows if r.get("confidence", 0) >= 0.5]
+
         # Map cluster_id -> list of structure strings
-        ag_rows = ag_df.to_dicts()  # materialize once, reused below
         structures: dict[int, list[str]] = {}
         for cluster_id, members in ag_clusters.items():
             member_set = set(members)
@@ -406,7 +398,6 @@ async def build_taxonomy(
         for entry in entries:
             raw_members = entry.get("raw_strings", [])
             # Get category from label info
-            # Find matching cluster_id for this entry
             entry_category = "Uncategorized"
             for _cid, info in ag_label_info.items():
                 if info["name"] == entry["name"]:
@@ -431,7 +422,7 @@ async def build_taxonomy(
             store.add_rows("agentic_patterns", pattern_entries)
 
     # Record version
-    paper_count = len(store.get_table("papers").to_polars())
+    paper_count = len(store.query("papers"))
     record_version(
         store,
         version_id,

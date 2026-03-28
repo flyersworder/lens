@@ -131,13 +131,13 @@ async def test_build_taxonomy(tmp_path):
     version = await build_taxonomy(store, mock_client, min_cluster_size=2)
     assert version >= 1
 
-    params = store.get_table("parameters").to_polars()
+    params = store.query("parameters")
     assert len(params) >= 1
 
-    principles = store.get_table("principles").to_polars()
+    principles = store.query("principles")
     assert len(principles) >= 1
 
-    versions = store.get_table("taxonomy_versions").to_polars()
+    versions = store.query("taxonomy_versions")
     assert len(versions) >= 1
 
 
@@ -331,11 +331,9 @@ async def test_build_taxonomy_with_architecture(tmp_path):
     mock_client = AsyncMock()
     mock_client.complete.return_value = '{"name": "Test", "description": "test"}'
     version = await build_taxonomy(store, mock_client, min_cluster_size=2)
-    slots = store.get_table("architecture_slots").to_polars()
-    slots = slots.filter(slots["taxonomy_version"] == version)
+    slots = store.query("architecture_slots", "taxonomy_version = ?", (version,))
     assert len(slots) >= 1
-    variants = store.get_table("architecture_variants").to_polars()
-    variants = variants.filter(variants["taxonomy_version"] == version)
+    variants = store.query("architecture_variants", "taxonomy_version = ?", (version,))
     assert len(variants) >= 1
 
 
@@ -387,10 +385,9 @@ async def test_build_taxonomy_with_agentic(tmp_path):
         '{"name": "Test Pattern", "description": "test", "category": "Reasoning"}'
     )
     version = await build_taxonomy(store, mock_client, min_cluster_size=2)
-    patterns = store.get_table("agentic_patterns").to_polars()
-    patterns = patterns.filter(patterns["taxonomy_version"] == version)
+    patterns = store.query("agentic_patterns", "taxonomy_version = ?", (version,))
     assert len(patterns) >= 1
-    assert "category" in patterns.columns
+    assert "category" in patterns[0]
 
 
 @pytest.mark.asyncio

@@ -343,7 +343,7 @@ class LensStore:
             # Over-fetch 3x, JOIN with main table, apply filter, truncate.
             fetch_limit = limit * 3
             sql = (
-                f"SELECT t.* FROM {table} t "
+                f"SELECT t.*, v.distance AS _distance FROM {table} t "
                 f"INNER JOIN {table}_vec v ON t.{id_col} = v.{id_col} "
                 f"WHERE v.embedding MATCH ? AND v.k = ? AND {where} "
                 f"LIMIT ?"
@@ -351,7 +351,7 @@ class LensStore:
             all_params = (emb_bytes, fetch_limit) + (params or ()) + (limit,)
         else:
             sql = (
-                f"SELECT t.* FROM {table} t "
+                f"SELECT t.*, v.distance AS _distance FROM {table} t "
                 f"INNER JOIN {table}_vec v ON t.{id_col} = v.{id_col} "
                 f"WHERE v.embedding MATCH ? AND v.k = ?"
             )
