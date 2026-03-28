@@ -2,7 +2,6 @@
 
 import asyncio
 import os
-import shutil
 from pathlib import Path
 
 import typer
@@ -71,19 +70,19 @@ def _llm_kwargs(config: dict) -> dict:
 def init(
     force: bool = typer.Option(False, "--force", help="Re-initialise, removing existing data."),
 ) -> None:
-    """Initialise the LENS data directory and LanceDB store."""
+    """Initialise the LENS data directory and SQLite database."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
 
-    lance_dir = data_dir / "lance"
+    db_path = data_dir / "lens.db"
 
-    if force and lance_dir.exists():
-        shutil.rmtree(lance_dir)
+    if force and db_path.exists():
+        db_path.unlink()
 
     data_dir.mkdir(parents=True, exist_ok=True)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(db_path))
     store.init_tables()
-    rprint(f"[green]Initialized LENS data directory at {data_dir}[/green]")
+    rprint(f"[green]Initialized LENS database at {db_path}[/green]")
 
 
 @app.command()
@@ -94,7 +93,7 @@ def analyze(
     """Analyze a tradeoff and suggest resolution techniques."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.llm.client import LLMClient
@@ -157,7 +156,7 @@ def explain(
     """Explain an LLM concept with adaptive depth."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.llm.client import LLMClient
@@ -203,7 +202,7 @@ def extract(
     data_dir = _get_data_dir(config)
     llm_model = model or config["llm"]["extract_model"]
 
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.extract.extractor import extract_papers
@@ -222,7 +221,7 @@ def monitor(
     """Run one monitoring cycle: acquire -> extract -> ideate."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     if trending:
@@ -278,7 +277,7 @@ def seed() -> None:
     """Ingest curated seed papers from the manifest."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
     count = asyncio.run(_acquire_seed_async(store))
     rprint(f"[green]Acquired {count} seed papers[/green]")
@@ -302,7 +301,7 @@ def arxiv(
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
     categories = config["acquire"]["arxiv_categories"]
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     papers = asyncio.run(_fetch_arxiv_async(query, categories, since, max_results))
@@ -343,7 +342,7 @@ def file(
 
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     paper = ingest_pdf(path)
@@ -371,7 +370,7 @@ def openalex(
 
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     papers = store.query("papers")
@@ -414,7 +413,7 @@ def taxonomy() -> None:
     """Build taxonomy by clustering extraction strings."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.llm.client import LLMClient
@@ -445,7 +444,7 @@ def build_matrix_cmd() -> None:
     """Build contradiction matrix from taxonomy."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.knowledge.matrix import build_matrix
@@ -464,7 +463,7 @@ def build_all() -> None:
     """Full rebuild: taxonomy + matrix."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.knowledge.matrix import build_matrix
@@ -502,7 +501,7 @@ def parameters() -> None:
     """List all taxonomy parameters."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.serve.explorer import list_parameters
@@ -526,7 +525,7 @@ def principles() -> None:
     """List all taxonomy principles."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.serve.explorer import list_principles
@@ -553,7 +552,7 @@ def matrix(
     """Explore the parameter-principle matrix."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.serve.explorer import get_matrix_cell, list_matrix_overview
@@ -596,7 +595,7 @@ def architecture(
     """Explore architecture slots."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.serve.explorer import list_architecture_slots, list_architecture_variants
@@ -633,7 +632,7 @@ def agents(
     """Explore agentic patterns."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.serve.explorer import list_agentic_patterns
@@ -671,7 +670,7 @@ def evolution(
     """Explore evolution of an architecture slot over time."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.serve.explorer import get_architecture_timeline
@@ -702,7 +701,7 @@ def paper(
     """Inspect a specific paper."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
-    store = LensStore(str(data_dir))
+    store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.serve.explorer import get_paper

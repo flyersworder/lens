@@ -124,7 +124,7 @@ async def test_acquire_seed_papers(tmp_path):
         patch("lens.acquire.semantic_scholar.httpx.AsyncClient", return_value=mock_client),
         patch("lens.acquire.openalex.httpx.AsyncClient", return_value=mock_client),
     ):
-        store = LensStore(str(tmp_path / "test.lance"))
+        store = LensStore(str(tmp_path / "test.db"))
         store.init_tables()
         count = await acquire_seed(store, manifest_path=manifest)
         assert count >= 1

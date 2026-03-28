@@ -9,7 +9,7 @@ def test_build_matrix(tmp_path):
     from lens.knowledge.matrix import build_matrix
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     store.add_rows(
@@ -94,7 +94,7 @@ def test_build_matrix_filters_low_confidence(tmp_path):
     from lens.knowledge.matrix import build_matrix
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     store.add_rows(
@@ -159,7 +159,7 @@ def test_build_matrix_empty(tmp_path):
     from lens.knowledge.matrix import build_matrix
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
     build_matrix(store, taxonomy_version=1)
     cells = store.query("matrix_cells")
@@ -170,7 +170,7 @@ def test_get_ranked_matrix(tmp_path):
     from lens.knowledge.matrix import build_matrix, get_ranked_matrix
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     store.add_rows(

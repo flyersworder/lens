@@ -10,7 +10,7 @@ def populated_store(tmp_path):
     """Store with taxonomy and matrix data for exploration."""
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     store.add_rows(
@@ -159,7 +159,7 @@ def test_list_matrix_overview(populated_store):
 def arch_store(tmp_path):
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
     store.add_rows(
         "architecture_slots",

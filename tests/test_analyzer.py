@@ -12,7 +12,7 @@ from lens.store.models import EMBEDDING_DIM
 def analysis_store(tmp_path):
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     store.add_rows(

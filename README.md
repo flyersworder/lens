@@ -163,7 +163,7 @@ uv run pytest tests/test_store.py -v   # run specific test file
 uv run pytest -m "not integration"     # skip live API tests
 ```
 
-Tests use `tmp_path` fixtures for isolated LanceDB instances. No mocking of LanceDB — real embedded instances are used in all tests.
+Tests use `tmp_path` fixtures for isolated SQLite instances. No mocking — real embedded database instances are used in all tests.
 
 ## License
 

@@ -10,7 +10,7 @@ async def test_run_monitor_cycle(tmp_path):
     from lens.monitor.watcher import run_monitor_cycle
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     store.add_rows(
@@ -71,7 +71,7 @@ async def test_run_monitor_cycle_no_taxonomy(tmp_path):
     from lens.monitor.watcher import run_monitor_cycle
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     mock_llm = AsyncMock()

@@ -192,7 +192,7 @@ async def test_extract_papers_batch(tmp_path):
     mock_client = AsyncMock()
     mock_client.complete.return_value = fixture
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     store.add_papers(
@@ -235,7 +235,7 @@ async def test_extract_papers_skips_completed(tmp_path):
 
     mock_client = AsyncMock()
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     store.add_papers(

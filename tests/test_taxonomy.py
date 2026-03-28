@@ -107,7 +107,7 @@ async def test_build_taxonomy(tmp_path):
     from lens.store.store import LensStore
     from lens.taxonomy import build_taxonomy
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
     # Add tradeoff extractions
@@ -145,7 +145,7 @@ def test_get_next_version(tmp_path):
     from lens.store.store import LensStore
     from lens.taxonomy.versioning import get_next_version
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
     assert get_next_version(store) == 1
 
@@ -154,7 +154,7 @@ def test_next_id_empty_table(tmp_path):
     from lens.store.store import LensStore
     from lens.taxonomy import _next_id
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
     assert _next_id(store, "parameters") == 1
 
@@ -163,7 +163,7 @@ def test_next_id_with_existing_data(tmp_path):
     from lens.store.store import LensStore
     from lens.taxonomy import _next_id
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
     store.add_rows(
         "parameters",
@@ -282,7 +282,7 @@ async def test_build_taxonomy_with_architecture(tmp_path):
     from lens.store.store import LensStore
     from lens.taxonomy import build_taxonomy
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
     store.add_rows(
         "tradeoff_extractions",
@@ -342,7 +342,7 @@ async def test_build_taxonomy_with_agentic(tmp_path):
     from lens.store.store import LensStore
     from lens.taxonomy import build_taxonomy
 
-    store = LensStore(str(tmp_path / "test.lance"))
+    store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
     store.add_rows(
         "tradeoff_extractions",
