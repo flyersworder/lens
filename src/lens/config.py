@@ -17,6 +17,8 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "default_model": "openrouter/anthropic/claude-sonnet-4-6",
         "extract_model": "openrouter/google/gemini-2.5-flash",
         "label_model": "openrouter/anthropic/claude-sonnet-4-6",
+        "api_base": "",
+        "api_key": "",
     },
     "acquire": {
         "arxiv_categories": ["cs.CL", "cs.LG", "cs.AI"],

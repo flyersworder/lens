@@ -61,7 +61,7 @@ Catalogs recurring patterns for building and orchestrating LLM-based agents.
 | Language | Python 3.12+ | Ecosystem, LLM libraries |
 | Package manager | uv | Fast, reliable (same as triz-ai) |
 | CLI framework | Typer | Clean CLI + library dual use |
-| LLM abstraction | litellm | Multi-provider, model-agnostic |
+| LLM abstraction | openai SDK (core) + litellm (optional) | Gateway-compatible; litellm adds multi-provider routing |
 | Database | LanceDB | Embedded, native vector search, Arrow-native, multimodal-ready, Pydantic schemas |
 | Analytics | Polars | Zero-copy from Arrow/Lance, fast groupby/join/agg for matrix construction |
 | Clustering | HDBSCAN + KMeans fallback | Density-based clustering with degenerate-case handling |
@@ -553,6 +553,8 @@ llm:
   default_model: openrouter/anthropic/claude-sonnet-4-6
   extract_model: openrouter/google/gemini-2.5-flash
   label_model: openrouter/anthropic/claude-sonnet-4-6
+  api_base: ""                    # OpenAI-compatible endpoint (gateway mode)
+  api_key: ""                     # API key for the endpoint
 
 acquire:
   arxiv_categories: ["cs.CL", "cs.LG", "cs.AI"]

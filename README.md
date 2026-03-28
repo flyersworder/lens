@@ -97,18 +97,38 @@ uv run lens config show
 uv run lens config set llm.default_model openrouter/anthropic/claude-sonnet-4-6
 ```
 
+## LLM Backend
+
+LENS needs an LLM for extraction, taxonomy labeling, and analysis. Two options:
+
+**Gateway mode (recommended for production)** — Point to any OpenAI-compatible endpoint (litellm gateway, vLLM, Ollama). No litellm dependency needed. Keeps API keys out of application pods.
+
+```yaml
+# ~/.lens/config.yaml
+llm:
+  api_base: "http://litellm-gateway:4000/v1"
+  api_key: "your-gateway-key"
+  default_model: "gpt-4"
+```
+
+**Direct mode** — Install litellm for multi-provider routing (OpenRouter, OpenAI, Anthropic, etc.):
+
+```bash
+uv add lens[litellm]
+```
+
 ## Embeddings
 
-LENS supports two embedding providers, configurable via `~/.lens/config.yaml`:
+Two embedding providers, configurable via `~/.lens/config.yaml`:
 
 **Local (default)** — sentence-transformers (SPECTER2 / MiniLM fallback). Free, works offline, but requires ~400MB model download on first use.
 
-**Cloud** — Any embedding API via litellm (OpenAI, Cohere, Voyage, etc.). Fast, scalable, no local model needed.
+**Cloud** — Any embedding API via litellm or OpenAI-compatible endpoint. Fast, scalable, no local model needed.
 
 ```bash
 # Switch to cloud embeddings
 uv run lens config set taxonomy.embedding_provider cloud
-uv run lens config set taxonomy.embedding_model openai/text-embedding-3-small
+uv run lens config set taxonomy.embedding_model text-embedding-3-small
 ```
 
 ## Architecture
@@ -116,7 +136,8 @@ uv run lens config set taxonomy.embedding_model openai/text-embedding-3-small
 - **Python 3.12+** with `uv` package manager
 - **LanceDB** — embedded vector database with Pydantic schema definitions
 - **Polars** — zero-copy Arrow-native analytics for matrix construction
-- **litellm** — multi-provider LLM and embedding abstraction (async)
+- **openai SDK** — LLM and embedding client (works with any OpenAI-compatible endpoint)
+- **litellm** (optional) — multi-provider routing for direct API access
 - **HDBSCAN + KMeans** — density-based clustering with fallback
 - **sentence-transformers** or **cloud embeddings** — configurable provider
 - **Typer** — CLI framework

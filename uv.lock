@@ -781,13 +781,13 @@ wheels = [
 
 [[package]]
 name = "lens"
-version = "0.1.0"
+version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "hdbscan" },
     { name = "httpx" },
     { name = "lancedb" },
-    { name = "litellm" },
+    { name = "openai" },
     { name = "pandas" },
     { name = "polars" },
     { name = "pydantic" },
@@ -796,6 +796,11 @@ dependencies = [
     { name = "sentence-transformers" },
     { name = "tenacity" },
     { name = "typer" },
+]
+
+[package.optional-dependencies]
+litellm = [
+    { name = "litellm" },
 ]
 
 [package.dev-dependencies]
@@ -812,7 +817,8 @@ requires-dist = [
     { name = "hdbscan", specifier = ">=0.8.41" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "lancedb", specifier = ">=0.17" },
-    { name = "litellm", specifier = ">=1.40" },
+    { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40" },
+    { name = "openai", specifier = ">=1.0" },
     { name = "pandas", specifier = ">=3.0.1" },
     { name = "polars", specifier = ">=1.0" },
     { name = "pydantic", specifier = ">=2.0" },
@@ -822,6 +828,7 @@ requires-dist = [
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "typer", specifier = ">=0.12" },
 ]
+provides-extras = ["litellm"]
 
 [package.metadata.requires-dev]
 dev = [

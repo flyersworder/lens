@@ -2,7 +2,7 @@
 
 Supports two providers:
 - ``local``: sentence-transformers (SPECTER2 / MiniLM fallback). Free, offline.
-- ``cloud``: litellm embedding API (OpenAI, Cohere, Voyage, etc. via OpenRouter). Fast, scalable.
+- ``cloud``: litellm or openai SDK embedding API. Fast, scalable.
 
 Provider is selected via config ``taxonomy.embedding_provider``.
 """
@@ -18,6 +18,13 @@ import numpy as np
 from lens.store.models import EMBEDDING_DIM
 
 logger = logging.getLogger(__name__)
+
+try:
+    import litellm
+
+    HAS_LITELLM = True
+except ImportError:
+    HAS_LITELLM = False
 
 # ---------------------------------------------------------------------------
 # Local provider (sentence-transformers)
@@ -66,7 +73,7 @@ def _embed_local(strings: list[str], model_name: str | None = None) -> np.ndarra
 
 
 # ---------------------------------------------------------------------------
-# Cloud provider (litellm)
+# Cloud provider (litellm with openai SDK fallback)
 # ---------------------------------------------------------------------------
 
 
@@ -74,24 +81,50 @@ async def _embed_cloud_async(
     strings: list[str],
     model: str = "openai/text-embedding-3-small",
     dimensions: int | None = None,
+    api_base: str | None = None,
+    api_key: str | None = None,
 ) -> np.ndarray:
-    """Embed strings using a cloud embedding API via litellm."""
-    import litellm
+    """Embed strings using a cloud embedding API.
 
-    # Build kwargs — include dimensions if the model supports it
-    kwargs: dict[str, Any] = {}
-    if dimensions is not None:
-        kwargs["dimensions"] = dimensions
-
-    # litellm supports batching up to ~2048 inputs per call for most providers
+    Uses litellm if installed, otherwise falls back to the openai SDK
+    (requires api_base pointing to an OpenAI-compatible endpoint).
+    """
     batch_size = 512
     all_embeddings: list[list[float]] = []
 
-    for i in range(0, len(strings), batch_size):
-        batch = strings[i : i + batch_size]
-        response = await litellm.aembedding(model=model, input=batch, **kwargs)
-        for item in response.data:
-            all_embeddings.append(item["embedding"])
+    if HAS_LITELLM:
+        kwargs: dict[str, Any] = {}
+        if dimensions is not None:
+            kwargs["dimensions"] = dimensions
+        if api_base:
+            kwargs["api_base"] = api_base
+        if api_key:
+            kwargs["api_key"] = api_key
+
+        for i in range(0, len(strings), batch_size):
+            batch = strings[i : i + batch_size]
+            response = await litellm.aembedding(model=model, input=batch, **kwargs)
+            for item in response.data:
+                all_embeddings.append(item["embedding"])
+    else:
+        import openai
+
+        client_kwargs: dict[str, Any] = {}
+        if api_base:
+            client_kwargs["base_url"] = api_base
+        if api_key:
+            client_kwargs["api_key"] = api_key
+        client = openai.AsyncOpenAI(**client_kwargs)
+
+        oai_kwargs: dict[str, Any] = {}
+        if dimensions is not None:
+            oai_kwargs["dimensions"] = dimensions
+
+        for i in range(0, len(strings), batch_size):
+            batch = strings[i : i + batch_size]
+            response = await client.embeddings.create(model=model, input=batch, **oai_kwargs)
+            for item in response.data:
+                all_embeddings.append(item.embedding)
 
     return np.array(all_embeddings)
 
@@ -100,9 +133,19 @@ def _embed_cloud(
     strings: list[str],
     model: str = "openai/text-embedding-3-small",
     dimensions: int | None = None,
+    api_base: str | None = None,
+    api_key: str | None = None,
 ) -> np.ndarray:
     """Synchronous wrapper for cloud embedding."""
-    return asyncio.run(_embed_cloud_async(strings, model=model, dimensions=dimensions))
+    return asyncio.run(
+        _embed_cloud_async(
+            strings,
+            model=model,
+            dimensions=dimensions,
+            api_base=api_base,
+            api_key=api_key,
+        )
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -115,17 +158,19 @@ def embed_strings(
     model_name: str | None = None,
     provider: str = "local",
     dimensions: int | None = None,
+    api_base: str | None = None,
+    api_key: str | None = None,
 ) -> np.ndarray:
     """Embed a list of strings into dense vectors.
 
     Args:
         strings: Texts to embed.
         model_name: Model name. For local: sentence-transformers model name.
-            For cloud: litellm model string (e.g., ``"openai/text-embedding-3-small"``).
-        provider: ``"local"`` for sentence-transformers, ``"cloud"`` for litellm.
-        dimensions: Target dimensions for cloud models that support it (e.g., OpenAI).
-            If ``None``, uses the model's default. Embeddings are always padded/truncated
-            to ``EMBEDDING_DIM`` after retrieval.
+            For cloud: litellm model string or OpenAI model name.
+        provider: ``"local"`` for sentence-transformers, ``"cloud"`` for cloud API.
+        dimensions: Target dimensions for cloud models that support it.
+        api_base: Optional API base URL for cloud provider (OpenAI-compatible endpoint).
+        api_key: Optional API key for cloud provider.
 
     Returns:
         numpy array of shape ``(len(strings), embedding_dim)``.
@@ -136,7 +181,11 @@ def embed_strings(
 
     if provider == "cloud":
         raw = _embed_cloud(
-            strings, model=model_name or "openai/text-embedding-3-small", dimensions=dimensions
+            strings,
+            model=model_name or "openai/text-embedding-3-small",
+            dimensions=dimensions,
+            api_base=api_base,
+            api_key=api_key,
         )
     else:
         raw = _embed_local(strings, model_name=model_name)

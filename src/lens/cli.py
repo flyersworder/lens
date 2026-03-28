@@ -52,6 +52,17 @@ def _get_config_path() -> Path | None:
     return None
 
 
+def _llm_kwargs(config: dict) -> dict:
+    """Extract api_base and api_key from config for LLMClient."""
+    llm_cfg = config.get("llm", {})
+    kwargs: dict = {}
+    if llm_cfg.get("api_base"):
+        kwargs["api_base"] = llm_cfg["api_base"]
+    if llm_cfg.get("api_key"):
+        kwargs["api_key"] = llm_cfg["api_key"]
+    return kwargs
+
+
 # ---------------------------------------------------------------------------
 # Top-level commands
 # ---------------------------------------------------------------------------
@@ -95,7 +106,7 @@ def analyze(
         rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
 
-    client = LLMClient(model=config["llm"]["default_model"])
+    client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
 
     if type_ == "architecture":
         from lens.serve.analyzer import analyze_architecture
@@ -167,7 +178,7 @@ def explain(
     elif evolution:
         focus = "evolution"
 
-    client = LLMClient(model=config["llm"]["default_model"])
+    client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
     result = asyncio.run(do_explain(concept, store, client, taxonomy_version=version, focus=focus))
 
     if result is None:
@@ -199,7 +210,7 @@ def extract(
     from lens.extract.extractor import extract_papers
     from lens.llm.client import LLMClient
 
-    client = LLMClient(model=llm_model)
+    client = LLMClient(model=llm_model, **_llm_kwargs(config))
     count = asyncio.run(extract_papers(store, client, concurrency=concurrency, paper_id=paper_id))
     rprint(f"[green]Extracted {count} papers[/green]")
 
@@ -240,7 +251,7 @@ def monitor(
     from lens.llm.client import LLMClient
     from lens.monitor.watcher import run_monitor_cycle
 
-    client = LLMClient(model=config["llm"]["extract_model"])
+    client = LLMClient(model=config["llm"]["extract_model"], **_llm_kwargs(config))
     cats = config["acquire"]["arxiv_categories"]
     monitor_cfg = config["monitor"]
     result = asyncio.run(
@@ -409,7 +420,7 @@ def taxonomy() -> None:
     from lens.taxonomy import build_taxonomy
 
     llm_model = config["llm"]["label_model"]
-    client = LLMClient(model=llm_model)
+    client = LLMClient(model=llm_model, **_llm_kwargs(config))
     tax_config = config["taxonomy"]
     version = asyncio.run(
         build_taxonomy(
@@ -459,7 +470,7 @@ def build_all() -> None:
     from lens.taxonomy import build_taxonomy
 
     llm_model = config["llm"]["label_model"]
-    client = LLMClient(model=llm_model)
+    client = LLMClient(model=llm_model, **_llm_kwargs(config))
     tax_config = config["taxonomy"]
     version = asyncio.run(
         build_taxonomy(

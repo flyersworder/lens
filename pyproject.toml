@@ -1,6 +1,6 @@
 [project]
 name = "lens"
-version = "0.1.0"
+version = "0.2.0"
 description = "LLM Engineering Navigation System — discovers recurring solution patterns from LLM research papers"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -10,7 +10,7 @@ dependencies = [
     "pydantic>=2.0",
     "typer>=0.12",
     "pyyaml>=6.0",
-    "litellm>=1.40",
+    "openai>=1.0",
     "rich>=13.0",
     "pandas>=3.0.1",
     "httpx>=0.28.1",
@@ -18,6 +18,9 @@ dependencies = [
     "sentence-transformers>=5.3.0",
     "hdbscan>=0.8.41",
 ]
+
+[project.optional-dependencies]
+litellm = ["litellm>=1.40"]
 
 [project.scripts]
 lens = "lens.cli:app"
