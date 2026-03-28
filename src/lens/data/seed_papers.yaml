@@ -1,5 +1,7 @@
 # Curated seed papers for LENS bootstrap.
+# ~50 landmark papers covering major LLM subfields.
 papers:
+  # --- Foundational architectures (5) ---
   - arxiv_id: "1706.03762"
     title: "Attention Is All You Need"
     category: foundational
@@ -9,24 +11,156 @@ papers:
   - arxiv_id: "2302.13971"
     title: "LLaMA: Open and Efficient Foundation Language Models"
     category: foundational
+  - arxiv_id: "2307.09288"
+    title: "Llama 2: Open Foundation and Fine-Tuned Chat Models"
+    category: foundational
+  - arxiv_id: "2407.21783"
+    title: "The Llama 3 Herd of Models"
+    category: foundational
+
+  # --- Attention & positional encoding innovations (8) ---
   - arxiv_id: "2305.13245"
     title: "GQA: Training Generalized Multi-Query Transformer Models"
     category: architecture
   - arxiv_id: "2104.09864"
     title: "RoFormer: Enhanced Transformer with Rotary Position Embedding"
     category: architecture
+  - arxiv_id: "2205.14135"
+    title: "FlashAttention: Fast and Memory-Efficient Exact Attention"
+    category: architecture
+  - arxiv_id: "2307.08691"
+    title: "FlashAttention-2: Faster Attention with Better Parallelism"
+    category: architecture
+  - arxiv_id: "2309.17453"
+    title: "Mistral 7B"
+    category: architecture
+  - arxiv_id: "2401.04088"
+    title: "DeepSeek-MoE: Towards Ultimate Expert Specialization"
+    category: architecture
+  - arxiv_id: "2501.12948"
+    title: "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs"
+    category: architecture
+  - arxiv_id: "2502.13923"
+    title: "Native Sparse Attention: Hardware-Aligned and Natively Trainable Sparse Attention"
+    category: architecture
+
+  # --- Training & alignment (8) ---
   - arxiv_id: "2203.02155"
     title: "Training language models to follow instructions with human feedback (InstructGPT)"
     category: training
   - arxiv_id: "2305.18290"
     title: "Direct Preference Optimization (DPO)"
     category: training
+  - arxiv_id: "2402.03300"
+    title: "KTO: Model Alignment as Prospect Theoretic Optimization"
+    category: training
+  - arxiv_id: "2402.13228"
+    title: "GRPO: Group Relative Policy Optimization"
+    category: training
+  - arxiv_id: "2001.08361"
+    title: "Scaling Laws for Neural Language Models"
+    category: training
+  - arxiv_id: "2203.15556"
+    title: "Training Compute-Optimal Large Language Models (Chinchilla)"
+    category: training
+  - arxiv_id: "2204.05862"
+    title: "Training a Helpful and Harmless Assistant with RLHF (Anthropic)"
+    category: training
+  - arxiv_id: "2212.08073"
+    title: "Constitutional AI: Harmlessness from AI Feedback"
+    category: training
+
+  # --- Efficiency & deployment (8) ---
   - arxiv_id: "2106.09685"
     title: "LoRA: Low-Rank Adaptation of Large Language Models"
     category: efficiency
+  - arxiv_id: "2305.14314"
+    title: "QLoRA: Efficient Finetuning of Quantized Language Models"
+    category: efficiency
+  - arxiv_id: "2210.17323"
+    title: "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers"
+    category: efficiency
+  - arxiv_id: "2306.00978"
+    title: "AWQ: Activation-aware Weight Quantization for LLM Compression"
+    category: efficiency
+  - arxiv_id: "2211.17192"
+    title: "Speculative Decoding"
+    category: efficiency
+  - arxiv_id: "2309.06180"
+    title: "Efficient Memory Management for Large Language Model Serving with PagedAttention (vLLM)"
+    category: efficiency
+  - arxiv_id: "2402.07616"
+    title: "Distilling Step-by-Step: Outperforming Larger LMs with Less Training Data"
+    category: efficiency
+  - arxiv_id: "2403.03507"
+    title: "GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection"
+    category: efficiency
+
+  # --- Reasoning & capabilities (8) ---
   - arxiv_id: "2201.11903"
     title: "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models"
     category: capabilities
+  - arxiv_id: "2203.11171"
+    title: "Self-Consistency Improves Chain of Thought Reasoning"
+    category: capabilities
+  - arxiv_id: "2305.10601"
+    title: "Tree of Thoughts: Deliberate Problem Solving with LLMs"
+    category: capabilities
+  - arxiv_id: "2005.11401"
+    title: "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks"
+    category: capabilities
+  - arxiv_id: "2312.10997"
+    title: "Retrieval-Augmented Generation for Large Language Models: A Survey"
+    category: capabilities
+  - arxiv_id: "2303.08774"
+    title: "GPT-4 Technical Report"
+    category: capabilities
+  - arxiv_id: "2307.03172"
+    title: "Lost in the Middle: How Language Models Use Long Contexts"
+    category: capabilities
+  - arxiv_id: "2304.15004"
+    title: "Are Emergent Abilities of Large Language Models a Mirage?"
+    category: capabilities
+
+  # --- Agentic systems (8) ---
   - arxiv_id: "2210.03629"
     title: "ReAct: Synergizing Reasoning and Acting in Language Models"
     category: agentic
+  - arxiv_id: "2303.11366"
+    title: "Reflexion: Language Agents with Verbal Reinforcement Learning"
+    category: agentic
+  - arxiv_id: "2308.00352"
+    title: "MetaGPT: Meta Programming for A Multi-Agent Collaborative Framework"
+    category: agentic
+  - arxiv_id: "2308.08155"
+    title: "AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation"
+    category: agentic
+  - arxiv_id: "2310.04406"
+    title: "Language Agent Tree Search Unifies Reasoning, Acting, and Planning"
+    category: agentic
+  - arxiv_id: "2305.16291"
+    title: "Voyager: An Open-Ended Embodied Agent with Large Language Models"
+    category: agentic
+  - arxiv_id: "2305.17126"
+    title: "Large Language Models as Tool Makers"
+    category: agentic
+  - arxiv_id: "2402.05120"
+    title: "More Agents Is All You Need"
+    category: agentic
+
+  # --- Safety & evaluation (5) ---
+  - arxiv_id: "2209.07858"
+    title: "Red Teaming Language Models to Reduce Harms"
+    category: safety
+  - arxiv_id: "2310.01405"
+    title: "Representation Engineering: A Top-Down Approach to AI Safety"
+    category: safety
+  - arxiv_id: "2306.05685"
+    title: "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena"
+    category: safety
+  - arxiv_id: "2311.12022"
+    title: "MMLU-Pro: A More Robust and Challenging Multi-Task Language Understanding Benchmark"
+    category: safety
+  - arxiv_id: "2406.04127"
+    title: "The Prompt Report: A Systematic Survey of Prompting Techniques"
+    category: safety
