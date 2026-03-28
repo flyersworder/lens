@@ -2,10 +2,60 @@
 
 Design spec for a system that automatically discovers recurring solution patterns, contradiction resolutions, architecture innovations, and agentic design patterns from LLM research papers (arxiv), inspired by TRIZ methodology.
 
-**Status**: Implemented (Contradiction Matrix + Architecture Catalog + Agentic Catalog + Monitor/Ideation)
-**Date**: 2026-03-21
+**Status**: Partially Implemented (v0.3.0)
+**Date**: 2026-03-21 (original), 2026-03-28 (last updated)
 
-> **Note**: This design spec was written when LENS used LanceDB + Polars. The implementation has since migrated to **SQLite + sqlite-vec + plain Python**. The tech stack table below is current; references to LanceDB, Polars, Arrow, and LanceModel elsewhere in this document are historical. See CLAUDE.md and README.md for the current architecture.
+> **Migration note**: This design spec was written when LENS used LanceDB + Polars. The implementation has since migrated to **SQLite + sqlite-vec + plain Python**. The tech stack table below is current; references to LanceDB, Polars, Arrow, and LanceModel elsewhere in this document are historical. See CLAUDE.md and README.md for the current architecture.
+
+---
+
+## Implementation Status
+
+### Implemented (v0.3.0)
+
+| Feature | Status | Notes |
+|---------|--------|-------|
+| **Contradiction Matrix** | Done | Full pipeline: acquire → extract → taxonomy → matrix → serve |
+| **Architecture Catalog** | Done | Property-based comparison (changed from evolution trees in original design) |
+| **Agentic Pattern Catalog** | Done | Emergent categories (changed from fixed enum in original design) |
+| **Monitor / Ideation** | Done | Sparse cells + cross-pollination gap detection, optional LLM enrichment |
+| **CLI** | Done | All commands wired and functional |
+| **Acquire pipeline** | Done | arxiv, OpenAlex, Semantic Scholar, seed papers, PDF ingestion |
+| **Extract pipeline** | Done | LLM extraction of tradeoffs, architecture, agentic patterns |
+| **Taxonomy pipeline** | Done | HDBSCAN clustering, LLM labeling, auto-increment versioning |
+| **Cloud embeddings** | Done | Local (sentence-transformers) or cloud (openai/litellm) |
+| **Gateway mode** | Done | openai SDK core, litellm optional, configurable api_base |
+| **SQLite + sqlite-vec** | Done | Replaced LanceDB + Polars. Cosine distance, parameterized queries |
+
+### Partially Implemented
+
+| Feature | Status | What's missing |
+|---------|--------|---------------|
+| **Seed papers** | 10 of ~200 | Manifest has 10 landmark papers. Need ~190 more across all subfields for a useful taxonomy. |
+| **Full-text extraction** | Title + abstract only | Design spec mentions PyMuPDF/Marker for PDF full text. Not implemented — LLM reads title + abstract. `lens acquire file` stores the PDF path but extraction doesn't read the file. |
+| **Scheduled monitoring** | Single cycle only | `lens monitor` runs one cycle. The `--interval` flag is accepted but unused. No cron/scheduler integration. |
+
+### Not Implemented
+
+| Feature | Design spec section | Why deferred |
+|---------|-------------------|--------------|
+| **Stalled slot detection** | Monitoring §5.3 | Requires architecture catalog (now done) + date threshold comparison. Can be added as a new ideation gap type. |
+| **Trend detection (BERTrend)** | Monitoring §4 | Requires streaming topic modeling on extraction timestamps. Significant new dependency and complexity. |
+| **Trend-gap intersections** | Monitoring §5.4 | Depends on trend detection. |
+| **Multimodal / figure extraction** | Phase 2 | Design spec assumed LanceDB blob storage. Revised plan: file-based storage + VLM descriptions + text embeddings. No database changes needed. |
+| **REST API** | Not in spec | CLI-only for now. Would enable programmatic access and web UI. |
+| **Taxonomy drift detection** | Monitoring §3 | Auto-detect when new extractions don't match existing taxonomy centroids. |
+
+### Design Changes from Original Spec
+
+| Original design | What was actually built | Why |
+|----------------|------------------------|-----|
+| LanceDB + Polars + Pandas | SQLite + sqlite-vec + plain Python | Lighter deps, battle-tested, parameterized queries, no type checker issues |
+| Architecture evolution trees | Property-based comparison with optional replaces links | Optimized for engineering decision support ("what should I use?") over research history ("what replaced X?") |
+| Fixed agentic categories (single-agent/multi-agent/orchestration) | Emergent categories via LLM | More scalable, discovers categories like Reasoning, Reflection, Tool Integration from data |
+| Offset-based IDs (version * 100000 + offset) | Auto-increment from MAX(id) + 1 | No collision risk, scales without coordination |
+| litellm as core dependency | openai SDK core, litellm optional | Supply chain risk mitigation, lighter installs, gateway-compatible |
+| Multimodal via LanceDB blobs | File-based storage + VLM descriptions (planned) | Simpler, no special DB support needed, preserves originals for re-analysis |
 
 ---
 
