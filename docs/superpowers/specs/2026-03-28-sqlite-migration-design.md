@@ -111,7 +111,7 @@ CREATE TABLE parameters (
 
 CREATE VIRTUAL TABLE parameters_vec USING vec0(
     id INTEGER PRIMARY KEY,
-    embedding FLOAT[768]            -- EMBEDDING_DIM
+    embedding FLOAT[768] distance_metric=cosine  -- EMBEDDING_DIM, cosine for embeddings
 );
 ```
 
@@ -146,7 +146,7 @@ CREATE TABLE IF NOT EXISTS papers (
 
 CREATE VIRTUAL TABLE IF NOT EXISTS papers_vec USING vec0(
     paper_id TEXT PRIMARY KEY,
-    embedding FLOAT[{EMBEDDING_DIM}]
+    embedding FLOAT[{EMBEDDING_DIM}] distance_metric=cosine
 );
 ```
 
@@ -505,11 +505,16 @@ The `ExplanationResult` model is already a `BaseModel` — no change needed.
 **Mitigated:**
 - Volume of changes (every file) — each change is mechanical, not creative
 - JSON serialization correctness — test fixtures exercise all JSON fields
-- Vector search parity — sqlite-vec uses L2 distance like LanceDB default
+- Vector search: use `distance_metric=cosine` on all vec0 tables (better for embedding similarity than L2)
 
 **Low risk:**
 - datetime handling — SQLite stores as TEXT (ISO format), same as current behavior
 - Concurrent writes — SQLite WAL mode is safer than LanceDB embedded mode
+
+**Gotchas discovered during testing:**
+- `INSERT OR REPLACE` does not work on vec0 virtual tables — must `DELETE` then `INSERT` to update embeddings
+- sqlite-vec is pre-v1 (currently v0.1.7) — pin version to avoid breaking changes
+- All vec0 tables use `distance_metric=cosine` for consistency with embedding model expectations
 
 ## Out of scope
 
