@@ -62,11 +62,10 @@ Catalogs recurring patterns for building and orchestrating LLM-based agents.
 | Package manager | uv | Fast, reliable (same as triz-ai) |
 | CLI framework | Typer | Clean CLI + library dual use |
 | LLM abstraction | openai SDK (core) + litellm (optional) | Gateway-compatible; litellm adds multi-provider routing |
-| Database | LanceDB | Embedded, native vector search, Arrow-native, multimodal-ready, Pydantic schemas |
-| Analytics | Polars | Zero-copy from Arrow/Lance, fast groupby/join/agg for matrix construction |
+| Database | SQLite + sqlite-vec | Embedded, vector search (cosine), battle-tested, parameterized queries |
 | Clustering | HDBSCAN + KMeans fallback | Density-based clustering with degenerate-case handling |
-| Embeddings | sentence-transformers (local) or litellm (cloud) | Configurable: local for offline/free, cloud for scalability |
-| Data validation | Pydantic | Structured LLM output validation + LanceDB schema definition |
+| Embeddings | sentence-transformers (local) or openai/litellm (cloud) | Configurable: local for offline/free, cloud for scalability |
+| Data validation | Pydantic | Structured LLM output validation |
 | Paper sources | arxiv API, OpenAlex, Semantic Scholar | Complementary metadata and embeddings |
 
 ### Data Model

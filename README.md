@@ -127,15 +127,14 @@ Two embedding providers, configurable via `~/.lens/config.yaml`:
 
 ```bash
 # Switch to cloud embeddings
-uv run lens config set taxonomy.embedding_provider cloud
-uv run lens config set taxonomy.embedding_model text-embedding-3-small
+uv run lens config set embeddings.provider cloud
+uv run lens config set embeddings.model text-embedding-3-small
 ```
 
 ## Architecture
 
 - **Python 3.12+** with `uv` package manager
-- **LanceDB** — embedded vector database with Pydantic schema definitions
-- **Polars** — zero-copy Arrow-native analytics for matrix construction
+- **SQLite + sqlite-vec** — embedded database with vector search (cosine distance)
 - **openai SDK** — LLM and embedding client (works with any OpenAI-compatible endpoint)
 - **litellm** (optional) — multi-provider routing for direct API access
 - **HDBSCAN + KMeans** — density-based clustering with fallback

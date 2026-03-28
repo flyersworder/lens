@@ -8,18 +8,20 @@
 - **Run single test**: `uv run pytest tests/test_file.py::test_name -v`
 
 ## Architecture
-- Single LanceDB database at `~/.lens/data/lens.lance`
-- All models in `src/lens/store/models.py` as Pydantic `LanceModel` classes
+- Single SQLite database at `~/.lens/data/lens.db` with sqlite-vec for vector search
+- All models in `src/lens/store/models.py` as Pydantic `BaseModel` classes (validation only)
+- Table schemas defined as SQL in `src/lens/store/store.py`
 - Embedding dimension controlled by `EMBEDDING_DIM` constant in `models.py`
 - LLM: openai SDK (core) + litellm (optional, `uv sync --extra litellm`). Supports gateway mode via `llm.api_base`
-- Embeddings: local (sentence-transformers) or cloud (openai/litellm), via `taxonomy.embedding_provider` config
-- Analytics via Polars (zero-copy from Arrow)
+- Embeddings: local (sentence-transformers) or cloud (openai/litellm), via `embeddings.provider` config
 - CLI via Typer in `src/lens/cli.py`
 - Config at `~/.lens/config.yaml`
 
 ## Conventions
 - Public API is synchronous; async internals wrapped with `asyncio.run()`
-- All LanceDB tables use Pydantic LanceModel schemas
+- Use `store.query(table, where, params)` for reads, `store.query_sql()` for complex SQL
+- Use parameterized queries (`?` placeholders) — never string-interpolate values into SQL
 - Use `EMBEDDING_DIM` from `lens.store.models` instead of hardcoding vector dimensions
-- Tests use tmp_path fixtures for isolated LanceDB instances
-- No mocking of LanceDB — use real embedded instances in tests
+- JSON list fields (authors, paper_ids, etc.) are auto-serialized/deserialized by the store
+- Tests use tmp_path fixtures for isolated SQLite instances
+- No mocking of SQLite — use real embedded instances in tests
