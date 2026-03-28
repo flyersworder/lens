@@ -8,7 +8,7 @@ any OpenAI-compatible endpoint such as a litellm gateway, vLLM, Ollama).
 from __future__ import annotations
 
 import logging
-from typing import Any
+from typing import Any, cast
 
 import openai
 
@@ -92,10 +92,13 @@ class LLMClient:
             )
             content = response.choices[0].message.content
         else:
+            from openai.types.chat import ChatCompletionMessageParam
+
             client = self._get_openai_client()
-            response = await client.chat.completions.create(  # type: ignore[no-matching-overload]
+            typed_messages = cast(list[ChatCompletionMessageParam], messages)
+            response = await client.chat.completions.create(
                 model=self.model,
-                messages=messages,  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+                messages=typed_messages,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
             )

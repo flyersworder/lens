@@ -55,14 +55,14 @@ class _TableWrapper:
     LanceDB table object.
     """
 
-    def __init__(self, table: object) -> None:
+    def __init__(self, table: lancedb.table.LanceTable) -> None:
         self._table = table
 
     def to_polars(self) -> pl.DataFrame:
-        result = self._table.to_polars()  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
+        result = self._table.to_polars()
         if hasattr(result, "collect"):
-            return result.collect()
-        return result
+            result = result.collect()
+        return result  # ty:ignore[invalid-return-type]  # LanceDB returns DataFrame|LazyFrame
 
     def __getattr__(self, name: str) -> Any:
         return getattr(self._table, name)
@@ -77,12 +77,12 @@ class _DatabaseWrapper:
     All other attribute accesses are forwarded transparently.
     """
 
-    def __init__(self, db: object) -> None:
+    def __init__(self, db: lancedb.db.DBConnection) -> None:
         self._db = db
 
     def table_names(self, **kwargs: object) -> list[str]:
         """Return all table names, bypassing the default page-size limit."""
-        result = self._db.list_tables(limit=10_000)  # type: ignore[attr-defined]  # ty:ignore[unresolved-attribute]
+        result = self._db.list_tables(limit=10_000)
         return result.tables if hasattr(result, "tables") else list(result)
 
     def __getattr__(self, name: str) -> Any:

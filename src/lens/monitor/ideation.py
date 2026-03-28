@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 import numpy as np
+import polars as pl
 
 from lens.store.store import LensStore
 
@@ -184,11 +185,13 @@ def run_ideation(
 
     # Determine next report_id
     reports_df = store.get_table("ideation_reports").to_polars()
-    report_id = int(reports_df["id"].max()) + 1 if len(reports_df) > 0 else 1  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    report_id = (
+        (reports_df.select(pl.col("id").max()).item() or 0) + 1 if len(reports_df) > 0 else 1
+    )
 
     # Determine next gap_id
     gaps_df = store.get_table("ideation_gaps").to_polars()
-    next_gap_id = int(gaps_df["id"].max()) + 1 if len(gaps_df) > 0 else 1  # type: ignore[arg-type]  # ty:ignore[invalid-argument-type]
+    next_gap_id = (gaps_df.select(pl.col("id").max()).item() or 0) + 1 if len(gaps_df) > 0 else 1
 
     all_gaps: list[dict[str, Any]] = []
 
