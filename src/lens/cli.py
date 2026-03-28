@@ -726,7 +726,7 @@ def ideas(
 ) -> None:
     """Browse ideation gaps and research opportunities."""
     config = load_config(_get_config_path())
-    store = LensStore(str(_get_data_dir(config)))
+    store = LensStore(str(_get_data_dir(config) / "lens.db"))
     store.init_tables()
 
     from lens.taxonomy.versioning import get_latest_version

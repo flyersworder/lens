@@ -147,7 +147,7 @@ async def test_analyze_no_match(analysis_store):
 def arch_agentic_store(tmp_path):
     from lens.store.store import LensStore
 
-    store = LensStore(str(tmp_path / "test2.lance"))
+    store = LensStore(str(tmp_path / "test2.db"))
     store.init_tables()
 
     store.add_rows(

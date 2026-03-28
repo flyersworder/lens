@@ -5,6 +5,8 @@ Design spec for a system that automatically discovers recurring solution pattern
 **Status**: Implemented (Contradiction Matrix + Architecture Catalog + Agentic Catalog + Monitor/Ideation)
 **Date**: 2026-03-21
 
+> **Note**: This design spec was written when LENS used LanceDB + Polars. The implementation has since migrated to **SQLite + sqlite-vec + plain Python**. The tech stack table below is current; references to LanceDB, Polars, Arrow, and LanceModel elsewhere in this document are historical. See CLAUDE.md and README.md for the current architecture.
+
 ---
 
 ## Motivation
