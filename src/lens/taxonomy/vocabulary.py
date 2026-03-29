@@ -8,6 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from lens.store.store import LensStore
+from lens.taxonomy.embedder import embed_strings
 
 logger = logging.getLogger(__name__)
 
@@ -222,6 +223,44 @@ def process_new_concepts(store: LensStore) -> dict[str, int]:
 
     store.conn.commit()
     return {"new_entries": len(new_rows), "updated_entries": updated}
+
+
+def build_tradeoff_taxonomy(
+    store: LensStore,
+    embedding_provider: str = "local",
+    embedding_model: str | None = None,
+    embedding_api_base: str | None = None,
+    embedding_api_key: str | None = None,
+) -> dict[str, int]:
+    """Build the tradeoff taxonomy: process new concepts, update stats, embed vocabulary.
+
+    Returns dict with keys: new_entries, updated_entries.
+    """
+    stats = process_new_concepts(store)
+
+    # Embed all vocabulary entries that lack embeddings
+    vocab_rows = store.query("vocabulary")
+    to_embed = [r for r in vocab_rows if not r.get("embedding")]
+
+    if to_embed:
+        texts = [f"{r['name']}: {r['description']}" for r in to_embed]
+        embeddings = embed_strings(
+            texts,
+            provider=embedding_provider,
+            model_name=embedding_model,
+            api_base=embedding_api_base,
+            api_key=embedding_api_key,
+        )
+        for row, emb in zip(to_embed, embeddings, strict=True):
+            store.upsert_embedding("vocabulary", row["id"], emb.tolist())
+
+    logger.info(
+        "Tradeoff taxonomy: %d new, %d updated, %d embedded",
+        stats["new_entries"],
+        stats["updated_entries"],
+        len(to_embed),
+    )
+    return stats
 
 
 def load_seed_vocabulary(store: LensStore) -> int:

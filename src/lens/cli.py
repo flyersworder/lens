@@ -450,7 +450,9 @@ def taxonomy() -> None:
     store.init_tables()
 
     from lens.llm.client import LLMClient
-    from lens.taxonomy import build_taxonomy
+    from lens.taxonomy import (
+        build_taxonomy,  # ty: ignore[unresolved-import]  # TODO: Task 9 will replace
+    )
 
     llm_model = config["llm"]["label_model"]
     client = LLMClient(model=llm_model, **_llm_kwargs(config))
@@ -503,7 +505,9 @@ def build_all() -> None:
 
     from lens.knowledge.matrix import build_matrix
     from lens.llm.client import LLMClient
-    from lens.taxonomy import build_taxonomy
+    from lens.taxonomy import (
+        build_taxonomy,  # ty: ignore[unresolved-import]  # TODO: Task 9 will replace
+    )
 
     llm_model = config["llm"]["label_model"]
     client = LLMClient(model=llm_model, **_llm_kwargs(config))

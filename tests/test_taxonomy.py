@@ -102,43 +102,37 @@ async def test_label_clusters_handles_malformed():
     assert labels[0]["name"] is not None
 
 
-@pytest.mark.asyncio
-async def test_build_taxonomy(tmp_path):
+def test_build_tradeoff_taxonomy(tmp_path):
     from lens.store.store import LensStore
-    from lens.taxonomy import build_taxonomy
+    from lens.taxonomy import build_tradeoff_taxonomy
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
 
     store = LensStore(str(tmp_path / "test.db"))
-    store.init_tables()
+    load_seed_vocabulary(store)
 
-    # Add tradeoff extractions
-    tradeoffs = [
-        {
-            "paper_id": f"paper_{i}",
-            "improves": "inference speed" if i % 2 == 0 else "model accuracy",
-            "worsens": "model size" if i % 2 == 0 else "training cost",
-            "technique": "quantization" if i % 3 == 0 else "distillation",
-            "context": "test",
-            "confidence": 0.8,
-            "evidence_quote": "test quote",
-        }
-        for i in range(20)
-    ]
-    store.add_rows("tradeoff_extractions", tradeoffs)
+    store.add_rows(
+        "tradeoff_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "improves": "Inference Latency",
+                "worsens": "Model Accuracy",
+                "technique": "NEW: Pruning",
+                "context": "test",
+                "confidence": 0.85,
+                "evidence_quote": "quote",
+                "new_concept_description": "Removing unnecessary model weights",
+            },
+        ],
+    )
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = '{"name": "Test Concept", "description": "A test concept"}'
+    stats = build_tradeoff_taxonomy(store)
+    assert stats["new_entries"] == 1
 
-    version = await build_taxonomy(store, mock_client, min_cluster_size=2)
-    assert version >= 1
-
-    params = store.query("parameters")
-    assert len(params) >= 1
-
-    principles = store.query("principles")
-    assert len(principles) >= 1
-
-    versions = store.query("taxonomy_versions")
-    assert len(versions) >= 1
+    rows = store.query("vocabulary", "id = ?", ("pruning",))
+    assert len(rows) == 1
+    assert rows[0]["source"] == "extracted"
+    assert rows[0]["paper_count"] == 1
 
 
 def test_get_next_version(tmp_path):
@@ -278,27 +272,12 @@ async def test_label_clusters_with_category():
 
 
 @pytest.mark.asyncio
-async def test_build_taxonomy_with_architecture(tmp_path):
+async def test_build_architecture_taxonomy(tmp_path):
     from lens.store.store import LensStore
-    from lens.taxonomy import build_taxonomy
+    from lens.taxonomy import build_architecture_taxonomy
 
     store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
-    store.add_rows(
-        "tradeoff_extractions",
-        [
-            {
-                "paper_id": "p1",
-                "improves": "speed",
-                "worsens": "size",
-                "technique": "quantization",
-                "context": "t",
-                "confidence": 0.8,
-                "evidence_quote": "q",
-            },
-        ]
-        * 5,
-    )
     store.add_rows(
         "architecture_extractions",
         [
@@ -330,35 +309,24 @@ async def test_build_taxonomy_with_architecture(tmp_path):
     )
     mock_client = AsyncMock()
     mock_client.complete.return_value = '{"name": "Test", "description": "test"}'
-    version = await build_taxonomy(store, mock_client, min_cluster_size=2)
-    slots = store.query("architecture_slots", "taxonomy_version = ?", (version,))
+    result = await build_architecture_taxonomy(
+        store, mock_client, min_cluster_size=2, version_id=1
+    )
+    assert "slot_entries" in result
+    assert "variant_entries" in result
+    slots = store.query("architecture_slots")
     assert len(slots) >= 1
-    variants = store.query("architecture_variants", "taxonomy_version = ?", (version,))
+    variants = store.query("architecture_variants")
     assert len(variants) >= 1
 
 
 @pytest.mark.asyncio
-async def test_build_taxonomy_with_agentic(tmp_path):
+async def test_build_agentic_taxonomy(tmp_path):
     from lens.store.store import LensStore
-    from lens.taxonomy import build_taxonomy
+    from lens.taxonomy import build_agentic_taxonomy
 
     store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
-    store.add_rows(
-        "tradeoff_extractions",
-        [
-            {
-                "paper_id": "p1",
-                "improves": "speed",
-                "worsens": "size",
-                "technique": "quantization",
-                "context": "t",
-                "confidence": 0.8,
-                "evidence_quote": "q",
-            },
-        ]
-        * 5,
-    )
     store.add_rows(
         "agentic_extractions",
         [
@@ -384,8 +352,11 @@ async def test_build_taxonomy_with_agentic(tmp_path):
     mock_client.complete.return_value = (
         '{"name": "Test Pattern", "description": "test", "category": "Reasoning"}'
     )
-    version = await build_taxonomy(store, mock_client, min_cluster_size=2)
-    patterns = store.query("agentic_patterns", "taxonomy_version = ?", (version,))
+    pattern_entries = await build_agentic_taxonomy(
+        store, mock_client, min_cluster_size=2, version_id=1
+    )
+    assert len(pattern_entries) >= 1
+    patterns = store.query("agentic_patterns")
     assert len(patterns) >= 1
     assert "category" in patterns[0]
 
