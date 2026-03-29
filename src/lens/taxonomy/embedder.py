@@ -9,7 +9,6 @@ Provider is selected via config ``taxonomy.embedding_provider``.
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -136,16 +135,34 @@ def _embed_cloud(
     api_base: str | None = None,
     api_key: str | None = None,
 ) -> np.ndarray:
-    """Synchronous wrapper for cloud embedding."""
-    return asyncio.run(
-        _embed_cloud_async(
-            strings,
-            model=model,
-            dimensions=dimensions,
-            api_base=api_base,
-            api_key=api_key,
-        )
-    )
+    """Synchronous cloud embedding using the openai sync client.
+
+    Uses the synchronous OpenAI client to avoid event loop conflicts
+    when called from within async code (e.g., build_taxonomy).
+    """
+    import openai
+
+    client_kwargs: dict[str, Any] = {}
+    if api_base:
+        client_kwargs["base_url"] = api_base
+    if api_key:
+        client_kwargs["api_key"] = api_key
+    client = openai.OpenAI(**client_kwargs)
+
+    oai_kwargs: dict[str, Any] = {}
+    if dimensions is not None:
+        oai_kwargs["dimensions"] = dimensions
+
+    batch_size = 512
+    all_embeddings: list[list[float]] = []
+
+    for i in range(0, len(strings), batch_size):
+        batch = strings[i : i + batch_size]
+        response = client.embeddings.create(model=model, input=batch, **oai_kwargs)
+        for item in response.data:
+            all_embeddings.append(item.embedding)
+
+    return np.array(all_embeddings)
 
 
 # ---------------------------------------------------------------------------

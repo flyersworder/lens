@@ -148,6 +148,8 @@ async def build_taxonomy(
     target_agentic_patterns: int = 15,
     embedding_provider: str = "local",
     embedding_model: str | None = None,
+    embedding_api_base: str | None = None,
+    embedding_api_key: str | None = None,
 ) -> int:
     """Build taxonomy from current extractions. Full rebuild.
 
@@ -155,7 +157,13 @@ async def build_taxonomy(
     """
 
     def _embed(strings: list[str]) -> np.ndarray:
-        return embed_strings(strings, provider=embedding_provider, model_name=embedding_model)
+        return embed_strings(
+            strings,
+            provider=embedding_provider,
+            model_name=embedding_model,
+            api_base=embedding_api_base,
+            api_key=embedding_api_key,
+        )
 
     version_id = get_next_version(store)
     logger.info("Building taxonomy version %d", version_id)

@@ -435,6 +435,8 @@ def taxonomy() -> None:
             target_agentic_patterns=tax_config["target_agentic_patterns"],
             embedding_provider=emb_config.get("provider", "local"),
             embedding_model=emb_config.get("model"),
+            embedding_api_base=emb_config.get("api_base"),
+            embedding_api_key=emb_config.get("api_key"),
         )
     )
     rprint(f"[green]Built taxonomy version {version}[/green]")
@@ -486,6 +488,8 @@ def build_all() -> None:
             target_agentic_patterns=tax_config["target_agentic_patterns"],
             embedding_provider=emb_config.get("provider", "local"),
             embedding_model=emb_config.get("model"),
+            embedding_api_base=emb_config.get("api_base"),
+            embedding_api_key=emb_config.get("api_key"),
         )
     )
     build_matrix(store, taxonomy_version=version)
