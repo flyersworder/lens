@@ -5,6 +5,8 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 
+from lens.store.models import EMBEDDING_DIM
+
 
 @pytest.fixture
 def explain_store(tmp_path):
@@ -14,31 +16,34 @@ def explain_store(tmp_path):
     store.init_tables()
 
     store.add_rows(
-        "parameters",
+        "vocabulary",
         [
             {
-                "id": 1,
+                "id": "inference-latency",
                 "name": "Inference Latency",
+                "kind": "parameter",
                 "description": "Speed of inference",
-                "raw_strings": ["latency"],
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [1.0] + [0.0] * 767,
+                "source": "seed",
+                "first_seen": "2026-01-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+                "embedding": [1.0] + [0.0] * (EMBEDDING_DIM - 1),
             },
         ],
     )
     store.add_rows(
-        "principles",
+        "vocabulary",
         [
             {
-                "id": 50001,
+                "id": "quantization",
                 "name": "Quantization",
+                "kind": "principle",
                 "description": "Reduce precision",
-                "sub_techniques": ["int8", "int4"],
-                "raw_strings": ["quantization"],
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.0, 1.0] + [0.0] * 766,
+                "source": "seed",
+                "first_seen": "2026-01-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+                "embedding": [0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 2),
             },
         ],
     )
@@ -46,9 +51,9 @@ def explain_store(tmp_path):
         "matrix_cells",
         [
             {
-                "improving_param_id": 1,
-                "worsening_param_id": 2,
-                "principle_id": 50001,
+                "improving_param_id": "inference-latency",
+                "worsening_param_id": "model-accuracy",
+                "principle_id": "quantization",
                 "count": 3,
                 "avg_confidence": 0.85,
                 "paper_ids": ["p1"],
@@ -78,11 +83,10 @@ def test_resolve_concept(explain_store):
     from lens.serve.explainer import resolve_concept
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
-        mock_embed.return_value = np.array([[1.0] + [0.0] * 767])
+        mock_embed.return_value = np.array([[1.0] + [0.0] * (EMBEDDING_DIM - 1)])
         result = resolve_concept(
             query="inference latency",
             store=explain_store,
-            taxonomy_version=1,
         )
     assert result is not None
     assert result["resolved_name"] == "Inference Latency"
@@ -93,11 +97,10 @@ def test_resolve_concept_principle(explain_store):
     from lens.serve.explainer import resolve_concept
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
-        mock_embed.return_value = np.array([[0.0, 1.0] + [0.0] * 766])
+        mock_embed.return_value = np.array([[0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 2)])
         result = resolve_concept(
             query="quantization",
             store=explain_store,
-            taxonomy_version=1,
         )
     assert result is not None
     assert result["resolved_name"] == "Quantization"
@@ -109,9 +112,8 @@ def test_graph_walk(explain_store):
 
     walk = graph_walk(
         resolved_type="parameter",
-        resolved_id=1,
+        resolved_id="inference-latency",
         store=explain_store,
-        taxonomy_version=1,
     )
     assert "identity" in walk
     assert walk["identity"]["name"] == "Inference Latency"
@@ -128,12 +130,11 @@ async def test_explain_full(explain_store):
     )
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
-        mock_embed.return_value = np.array([[1.0] + [0.0] * 767])
+        mock_embed.return_value = np.array([[1.0] + [0.0] * (EMBEDDING_DIM - 1)])
         result = await explain(
             query="inference latency",
             store=explain_store,
             llm_client=mock_client,
-            taxonomy_version=1,
         )
     assert result is not None
     assert result.resolved_name == "Inference Latency"

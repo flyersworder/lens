@@ -15,7 +15,6 @@ logger = logging.getLogger(__name__)
 
 def find_sparse_cells(
     store: LensStore,
-    taxonomy_version: int,
     min_principles: int = 2,
 ) -> list[dict[str, Any]]:
     """Find parameter pairs that have fewer than *min_principles* resolving them.
@@ -23,13 +22,13 @@ def find_sparse_cells(
     Returns a list of dicts with keys:
         improving_param_id, worsening_param_id, existing_principle_ids, count
     """
-    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
+    params = store.query("vocabulary", "kind = ?", ("parameter",))
     param_ids = [p["id"] for p in params]
 
-    cells = store.query("matrix_cells", "taxonomy_version = ?", (taxonomy_version,))
+    cells = store.query("matrix_cells")
 
     # Build a mapping: (improving, worsening) -> list of principle_ids
-    pair_principles: dict[tuple[int, int], list[int]] = {}
+    pair_principles: dict[tuple[str, str], list[str]] = {}
     for cell in cells:
         key = (cell["improving_param_id"], cell["worsening_param_id"])
         pair_principles.setdefault(key, []).append(cell["principle_id"])
@@ -55,7 +54,6 @@ def find_sparse_cells(
 
 def find_cross_pollination(
     store: LensStore,
-    taxonomy_version: int,
     similarity_threshold: float = 0.75,
 ) -> list[dict[str, Any]]:
     """Find principles that could transfer to similar parameter pairs.
@@ -64,7 +62,7 @@ def find_cross_pollination(
     resolve (A', B), then (A', B, P) is a cross-pollination candidate.
     Checks BOTH improving and worsening roles.
     """
-    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
+    params = store.query("vocabulary", "kind = ?", ("parameter",))
     if not params:
         return []
 
@@ -72,21 +70,20 @@ def find_cross_pollination(
 
     # Need to get embeddings from the vec table via raw SQL
     # Since query() doesn't return embeddings (they're in the vec table), we need
-    # to get them from the parameters_vec table
+    # to get them from the vocabulary_vec table
     import struct
 
     vec_rows = store.conn.execute(
-        "SELECT pv.id, pv.embedding FROM parameters_vec pv "
-        "INNER JOIN parameters p ON pv.id = p.id "
-        "WHERE p.taxonomy_version = ?",
-        (taxonomy_version,),
+        "SELECT vv.id, vv.embedding FROM vocabulary_vec vv "
+        "INNER JOIN vocabulary v ON vv.id = v.id "
+        "WHERE v.kind = 'parameter'",
     ).fetchall()
 
     if not vec_rows:
         return []
 
     # Build id -> embedding mapping
-    id_to_emb: dict[int, list[float]] = {}
+    id_to_emb: dict[str, list[float]] = {}
     from lens.store.models import EMBEDDING_DIM
 
     for row in vec_rows:
@@ -108,10 +105,10 @@ def find_cross_pollination(
     normalized = embeddings / norms
     similarity = normalized @ normalized.T
 
-    cells = store.query("matrix_cells", "taxonomy_version = ?", (taxonomy_version,))
+    cells = store.query("matrix_cells")
 
     # Build set of existing (improving, worsening, principle) triples
-    existing_triples: set[tuple[int, int, int]] = set()
+    existing_triples: set[tuple[str, str, str]] = set()
     for cell in cells:
         existing_triples.add(
             (
@@ -125,7 +122,7 @@ def find_cross_pollination(
     id_to_idx = {pid: i for i, pid in enumerate(valid_param_ids)}
 
     candidates: list[dict[str, Any]] = []
-    seen: set[tuple[int, int, int]] = set()
+    seen: set[tuple[str, str, str]] = set()
 
     for cell in cells:
         imp_id = cell["improving_param_id"]
@@ -182,7 +179,6 @@ def find_cross_pollination(
 
 def run_ideation(
     store: LensStore,
-    taxonomy_version: int,
     min_principles: int = 2,
     similarity_threshold: float = 0.75,
 ) -> dict[str, Any]:
@@ -192,18 +188,13 @@ def run_ideation(
     """
     now = datetime.now(UTC)
 
-    sparse = find_sparse_cells(store, taxonomy_version, min_principles=min_principles)
-    cross = find_cross_pollination(
-        store, taxonomy_version, similarity_threshold=similarity_threshold
-    )
+    sparse = find_sparse_cells(store, min_principles=min_principles)
+    cross = find_cross_pollination(store, similarity_threshold=similarity_threshold)
 
-    # Fetch param names for descriptions
-    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
-    param_names = {row["id"]: row["name"] for row in params}
-
-    # Fetch principle names for descriptions
-    principles = store.query("principles", "taxonomy_version = ?", (taxonomy_version,))
-    principle_names = {row["id"]: row["name"] for row in principles}
+    # Fetch param and principle names for descriptions
+    vocab = store.query("vocabulary")
+    param_names = {v["id"]: v["name"] for v in vocab if v["kind"] == "parameter"}
+    principle_names = {v["id"]: v["name"] for v in vocab if v["kind"] == "principle"}
 
     # Determine next report_id
     report_rows = store.query_sql("SELECT MAX(id) AS max_id FROM ideation_reports")
@@ -238,7 +229,7 @@ def run_ideation(
             "score": 1.0 - (gap["count"] / min_principles),
             "llm_hypothesis": None,
             "created_at": now,
-            "taxonomy_version": taxonomy_version,
+            "taxonomy_version": 0,
         }
         all_gaps.append(gap_record)
         next_gap_id += 1
@@ -266,7 +257,7 @@ def run_ideation(
             "score": cand["similarity"],
             "llm_hypothesis": None,
             "created_at": now,
-            "taxonomy_version": taxonomy_version,
+            "taxonomy_version": 0,
         }
         all_gaps.append(gap_record)
         next_gap_id += 1
@@ -279,15 +270,14 @@ def run_ideation(
     report_record = {
         "id": report_id,
         "created_at": now,
-        "taxonomy_version": taxonomy_version,
+        "taxonomy_version": 0,
         "paper_batch_size": 0,
         "gap_count": len(all_gaps),
     }
     store.add_rows("ideation_reports", [report_record])
 
     logger.info(
-        "Ideation v%d: %d gaps (%d sparse, %d cross-pollination)",
-        taxonomy_version,
+        "Ideation: %d gaps (%d sparse, %d cross-pollination)",
         len(all_gaps),
         sum(1 for g in all_gaps if g["gap_type"] == "sparse_cell"),
         sum(1 for g in all_gaps if g["gap_type"] == "cross_pollination"),
@@ -303,14 +293,12 @@ def run_ideation(
 async def run_ideation_with_llm(
     store: LensStore,
     llm_client: Any,
-    taxonomy_version: int,
     min_principles: int = 2,
     similarity_threshold: float = 0.75,
 ) -> dict[str, Any]:
     """Run ideation then enrich gaps with LLM-generated hypotheses."""
     report = run_ideation(
         store,
-        taxonomy_version,
         min_principles=min_principles,
         similarity_threshold=similarity_threshold,
     )

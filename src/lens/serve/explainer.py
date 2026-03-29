@@ -16,47 +16,37 @@ logger = logging.getLogger(__name__)
 def resolve_concept(
     query: str,
     store: LensStore,
-    taxonomy_version: int,
     top_k: int = 3,
     embedding_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
-    """Resolve a query to the best matching taxonomy entry."""
-    taxonomy_version = int(taxonomy_version)  # defense-in-depth for SQL filters
+    """Resolve a query to the best matching vocabulary entry."""
     query_embedding = embed_strings([query], **(embedding_kwargs or {}))[0].tolist()
 
     best_match: dict[str, Any] | None = None
     best_distance = float("inf")
     alternatives: list[dict[str, Any]] = []
 
-    for table_name, entry_type in [
-        ("parameters", "parameter"),
-        ("principles", "principle"),
-    ]:
-        try:
-            results = store.vector_search(
-                table_name,
-                query_embedding,
-                limit=top_k,
-                where="taxonomy_version = ?",
-                params=(taxonomy_version,),
-            )
-            if not results:
-                continue
-            for row in results:
-                dist = row.get("_distance", float("inf"))
-                entry: dict[str, Any] = {
-                    "resolved_type": entry_type,
-                    "resolved_id": int(row["id"]),
-                    "resolved_name": row["name"],
-                    "distance": float(dist),
-                }
-                alternatives.append(entry)
-                if dist < best_distance:
-                    best_distance = dist
-                    best_match = entry
-        except Exception:
-            logger.warning("Vector search failed on %s", table_name)
-            continue
+    try:
+        results = store.vector_search(
+            "vocabulary",
+            query_embedding,
+            limit=top_k * 2,  # search both kinds at once
+        )
+        for row in results:
+            dist = row.get("_distance", float("inf"))
+            entry_type = row.get("kind", "unknown")
+            entry = {
+                "resolved_type": entry_type,
+                "resolved_id": row["id"],
+                "resolved_name": row["name"],
+                "distance": float(dist),
+            }
+            alternatives.append(entry)
+            if dist < best_distance:
+                best_distance = dist
+                best_match = entry
+    except Exception:
+        logger.warning("Vector search failed on vocabulary")
 
     if best_match is None:
         return None
@@ -68,38 +58,38 @@ def resolve_concept(
 
 def graph_walk(
     resolved_type: str,
-    resolved_id: int,
+    resolved_id: str,
     store: LensStore,
-    taxonomy_version: int,
 ) -> dict[str, Any]:
     """Walk the knowledge graph outward from a resolved concept."""
     walk: dict[str, Any] = {}
 
-    # Pre-load taxonomy tables (filtered by version)
-    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
-    princs = store.query("principles", "taxonomy_version = ?", (taxonomy_version,))
+    # Pre-load vocabulary table
+    vocab = store.query("vocabulary")
+    param_entries = [v for v in vocab if v["kind"] == "parameter"]
+    princ_entries = [v for v in vocab if v["kind"] == "principle"]
 
     # Identity
     if resolved_type == "parameter":
-        entry = [p for p in params if p["id"] == resolved_id]
+        entry = [p for p in param_entries if p["id"] == resolved_id]
         if entry:
             row = entry[0]
             walk["identity"] = {
                 "name": row["name"],
                 "description": row["description"],
                 "type": "parameter",
-                "paper_ids": row.get("paper_ids", []),
+                "paper_ids": [],
             }
     elif resolved_type == "principle":
-        entry = [p for p in princs if p["id"] == resolved_id]
+        entry = [p for p in princ_entries if p["id"] == resolved_id]
         if entry:
             row = entry[0]
             walk["identity"] = {
                 "name": row["name"],
                 "description": row["description"],
                 "type": "principle",
-                "sub_techniques": row.get("sub_techniques", []),
-                "paper_ids": row.get("paper_ids", []),
+                "sub_techniques": [],
+                "paper_ids": [],
             }
 
     if "identity" not in walk:
@@ -110,7 +100,7 @@ def graph_walk(
         }
 
     # Tradeoffs from matrix cells
-    cells = store.query("matrix_cells", "taxonomy_version = ?", (taxonomy_version,))
+    cells = store.query("matrix_cells")
 
     tradeoff_cells: list[dict[str, Any]] = []
     if resolved_type == "parameter":
@@ -124,31 +114,24 @@ def graph_walk(
     walk["tradeoffs"] = tradeoff_cells
 
     # Connections from shared matrix cells
-    connected_ids: set[int] = set()
+    connected_ids: set[str] = set()
     for cell in tradeoff_cells:
         connected_ids.add(cell["improving_param_id"])
         connected_ids.add(cell["worsening_param_id"])
         connected_ids.add(cell["principle_id"])
     connected_ids.discard(resolved_id)
 
-    # Build lookup maps
-    param_id_to_name = {p["id"]: p["name"] for p in params}
-    princ_id_to_name = {p["id"]: p["name"] for p in princs}
+    # Build lookup map for all vocabulary entries
+    id_to_name = {v["id"]: v["name"] for v in vocab}
 
     connections: list[str] = []
-    for pid in connected_ids:
-        if pid in param_id_to_name:
-            connections.append(param_id_to_name[pid])
-        elif pid in princ_id_to_name:
-            connections.append(princ_id_to_name[pid])
+    for vid in connected_ids:
+        if vid in id_to_name:
+            connections.append(id_to_name[vid])
     walk["connections"] = connections
 
     # ID-to-name map for synthesis prompt
-    id_map: list[dict[str, Any]] = []
-    for row in params:
-        id_map.append({"id": row["id"], "name": row["name"]})
-    for row in princs:
-        id_map.append({"id": row["id"], "name": row["name"]})
+    id_map: list[dict[str, Any]] = [{"id": v["id"], "name": v["name"]} for v in vocab]
     walk["_id_map"] = id_map
 
     return walk
@@ -165,7 +148,7 @@ def _build_synthesis_prompt(
     concept_type = identity.get("type", "concept")
 
     # Build ID lookup
-    id_to_name: dict[int, str] = {}
+    id_to_name: dict[str, str] = {}
     for item in walk.get("_id_map", []):
         id_to_name[item["id"]] = item["name"]
 
@@ -221,14 +204,11 @@ async def explain(
     query: str,
     store: LensStore,
     llm_client: LLMClient,
-    taxonomy_version: int,
     focus: str | None = None,
     embedding_kwargs: dict[str, Any] | None = None,
 ) -> ExplanationResult | None:
     """Explain a concept: resolve -> graph walk -> synthesize."""
-    resolved = resolve_concept(
-        query, store, taxonomy_version=taxonomy_version, embedding_kwargs=embedding_kwargs
-    )
+    resolved = resolve_concept(query, store, embedding_kwargs=embedding_kwargs)
     if resolved is None:
         return None
 
@@ -236,7 +216,6 @@ async def explain(
         resolved_type=resolved["resolved_type"],
         resolved_id=resolved["resolved_id"],
         store=store,
-        taxonomy_version=taxonomy_version,
     )
 
     prompt = _build_synthesis_prompt(walk, focus=focus)

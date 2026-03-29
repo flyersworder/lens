@@ -16,8 +16,7 @@ from lens.store.models import EMBEDDING_DIM
 # Maps table_name -> primary key column name and type.
 VEC_TABLES: dict[str, tuple[str, str]] = {
     "papers": ("paper_id", "TEXT"),
-    "parameters": ("id", "INTEGER"),
-    "principles": ("id", "INTEGER"),
+    "vocabulary": ("id", "TEXT"),
     "architecture_variants": ("id", "INTEGER"),
     "agentic_patterns": ("id", "INTEGER"),
 }
@@ -26,8 +25,6 @@ VEC_TABLES: dict[str, tuple[str, str]] = {
 JSON_FIELDS: dict[str, set[str]] = {
     "papers": {"authors"},
     "agentic_extractions": {"components"},
-    "parameters": {"raw_strings", "paper_ids"},
-    "principles": {"sub_techniques", "raw_strings", "paper_ids"},
     "architecture_variants": {"replaces", "paper_ids"},
     "agentic_patterns": {"components", "use_cases", "paper_ids"},
     "matrix_cells": {"paper_ids"},
@@ -56,7 +53,8 @@ _TABLE_DDL = [
         technique TEXT NOT NULL,
         context TEXT NOT NULL,
         confidence REAL NOT NULL,
-        evidence_quote TEXT NOT NULL
+        evidence_quote TEXT NOT NULL,
+        new_concept_description TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS architecture_extractions (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,23 +73,6 @@ _TABLE_DDL = [
         use_case TEXT NOT NULL,
         components TEXT NOT NULL,
         confidence REAL NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS parameters (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        raw_strings TEXT NOT NULL,
-        paper_ids TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS principles (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        sub_techniques TEXT NOT NULL,
-        raw_strings TEXT NOT NULL,
-        paper_ids TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS architecture_slots (
         id INTEGER PRIMARY KEY,
@@ -118,11 +99,21 @@ _TABLE_DDL = [
         paper_ids TEXT NOT NULL,
         taxonomy_version INTEGER NOT NULL
     )""",
+    """CREATE TABLE IF NOT EXISTS vocabulary (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        description TEXT NOT NULL,
+        source TEXT NOT NULL,
+        first_seen TEXT NOT NULL,
+        paper_count INTEGER NOT NULL DEFAULT 0,
+        avg_confidence REAL NOT NULL DEFAULT 0.0
+    )""",
     """CREATE TABLE IF NOT EXISTS matrix_cells (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        improving_param_id INTEGER NOT NULL,
-        worsening_param_id INTEGER NOT NULL,
-        principle_id INTEGER NOT NULL,
+        improving_param_id TEXT NOT NULL,
+        worsening_param_id TEXT NOT NULL,
+        principle_id TEXT NOT NULL,
         count INTEGER NOT NULL,
         avg_confidence REAL NOT NULL,
         paper_ids TEXT NOT NULL,
@@ -317,6 +308,19 @@ class LensStore:
                 )
 
         self.conn.execute(f"DELETE FROM {table} WHERE {where}", params or ())
+        self.conn.commit()
+
+    def upsert_embedding(self, table: str, row_id: str | int, embedding: list[float]) -> None:
+        """Insert or replace the embedding for a row in the companion vec table."""
+        vec_info = VEC_TABLES.get(table)
+        if not vec_info:
+            raise ValueError(f"Table '{table}' does not have a companion vec table")
+        id_col, _ = vec_info
+        emb_bytes = _pack_embedding(embedding)
+        self.conn.execute(
+            f"INSERT OR REPLACE INTO {table}_vec ({id_col}, embedding) VALUES (?, ?)",
+            (row_id, emb_bytes),
+        )
         self.conn.commit()
 
     def vector_search(

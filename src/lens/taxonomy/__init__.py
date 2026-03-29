@@ -17,11 +17,17 @@ from lens.taxonomy.labeler import (
     label_clusters_with_category,
     normalize_slots,
 )
-from lens.taxonomy.versioning import get_next_version, record_version
+from lens.taxonomy.versioning import get_next_version, record_version  # noqa: F401
+from lens.taxonomy.vocabulary import build_tradeoff_taxonomy  # noqa: F401
 
 logger = logging.getLogger(__name__)
 
-__all__ = ["build_taxonomy", "_next_id"]
+__all__ = [
+    "build_tradeoff_taxonomy",
+    "build_architecture_taxonomy",
+    "build_agentic_taxonomy",
+    "_next_id",
+]
 
 
 def _next_id(store: LensStore, table_name: str) -> int:
@@ -138,22 +144,20 @@ def _build_taxonomy_entries(
     return entries
 
 
-async def build_taxonomy(
+async def build_architecture_taxonomy(
     store: LensStore,
     llm_client: LLMClient,
     min_cluster_size: int = 3,
-    target_parameters: int = 25,
-    target_principles: int = 35,
     target_arch_variants: int = 20,
-    target_agentic_patterns: int = 15,
     embedding_provider: str = "local",
     embedding_model: str | None = None,
     embedding_api_base: str | None = None,
     embedding_api_key: str | None = None,
-) -> int:
-    """Build taxonomy from current extractions. Full rebuild.
+    version_id: int | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Build architecture taxonomy (slots + variants) from extractions.
 
-    Returns the new taxonomy version number.
+    Returns dict with keys: slot_entries, variant_entries.
     """
 
     def _embed(strings: list[str]) -> np.ndarray:
@@ -165,67 +169,9 @@ async def build_taxonomy(
             api_key=embedding_api_key,
         )
 
-    version_id = get_next_version(store)
-    logger.info("Building taxonomy version %d", version_id)
+    if version_id is None:
+        version_id = 0
 
-    # --- Parameters (from improves + worsens strings) ---
-    param_strings = _collect_strings_from_table(
-        store, "tradeoff_extractions", ["improves", "worsens"]
-    )
-    param_paper_ids = _build_paper_id_map(store, "tradeoff_extractions", ["improves", "worsens"])
-
-    param_entries: list[dict[str, Any]] = []
-    if param_strings:
-        param_emb = _embed(param_strings)
-        param_labels = cluster_embeddings(
-            param_emb,
-            min_cluster_size=min_cluster_size,
-            target_clusters=target_parameters,
-        )
-        param_clusters = _group_by_cluster(param_strings, param_labels)
-        param_names = await label_clusters(param_clusters, llm_client)
-        param_entries = _build_taxonomy_entries(
-            param_names,
-            param_clusters,
-            param_strings,
-            param_emb,
-            version_id,
-            param_paper_ids,
-            start_id=_next_id(store, "parameters"),
-        )
-        if param_entries:
-            store.add_rows("parameters", param_entries)
-
-    # --- Principles (from technique strings) ---
-    principle_strings = _collect_strings_from_table(store, "tradeoff_extractions", ["technique"])
-    principle_paper_ids = _build_paper_id_map(store, "tradeoff_extractions", ["technique"])
-
-    principle_entries: list[dict[str, Any]] = []
-    if principle_strings:
-        princ_emb = _embed(principle_strings)
-        princ_labels = cluster_embeddings(
-            princ_emb,
-            min_cluster_size=min_cluster_size,
-            target_clusters=target_principles,
-        )
-        princ_clusters = _group_by_cluster(principle_strings, princ_labels)
-        princ_names = await label_clusters(princ_clusters, llm_client)
-        princ_entries_raw = _build_taxonomy_entries(
-            princ_names,
-            princ_clusters,
-            principle_strings,
-            princ_emb,
-            version_id,
-            principle_paper_ids,
-            start_id=_next_id(store, "principles"),
-        )
-        for entry in princ_entries_raw:
-            entry["sub_techniques"] = list(entry.get("raw_strings", []))
-        principle_entries = princ_entries_raw
-        if principle_entries:
-            store.add_rows("principles", principle_entries)
-
-    # --- Architecture slots + variants ---
     arch_strings = _collect_strings_from_table(
         store, "architecture_extractions", ["component_slot"]
     )
@@ -364,7 +310,42 @@ async def build_taxonomy(
 
             store.add_rows("architecture_variants", variant_entries)
 
-    # --- Agentic patterns ---
+    logger.info(
+        "Architecture taxonomy: %d slots, %d variants",
+        len(slot_entries),
+        len(variant_entries),
+    )
+    return {"slot_entries": slot_entries, "variant_entries": variant_entries}
+
+
+async def build_agentic_taxonomy(
+    store: LensStore,
+    llm_client: LLMClient,
+    min_cluster_size: int = 3,
+    target_agentic_patterns: int = 15,
+    embedding_provider: str = "local",
+    embedding_model: str | None = None,
+    embedding_api_base: str | None = None,
+    embedding_api_key: str | None = None,
+    version_id: int | None = None,
+) -> list[dict[str, Any]]:
+    """Build agentic pattern taxonomy from extractions.
+
+    Returns list of pattern entries created.
+    """
+
+    def _embed(strings: list[str]) -> np.ndarray:
+        return embed_strings(
+            strings,
+            provider=embedding_provider,
+            model_name=embedding_model,
+            api_base=embedding_api_base,
+            api_key=embedding_api_key,
+        )
+
+    if version_id is None:
+        version_id = 0
+
     agentic_strings = _collect_strings_from_table(store, "agentic_extractions", ["pattern_name"])
     pattern_entries: list[dict[str, Any]] = []
 
@@ -429,26 +410,8 @@ async def build_taxonomy(
         if pattern_entries:
             store.add_rows("agentic_patterns", pattern_entries)
 
-    # Record version
-    paper_count = len(store.query("papers"))
-    record_version(
-        store,
-        version_id,
-        paper_count=paper_count,
-        param_count=len(param_entries),
-        principle_count=len(principle_entries),
-        slot_count=len(slot_entries),
-        variant_count=len(variant_entries),
-        pattern_count=len(pattern_entries),
-    )
-
     logger.info(
-        "Taxonomy v%d: %d parameters, %d principles, %d slots, %d variants, %d patterns",
-        version_id,
-        len(param_entries),
-        len(principle_entries),
-        len(slot_entries),
-        len(variant_entries),
+        "Agentic taxonomy: %d patterns",
         len(pattern_entries),
     )
-    return version_id
+    return pattern_entries

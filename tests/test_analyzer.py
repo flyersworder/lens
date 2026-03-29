@@ -5,80 +5,55 @@ from unittest.mock import AsyncMock, patch
 import numpy as np
 import pytest
 
-from lens.store.models import EMBEDDING_DIM
+from lens.taxonomy.vocabulary import load_seed_vocabulary
 
 
 @pytest.fixture
 def analysis_store(tmp_path):
+    """Returns (store, names_dict) where names_dict has latency/accuracy/quant/distil names."""
     from lens.store.store import LensStore
 
     store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
-    store.add_rows(
-        "parameters",
-        [
-            {
-                "id": 1,
-                "name": "Inference Latency",
-                "description": "Speed",
-                "raw_strings": ["latency", "inference speed"],
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-            {
-                "id": 2,
-                "name": "Model Accuracy",
-                "description": "Quality",
-                "raw_strings": ["accuracy", "model quality"],
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-        ],
-    )
-    store.add_rows(
-        "principles",
-        [
-            {
-                "id": 50001,
-                "name": "Quantization",
-                "description": "Reduce precision",
-                "sub_techniques": ["int8"],
-                "raw_strings": ["quantization"],
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-            {
-                "id": 50002,
-                "name": "Distillation",
-                "description": "Compress model",
-                "sub_techniques": ["kd"],
-                "raw_strings": ["distillation"],
-                "paper_ids": ["p2"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-        ],
-    )
+    load_seed_vocabulary(store)
+
+    # Get two parameter IDs and one principle ID from vocabulary
+    params = store.query("vocabulary", "kind = ?", ("parameter",))
+    princs = store.query("vocabulary", "kind = ?", ("principle",))
+    assert len(params) >= 2
+    assert len(princs) >= 2
+
+    # Find by exact name or fall back to first entries
+    param_map = {p["name"]: p["id"] for p in params}
+    princ_map = {p["name"]: p["id"] for p in princs}
+
+    latency_id = param_map.get("Inference Latency", params[0]["id"])
+    accuracy_id = param_map.get("Model Accuracy", params[1]["id"])
+    quant_id = princ_map.get("Quantization", princs[0]["id"])
+    distil_id = princ_map.get("Knowledge Distillation", princs[1]["id"])
+
+    latency_name = next(p["name"] for p in params if p["id"] == latency_id)
+    accuracy_name = next(p["name"] for p in params if p["id"] == accuracy_id)
+    quant_name = next(p["name"] for p in princs if p["id"] == quant_id)
+    distil_name = next(p["name"] for p in princs if p["id"] == distil_id)
+
     store.add_rows(
         "matrix_cells",
         [
             {
-                "improving_param_id": 1,
-                "worsening_param_id": 2,
-                "principle_id": 50001,
+                "improving_param_id": latency_id,
+                "worsening_param_id": accuracy_id,
+                "principle_id": quant_id,
                 "count": 5,
                 "avg_confidence": 0.9,
                 "paper_ids": ["p1"],
                 "taxonomy_version": 1,
             },
             {
-                "improving_param_id": 1,
-                "worsening_param_id": 2,
-                "principle_id": 50002,
+                "improving_param_id": latency_id,
+                "worsening_param_id": accuracy_id,
+                "principle_id": distil_id,
                 "count": 3,
                 "avg_confidence": 0.8,
                 "paper_ids": ["p2"],
@@ -93,41 +68,54 @@ def analysis_store(tmp_path):
                 "version_id": 1,
                 "created_at": "2026-03-21T00:00:00",
                 "paper_count": 10,
-                "param_count": 2,
-                "principle_count": 2,
+                "param_count": len(params),
+                "principle_count": len(princs),
                 "slot_count": 0,
                 "variant_count": 0,
                 "pattern_count": 0,
             },
         ],
     )
-    return store
+
+    names = {
+        "latency": latency_name,
+        "accuracy": accuracy_name,
+        "quant": quant_name,
+        "distil": distil_name,
+    }
+    return store, names
 
 
 @pytest.mark.asyncio
 async def test_analyze_tradeoff(analysis_store):
     from lens.serve.analyzer import analyze
 
+    store, names = analysis_store
+    latency_name = names["latency"]
+    accuracy_name = names["accuracy"]
+    quant_name = names["quant"]
+    distil_name = names["distil"]
+
     mock_client = AsyncMock()
     mock_client.complete.return_value = (
-        '{"improving": "Inference Latency", "worsening": "Model Accuracy"}'
+        f'{{"improving": "{latency_name}", "worsening": "{accuracy_name}"}}'
     )
 
     result = await analyze(
         query="reduce latency without hurting accuracy",
-        store=analysis_store,
+        store=store,
         llm_client=mock_client,
-        taxonomy_version=1,
     )
     assert result is not None
     assert len(result["principles"]) >= 1
-    assert result["principles"][0]["name"] in ["Quantization", "Distillation"]
+    assert result["principles"][0]["name"] in [quant_name, distil_name]
 
 
 @pytest.mark.asyncio
 async def test_analyze_no_match(analysis_store):
     from lens.serve.analyzer import analyze
 
+    store, _ = analysis_store
     mock_client = AsyncMock()
     mock_client.complete.return_value = (
         '{"improving": "Unknown Param", "worsening": "Other Param"}'
@@ -135,9 +123,8 @@ async def test_analyze_no_match(analysis_store):
 
     result = await analyze(
         query="something with no matching parameters",
-        store=analysis_store,
+        store=store,
         llm_client=mock_client,
-        taxonomy_version=1,
     )
     assert result is not None
     assert len(result["principles"]) == 0

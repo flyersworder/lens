@@ -102,38 +102,6 @@ def test_agentic_extraction_model():
     assert ext.components == ["actor", "evaluator", "memory"]
 
 
-def test_parameter_model():
-    from lens.store.models import Parameter
-
-    param = Parameter(
-        id=1,
-        name="Inference Latency",
-        description="Time to generate output tokens",
-        raw_strings=["inference time", "latency"],
-        paper_ids=["2401.12345"],
-        taxonomy_version=1,
-        embedding=[0.1] * 768,
-    )
-    assert param.name == "Inference Latency"
-    assert len(param.embedding) == 768
-
-
-def test_principle_model():
-    from lens.store.models import Principle
-
-    principle = Principle(
-        id=1,
-        name="Knowledge Distillation",
-        description="Transfer knowledge from large to small model",
-        sub_techniques=["response distillation", "feature distillation"],
-        raw_strings=["distillation", "model compression"],
-        paper_ids=["2401.12345"],
-        taxonomy_version=1,
-        embedding=[0.1] * 768,
-    )
-    assert principle.sub_techniques == ["response distillation", "feature distillation"]
-
-
 def test_architecture_slot_model():
     from lens.store.models import ArchitectureSlot
 
@@ -183,9 +151,9 @@ def test_matrix_cell_model():
     from lens.store.models import MatrixCell
 
     cell = MatrixCell(
-        improving_param_id=1,
-        worsening_param_id=2,
-        principle_id=3,
+        improving_param_id="inference-latency",
+        worsening_param_id="model-accuracy",
+        principle_id="quantization",
         count=5,
         avg_confidence=0.82,
         paper_ids=["2401.12345", "2402.67890"],
@@ -216,8 +184,8 @@ def test_ideation_gap_model():
         report_id=1,
         gap_type="sparse_cell",
         description="Tradeoff (accuracy, latency) has only 1 known principle",
-        related_params=[1, 2],
-        related_principles=[3],
+        related_params=["inference-latency", "model-accuracy"],
+        related_principles=["quantization"],
         related_slots=[],
         score=0.8,
         llm_hypothesis=None,
@@ -283,7 +251,7 @@ def test_explanation_result_model():
 
     result = ExplanationResult(
         resolved_type="parameter",
-        resolved_id=1,
+        resolved_id="inference-latency",
         resolved_name="Inference Latency",
         narrative="Inference latency is...",
         evolution=["v1", "v2"],

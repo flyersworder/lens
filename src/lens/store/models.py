@@ -67,6 +67,7 @@ class TradeoffExtraction(BaseModel):
     context: str
     confidence: float
     evidence_quote: str
+    new_concept_description: str | None = None
 
 
 class ArchitectureExtraction(BaseModel):
@@ -96,29 +97,32 @@ class AgenticExtraction(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class Parameter(BaseModel):
-    """A canonicalised performance/cost parameter in the taxonomy."""
+class VocabularyEntry(BaseModel):
+    """A canonical parameter or principle in the vocabulary."""
 
-    id: int
+    id: str
     name: str
+    kind: str  # "parameter" or "principle"
     description: str
-    raw_strings: list[str]
-    paper_ids: list[str]
-    taxonomy_version: int
+    source: str  # "seed" or "extracted"
+    first_seen: str
+    paper_count: int = 0
+    avg_confidence: float = 0.0
     embedding: list[float] = []
 
+    @field_validator("kind")
+    @classmethod
+    def _check_kind(cls, v: str) -> str:
+        if v not in ("parameter", "principle"):
+            raise ValueError(f"kind must be 'parameter' or 'principle', got '{v}'")
+        return v
 
-class Principle(BaseModel):
-    """A design principle / technique in the taxonomy."""
-
-    id: int
-    name: str
-    description: str
-    sub_techniques: list[str]
-    raw_strings: list[str]
-    paper_ids: list[str]
-    taxonomy_version: int
-    embedding: list[float] = []
+    @field_validator("source")
+    @classmethod
+    def _check_source(cls, v: str) -> str:
+        if v not in ("seed", "extracted"):
+            raise ValueError(f"source must be 'seed' or 'extracted', got '{v}'")
+        return v
 
 
 class ArchitectureSlot(BaseModel):
@@ -165,9 +169,9 @@ class AgenticPattern(BaseModel):
 class MatrixCell(BaseModel):
     """One cell in the tradeoff matrix (improving × worsening × principle)."""
 
-    improving_param_id: int
-    worsening_param_id: int
-    principle_id: int
+    improving_param_id: str
+    worsening_param_id: str
+    principle_id: str
     count: int
     avg_confidence: float
     paper_ids: list[str]
@@ -204,8 +208,8 @@ class IdeationGap(BaseModel):
     report_id: int
     gap_type: str
     description: str
-    related_params: list[int]
-    related_principles: list[int]
+    related_params: list[str]
+    related_principles: list[str]
     related_slots: list[int]
     score: float
     llm_hypothesis: str | None = None
@@ -232,7 +236,7 @@ class ExplanationResult(BaseModel):
     """Result returned by the /explain query endpoint."""
 
     resolved_type: str
-    resolved_id: int
+    resolved_id: str
     resolved_name: str
     narrative: str
     evolution: list[str]

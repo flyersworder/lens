@@ -22,11 +22,13 @@ acquire_app = typer.Typer(help="Acquire papers from various sources.")
 build_app = typer.Typer(help="Build taxonomy, matrix, and other derived artefacts.")
 explore_app = typer.Typer(help="Explore the LENS knowledge base interactively.")
 config_app = typer.Typer(help="View and modify LENS configuration.")
+vocab_app = typer.Typer(help="Manage the canonical vocabulary.")
 
 app.add_typer(acquire_app, name="acquire")
 app.add_typer(build_app, name="build")
 app.add_typer(explore_app, name="explore")
 app.add_typer(config_app, name="config")
+app.add_typer(vocab_app, name="vocab")
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +52,16 @@ def _get_config_path() -> Path | None:
     return None
 
 
-def _llm_kwargs(config: dict) -> dict:
+def _get_store() -> LensStore:
+    """Return an initialised LensStore using the current config."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+    return store
+
+
+def _llm_kwargs(config: dict, key: str = "default_model") -> dict:
     """Extract api_base and api_key from config for LLMClient."""
     llm_cfg = config.get("llm", {})
     kwargs: dict = {}
@@ -161,7 +172,7 @@ def analyze(
     else:
         from lens.serve.analyzer import analyze as do_analyze
 
-        result = asyncio.run(do_analyze(query, store, client, taxonomy_version=version))
+        result = asyncio.run(do_analyze(query, store, client))
         rprint(f"\n[bold]Query:[/bold] {result['query']}")
         rprint(f"[bold]Improving:[/bold] {result['improving']}")
         rprint(f"[bold]Worsening:[/bold] {result['worsening']}")
@@ -206,11 +217,7 @@ def explain(
 
     client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
     emb_kw = _embedding_kwargs(config)
-    result = asyncio.run(
-        do_explain(
-            concept, store, client, taxonomy_version=version, focus=focus, embedding_kwargs=emb_kw
-        )
-    )
+    result = asyncio.run(do_explain(concept, store, client, focus=focus, embedding_kwargs=emb_kw))
 
     if result is None:
         rprint(f"[yellow]Concept '{concept}' not found.[/yellow]")
@@ -258,18 +265,11 @@ def monitor(
     store.init_tables()
 
     if trending:
-        from lens.taxonomy.versioning import get_latest_version
-
-        version = get_latest_version(store)
-        if version is None:
-            rprint("[yellow]No taxonomy yet.[/yellow]")
-            raise typer.Exit(code=0)
-
-        gaps = store.query("ideation_gaps", "taxonomy_version = ?", (version,))
+        gaps = store.query("ideation_gaps")
         if not gaps:
             rprint("[yellow]No ideation gaps found.[/yellow]")
         else:
-            rprint(f"\n[bold]Ideation Gaps (v{version}):[/bold]")
+            rprint("\n[bold]Ideation Gaps:[/bold]")
             gaps.sort(key=lambda x: x.get("score", 0), reverse=True)
             for row in gaps:
                 hyp = ""
@@ -443,35 +443,75 @@ async def _enrich_openalex_async(papers, mailto: str = ""):
 
 @build_app.command()
 def taxonomy() -> None:
-    """Build taxonomy by clustering extraction strings."""
+    """Build taxonomy from current extractions."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
     from lens.llm.client import LLMClient
-    from lens.taxonomy import build_taxonomy
+    from lens.taxonomy import (
+        build_agentic_taxonomy,
+        build_architecture_taxonomy,
+        get_next_version,
+        record_version,
+    )
+    from lens.taxonomy.vocabulary import build_tradeoff_taxonomy
 
     llm_model = config["llm"]["label_model"]
     client = LLMClient(model=llm_model, **_llm_kwargs(config))
-    tax_config = config["taxonomy"]
+    tax_cfg = config.get("taxonomy", {})
     emb_config = config.get("embeddings", {})
-    version = asyncio.run(
-        build_taxonomy(
+    emb_kwargs = dict(
+        embedding_provider=emb_config.get("provider", "local"),
+        embedding_model=emb_config.get("model"),
+        embedding_api_base=emb_config.get("api_base"),
+        embedding_api_key=emb_config.get("api_key"),
+    )
+
+    version_id = get_next_version(store)
+
+    # Tradeoff taxonomy (vocabulary-based, synchronous)
+    build_tradeoff_taxonomy(store, **emb_kwargs)
+
+    # Architecture + agentic (clustering-based, async)
+    arch_result = asyncio.run(
+        build_architecture_taxonomy(
             store,
             client,
-            min_cluster_size=tax_config["min_cluster_size"],
-            target_parameters=tax_config["target_parameters"],
-            target_principles=tax_config["target_principles"],
-            target_arch_variants=tax_config["target_arch_variants"],
-            target_agentic_patterns=tax_config["target_agentic_patterns"],
-            embedding_provider=emb_config.get("provider", "local"),
-            embedding_model=emb_config.get("model"),
-            embedding_api_base=emb_config.get("api_base"),
-            embedding_api_key=emb_config.get("api_key"),
+            version_id=version_id,
+            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
+            target_arch_variants=tax_cfg.get("target_arch_variants", 20),
+            **emb_kwargs,
         )
     )
-    rprint(f"[green]Built taxonomy version {version}[/green]")
+    slot_entries = arch_result["slot_entries"]
+    variant_entries = arch_result["variant_entries"]
+    pattern_entries = asyncio.run(
+        build_agentic_taxonomy(
+            store,
+            client,
+            version_id=version_id,
+            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
+            target_agentic_patterns=tax_cfg.get("target_agentic_patterns", 15),
+            **emb_kwargs,
+        )
+    )
+
+    # Record version
+    paper_count = len(store.query("papers"))
+    vocab = store.query("vocabulary")
+    record_version(
+        store,
+        version_id,
+        paper_count=paper_count,
+        param_count=len([v for v in vocab if v["kind"] == "parameter"]),
+        principle_count=len([v for v in vocab if v["kind"] == "principle"]),
+        slot_count=len(slot_entries),
+        variant_count=len(variant_entries),
+        pattern_count=len(pattern_entries),
+    )
+    rprint(f"[green]Taxonomy v{version_id} built.[/green]")
 
 
 @build_app.command(name="matrix")
@@ -489,7 +529,7 @@ def build_matrix_cmd() -> None:
     if version is None:
         rprint("[red]No taxonomy yet. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
-    build_matrix(store, taxonomy_version=version)
+    build_matrix(store)
     rprint(f"[green]Built matrix for taxonomy v{version}[/green]")
 
 
@@ -503,29 +543,69 @@ def build_all() -> None:
 
     from lens.knowledge.matrix import build_matrix
     from lens.llm.client import LLMClient
-    from lens.taxonomy import build_taxonomy
+    from lens.taxonomy import (
+        build_agentic_taxonomy,
+        build_architecture_taxonomy,
+        get_next_version,
+        record_version,
+    )
+    from lens.taxonomy.vocabulary import build_tradeoff_taxonomy
 
     llm_model = config["llm"]["label_model"]
     client = LLMClient(model=llm_model, **_llm_kwargs(config))
-    tax_config = config["taxonomy"]
+    tax_cfg = config.get("taxonomy", {})
     emb_config = config.get("embeddings", {})
-    version = asyncio.run(
-        build_taxonomy(
+    emb_kwargs = dict(
+        embedding_provider=emb_config.get("provider", "local"),
+        embedding_model=emb_config.get("model"),
+        embedding_api_base=emb_config.get("api_base"),
+        embedding_api_key=emb_config.get("api_key"),
+    )
+
+    version_id = get_next_version(store)
+
+    # Tradeoff taxonomy (vocabulary-based, synchronous)
+    build_tradeoff_taxonomy(store, **emb_kwargs)
+
+    # Architecture + agentic (clustering-based, async)
+    arch_result = asyncio.run(
+        build_architecture_taxonomy(
             store,
             client,
-            min_cluster_size=tax_config["min_cluster_size"],
-            target_parameters=tax_config["target_parameters"],
-            target_principles=tax_config["target_principles"],
-            target_arch_variants=tax_config["target_arch_variants"],
-            target_agentic_patterns=tax_config["target_agentic_patterns"],
-            embedding_provider=emb_config.get("provider", "local"),
-            embedding_model=emb_config.get("model"),
-            embedding_api_base=emb_config.get("api_base"),
-            embedding_api_key=emb_config.get("api_key"),
+            version_id=version_id,
+            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
+            target_arch_variants=tax_cfg.get("target_arch_variants", 20),
+            **emb_kwargs,
         )
     )
-    build_matrix(store, taxonomy_version=version)
-    rprint(f"[green]Built taxonomy v{version} + matrix[/green]")
+    slot_entries = arch_result["slot_entries"]
+    variant_entries = arch_result["variant_entries"]
+    pattern_entries = asyncio.run(
+        build_agentic_taxonomy(
+            store,
+            client,
+            version_id=version_id,
+            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
+            target_agentic_patterns=tax_cfg.get("target_agentic_patterns", 15),
+            **emb_kwargs,
+        )
+    )
+
+    # Record version
+    paper_count = len(store.query("papers"))
+    vocab = store.query("vocabulary")
+    record_version(
+        store,
+        version_id,
+        paper_count=paper_count,
+        param_count=len([v for v in vocab if v["kind"] == "parameter"]),
+        principle_count=len([v for v in vocab if v["kind"] == "principle"]),
+        slot_count=len(slot_entries),
+        variant_count=len(variant_entries),
+        pattern_count=len(pattern_entries),
+    )
+    build_matrix(store)
+    rprint(f"[green]Built taxonomy v{version_id} + matrix.[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -542,16 +622,10 @@ def parameters() -> None:
     store.init_tables()
 
     from lens.serve.explorer import list_parameters
-    from lens.taxonomy.versioning import get_latest_version
 
-    version = get_latest_version(store)
-    if version is None:
-        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
-        raise typer.Exit(code=1)
-
-    params = list_parameters(store, taxonomy_version=version)
+    params = list_parameters(store)
     if not params:
-        rprint("[yellow]No parameters found.[/yellow]")
+        rprint("[yellow]No parameters found. Run 'lens vocab init' first.[/yellow]")
         return
     for p in params:
         rprint(f"[bold]{p['id']}[/bold] {p['name']} — {p['description']}")
@@ -566,16 +640,10 @@ def principles() -> None:
     store.init_tables()
 
     from lens.serve.explorer import list_principles
-    from lens.taxonomy.versioning import get_latest_version
 
-    version = get_latest_version(store)
-    if version is None:
-        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
-        raise typer.Exit(code=1)
-
-    princs = list_principles(store, taxonomy_version=version)
+    princs = list_principles(store)
     if not princs:
-        rprint("[yellow]No principles found.[/yellow]")
+        rprint("[yellow]No principles found. Run 'lens vocab init' first.[/yellow]")
         return
     for p in princs:
         rprint(f"[bold]{p['id']}[/bold] {p['name']} — {p['description']}")
@@ -583,8 +651,8 @@ def principles() -> None:
 
 @explore_app.command()
 def matrix(
-    param_a: int | None = typer.Argument(None, help="First parameter ID."),
-    param_b: int | None = typer.Argument(None, help="Second parameter ID."),
+    param_a: str | None = typer.Argument(None, help="First parameter ID (slug)."),
+    param_b: str | None = typer.Argument(None, help="Second parameter ID (slug)."),
 ) -> None:
     """Explore the parameter-principle matrix."""
     config = load_config(_get_config_path())
@@ -593,15 +661,9 @@ def matrix(
     store.init_tables()
 
     from lens.serve.explorer import get_matrix_cell, list_matrix_overview
-    from lens.taxonomy.versioning import get_latest_version
-
-    version = get_latest_version(store)
-    if version is None:
-        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
-        raise typer.Exit(code=1)
 
     if param_a is not None and param_b is not None:
-        cells = get_matrix_cell(store, param_a, param_b, taxonomy_version=version)
+        cells = get_matrix_cell(store, param_a, param_b)
         if not cells:
             rprint("[yellow]No matrix cells found for that parameter pair.[/yellow]")
             return
@@ -612,7 +674,7 @@ def matrix(
                 f"avg_confidence={cell['avg_confidence']:.2f}"
             )
     else:
-        overview = list_matrix_overview(store, taxonomy_version=version)
+        overview = list_matrix_overview(store)
         if not overview:
             rprint("[yellow]Matrix is empty. Run 'lens build matrix' first.[/yellow]")
             return
@@ -766,21 +828,10 @@ def ideas(
     store = LensStore(str(_get_data_dir(config) / "lens.db"))
     store.init_tables()
 
-    from lens.taxonomy.versioning import get_latest_version
-
-    version = get_latest_version(store)
-    if version is None:
-        rprint("[yellow]No taxonomy yet.[/yellow]")
-        raise typer.Exit(code=0)
-
     if type_:
-        gaps = store.query(
-            "ideation_gaps",
-            "taxonomy_version = ? AND gap_type = ?",
-            (version, type_),
-        )
+        gaps = store.query("ideation_gaps", "gap_type = ?", (type_,))
     else:
-        gaps = store.query("ideation_gaps", "taxonomy_version = ?", (version,))
+        gaps = store.query("ideation_gaps")
 
     if not gaps:
         rprint("[yellow]No ideation gaps found.[/yellow]")
@@ -793,6 +844,65 @@ def ideas(
         if row.get("llm_hypothesis"):
             rprint(f"    → {row['llm_hypothesis']}")
         rprint()
+
+
+# ---------------------------------------------------------------------------
+# Vocab subcommands
+# ---------------------------------------------------------------------------
+
+
+@vocab_app.command(name="init")
+def vocab_init() -> None:
+    """Load seed vocabulary into the database."""
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    store = _get_store()
+    count = load_seed_vocabulary(store)
+    if count:
+        typer.echo(f"Loaded {count} seed vocabulary entries.")
+    else:
+        typer.echo("Vocabulary already initialized — no new entries.")
+
+
+@vocab_app.command(name="list")
+def vocab_list(
+    kind: str | None = typer.Option(None, help="Filter by kind: parameter or principle"),
+) -> None:
+    """List vocabulary entries with evidence stats."""
+    store = _get_store()
+    rows = store.query("vocabulary", "kind = ?", (kind,)) if kind else store.query("vocabulary")
+
+    if not rows:
+        typer.echo("No vocabulary entries found.")
+        return
+
+    for r in rows:
+        marker = "S" if r["source"] == "seed" else "E"
+        typer.echo(
+            f"  [{marker}] {r['name']} ({r['kind']}) — "
+            f"papers={r['paper_count']}, conf={r['avg_confidence']:.2f}"
+        )
+
+
+@vocab_app.command(name="show")
+def vocab_show(
+    entry_id: str = typer.Argument(..., help="Vocabulary entry ID (slug)"),
+) -> None:
+    """Show details for a vocabulary entry."""
+    store = _get_store()
+    rows = store.query("vocabulary", "id = ?", (entry_id,))
+    if not rows:
+        typer.echo(f"No vocabulary entry with ID '{entry_id}'")
+        raise typer.Exit(1)
+
+    r = rows[0]
+    typer.echo(f"Name:        {r['name']}")
+    typer.echo(f"Kind:        {r['kind']}")
+    typer.echo(f"Description: {r['description']}")
+    typer.echo(f"Source:      {r['source']}")
+    typer.echo(f"First seen:  {r['first_seen']}")
+    typer.echo(f"Papers:      {r['paper_count']}")
+    typer.echo(f"Avg conf:    {r['avg_confidence']:.4f}")
 
 
 # ---------------------------------------------------------------------------
