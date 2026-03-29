@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.4.0 (2026-03-29)
+
+### Breaking Changes
+- **Vocabulary replaces parameters/principles tables** — The `parameters`, `principles`, `parameters_vec`, and `principles_vec` tables are removed. All tradeoff concepts are now stored in a unified `vocabulary` table with text IDs (slugs). Existing databases are not compatible; run `lens vocab init` then re-extract.
+- **Matrix cells use text IDs** — `improving_param_id`, `worsening_param_id`, and `principle_id` in `matrix_cells` changed from INTEGER to TEXT (vocabulary slugs).
+- **API signatures changed** — `build_matrix()`, `get_ranked_matrix()`, serve layer functions, and ideation functions no longer take `taxonomy_version` parameter. `list_parameters()`/`list_principles()` no longer take `taxonomy_version`.
+- **Config keys removed** — `taxonomy.target_parameters` and `taxonomy.target_principles` no longer exist (no clustering for tradeoffs).
+
+### Added
+- **Guided extraction** — The extraction prompt now includes a canonical vocabulary of parameters and principles. The LLM uses exact names from the vocabulary instead of free-text, eliminating the need for clustering to normalize tradeoff concepts.
+- **Canonical vocabulary** — New `vocabulary` table with 12 seed parameters and 12 seed principles, each with descriptions and embeddings. Managed via `lens vocab init`, `lens vocab list`, `lens vocab show`.
+- **NEW: concept auto-acceptance** — When the LLM encounters a concept not in the vocabulary during extraction, it prefixes with `NEW:` and provides a description. These are auto-accepted into the vocabulary with `source: "extracted"`.
+- **Evidence & novelty scoring** — Each vocabulary entry tracks `paper_count`, `avg_confidence`, and `first_seen` date. Evidence strength and novelty are orthogonal signals for downstream consumers.
+- **`new_concept_description` field** — Added to `tradeoff_extractions` for LLM-proposed concept descriptions.
+
+### Changed
+- **`build_taxonomy()` split into three functions** — `build_tradeoff_taxonomy()` (vocabulary-based, no clustering), `build_architecture_taxonomy()` (unchanged clustering), `build_agentic_taxonomy()` (unchanged clustering).
+- **Matrix uses direct vocabulary lookup** — No more `raw_strings` mapping. Extraction values are canonical names, looked up directly in the vocabulary.
+- **Serve layer queries vocabulary** — `explorer.py`, `analyzer.py`, `explainer.py` all query `vocabulary` table filtered by `kind` instead of separate `parameters`/`principles` tables.
+- **Ideation uses vocabulary_vec** — Cross-pollination computes parameter similarity from `vocabulary_vec` embeddings.
+
+### Removed
+- `parameters` and `principles` tables (replaced by `vocabulary`)
+- `parameters_vec` and `principles_vec` virtual tables (replaced by `vocabulary_vec`)
+- `Parameter` and `Principle` Pydantic models (replaced by `VocabularyEntry`)
+- HDBSCAN/KMeans clustering for tradeoff taxonomy (kept for architecture/agentic)
+- `_build_string_to_id_map()` in matrix.py
+
 ## 0.3.0 (2026-03-28)
 
 ### Breaking Changes

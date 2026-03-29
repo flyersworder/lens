@@ -6,7 +6,7 @@ Inspired by [TRIZ](https://en.wikipedia.org/wiki/TRIZ) methodology — but with 
 
 ## Core Knowledge Structures
 
-1. **Contradiction Matrix** — Maps LLM tradeoffs (e.g., accuracy vs. latency) to resolution techniques (e.g., distillation, speculative decoding). Parameters and principles are discovered automatically from papers.
+1. **Contradiction Matrix** — Maps LLM tradeoffs (e.g., accuracy vs. latency) to resolution techniques (e.g., distillation, speculative decoding). Uses a canonical vocabulary of parameters and principles, extensible via LLM-proposed new concepts.
 
 2. **Architecture Catalog** — Organizes LLM architecture components (attention, positional encoding, FFN, etc.) by slot with property-based comparison across variants. Answers "what are my options for component X?"
 
@@ -34,16 +34,13 @@ uv run lens init
 # Acquire seed papers (10 landmark LLM papers)
 uv run lens acquire seed
 
+# Initialize canonical vocabulary (12 parameters + 12 principles)
+uv run lens vocab init
+
 # Extract tradeoffs, architecture, and agentic patterns from papers
 uv run lens extract
 
-# Build taxonomy (parameters, principles, architecture slots/variants, agentic patterns)
-uv run lens build taxonomy
-
-# Build contradiction matrix
-uv run lens build matrix
-
-# Or do both at once
+# Build taxonomy and contradiction matrix
 uv run lens build all
 ```
 
@@ -65,10 +62,10 @@ uv run lens explain "knowledge distillation" --tradeoffs
 uv run lens explain "MoE" --related
 
 # Browse the knowledge base
-uv run lens explore parameters
-uv run lens explore principles
+uv run lens vocab list                      # list vocabulary (parameters + principles)
+uv run lens vocab list --kind parameter     # filter by kind
+uv run lens vocab show inference-latency    # details for a concept
 uv run lens explore matrix
-uv run lens explore matrix 12 8             # specific parameter pair
 uv run lens explore paper 2401.12345
 
 # Browse architecture catalog
@@ -137,7 +134,8 @@ uv run lens config set embeddings.model text-embedding-3-small
 - **SQLite + sqlite-vec** — embedded database with vector search (cosine distance)
 - **openai SDK** — LLM and embedding client (works with any OpenAI-compatible endpoint)
 - **litellm** (optional) — multi-provider routing for direct API access
-- **HDBSCAN + KMeans** — density-based clustering with fallback
+- **Guided extraction** — canonical vocabulary for tradeoff parameters/principles
+- **HDBSCAN + KMeans** — density-based clustering for architecture/agentic taxonomy
 - **sentence-transformers** or **cloud embeddings** — configurable provider
 - **Typer** — CLI framework
 
@@ -148,7 +146,7 @@ Layer 0: Papers (arxiv, PDF, OpenAlex enrichment)
     ↓
 Layer 1: Raw Extractions (LLM-extracted tradeoffs, architecture, agentic patterns)
     ↓
-Layer 2: Taxonomy (parameters, principles, architecture slots/variants, agentic patterns)
+Layer 2: Taxonomy (vocabulary, architecture slots/variants, agentic patterns)
     ↓
 Layer 3: Knowledge Structures (contradiction matrix, ideation gaps)
 ```

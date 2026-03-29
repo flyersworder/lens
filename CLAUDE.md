@@ -14,6 +14,8 @@
 - Embedding dimension controlled by `EMBEDDING_DIM` constant in `models.py`
 - LLM: openai SDK (core) + litellm (optional, `uv sync --extra litellm`). Supports gateway mode via `llm.api_base`
 - Embeddings: local (sentence-transformers) or cloud (openai/litellm), via `embeddings.provider` config
+- **Vocabulary** — canonical `vocabulary` table stores parameters and principles with text IDs (slugs). Seed vocabulary in `taxonomy/vocabulary.py`. Extraction prompt injects vocabulary for guided tradeoff extraction; `NEW:` prefix for novel concepts.
+- **Taxonomy split** — `build_tradeoff_taxonomy()` (vocabulary-based, no clustering), `build_architecture_taxonomy()` and `build_agentic_taxonomy()` (HDBSCAN clustering)
 - CLI via Typer in `src/lens/cli.py`
 - Config at `~/.lens/config.yaml`
 
