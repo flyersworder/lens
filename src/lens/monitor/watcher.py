@@ -15,7 +15,6 @@ from lens.llm.client import LLMClient
 from lens.monitor.ideation import run_ideation
 from lens.store.models import EMBEDDING_DIM
 from lens.store.store import LensStore
-from lens.taxonomy.versioning import get_latest_version
 
 logger = logging.getLogger(__name__)
 
@@ -61,11 +60,10 @@ async def run_monitor_cycle(
     if papers_acquired > 0:
         papers_extracted = await extract_papers(store, llm_client, concurrency=3)
 
-    # Step 3: Ideation (if taxonomy exists)
+    # Step 3: Ideation (if vocabulary exists)
     ideation_report = None
-    version = get_latest_version(store)
-    if version is not None and run_ideation_flag:
-        ideation_report = run_ideation(store, taxonomy_version=version)
+    if run_ideation_flag:
+        ideation_report = run_ideation(store)
 
     return {
         "papers_acquired": papers_acquired,
