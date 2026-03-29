@@ -129,42 +129,6 @@ class VocabularyEntry(BaseModel):
         return v
 
 
-class ArchitectureSlot(BaseModel):
-    """A named slot in the transformer architecture taxonomy."""
-
-    id: int
-    name: str
-    description: str
-    taxonomy_version: int
-
-
-class ArchitectureVariant(BaseModel):
-    """A concrete variant that fills an ArchitectureSlot."""
-
-    id: int
-    slot_id: int
-    name: str
-    replaces: list[int]
-    properties: str
-    paper_ids: list[str]
-    taxonomy_version: int
-    embedding: list[float] = []
-
-
-class AgenticPattern(BaseModel):
-    """A named agentic design pattern in the taxonomy."""
-
-    id: int
-    name: str
-    category: str
-    description: str
-    components: list[str]
-    use_cases: list[str]
-    paper_ids: list[str]
-    taxonomy_version: int
-    embedding: list[float] = []
-
-
 # ---------------------------------------------------------------------------
 # Layer 3 — Aggregated matrix
 # ---------------------------------------------------------------------------

@@ -17,21 +17,17 @@ from lens.store.models import EMBEDDING_DIM
 VEC_TABLES: dict[str, tuple[str, str]] = {
     "papers": ("paper_id", "TEXT"),
     "vocabulary": ("id", "TEXT"),
-    "architecture_variants": ("id", "INTEGER"),
-    "agentic_patterns": ("id", "INTEGER"),
 }
 
 # Maps table_name -> set of columns that are JSON-serialized lists.
 JSON_FIELDS: dict[str, set[str]] = {
     "papers": {"authors"},
     "agentic_extractions": {"components"},
-    "architecture_variants": {"replaces", "paper_ids"},
-    "agentic_patterns": {"components", "use_cases", "paper_ids"},
     "matrix_cells": {"paper_ids"},
     "ideation_gaps": {"related_params", "related_principles", "related_slots"},
 }
 
-# SQL CREATE TABLE statements for all 13 regular tables.
+# SQL CREATE TABLE statements for all 9 regular tables.
 _TABLE_DDL = [
     """CREATE TABLE IF NOT EXISTS papers (
         paper_id TEXT PRIMARY KEY,
@@ -76,31 +72,6 @@ _TABLE_DDL = [
         components TEXT NOT NULL,
         confidence REAL NOT NULL,
         new_concept_description TEXT
-    )""",
-    """CREATE TABLE IF NOT EXISTS architecture_slots (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS architecture_variants (
-        id INTEGER PRIMARY KEY,
-        slot_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        replaces TEXT NOT NULL,
-        properties TEXT NOT NULL,
-        paper_ids TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS agentic_patterns (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        description TEXT NOT NULL,
-        components TEXT NOT NULL,
-        use_cases TEXT NOT NULL,
-        paper_ids TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS vocabulary (
         id TEXT PRIMARY KEY,
