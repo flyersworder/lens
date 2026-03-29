@@ -15,6 +15,7 @@ def test_init_creates_regular_tables(store):
         "tradeoff_extractions",
         "architecture_extractions",
         "agentic_extractions",
+        "vocabulary",
         "architecture_slots",
         "architecture_variants",
         "agentic_patterns",

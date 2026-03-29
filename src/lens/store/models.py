@@ -208,8 +208,8 @@ class IdeationGap(BaseModel):
     report_id: int
     gap_type: str
     description: str
-    related_params: list[int]
-    related_principles: list[int]
+    related_params: list[str]
+    related_principles: list[str]
     related_slots: list[int]
     score: float
     llm_hypothesis: str | None = None
