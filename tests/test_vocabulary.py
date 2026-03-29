@@ -44,20 +44,52 @@ def test_vocabulary_table_exists(tmp_path):
     assert rows == []
 
 
+def test_vocabulary_entry_arch_slot():
+    entry = VocabularyEntry(
+        id="attention-mechanism",
+        name="Attention Mechanism",
+        kind="arch_slot",
+        description="How the model attends to different parts of the input",
+        source="seed",
+        first_seen="2026-03-29",
+        paper_count=0,
+        avg_confidence=0.0,
+    )
+    assert entry.kind == "arch_slot"
+
+
+def test_vocabulary_entry_agentic_category():
+    entry = VocabularyEntry(
+        id="reasoning",
+        name="Reasoning",
+        kind="agentic_category",
+        description="Patterns for multi-step logical inference and problem solving",
+        source="seed",
+        first_seen="2026-03-29",
+        paper_count=0,
+        avg_confidence=0.0,
+    )
+    assert entry.kind == "agentic_category"
+
+
 def test_seed_vocabulary_has_expected_entries():
     params = [e for e in SEED_VOCABULARY if e["kind"] == "parameter"]
     principles = [e for e in SEED_VOCABULARY if e["kind"] == "principle"]
+    arch_slots = [e for e in SEED_VOCABULARY if e["kind"] == "arch_slot"]
+    agentic_categories = [e for e in SEED_VOCABULARY if e["kind"] == "agentic_category"]
     assert len(params) == 12
     assert len(principles) == 12
+    assert len(arch_slots) == 10
+    assert len(agentic_categories) == 6
 
 
 def test_load_seed_vocabulary(tmp_path):
     store = LensStore(str(tmp_path / "test.db"))
     count = load_seed_vocabulary(store)
-    assert count == 24
+    assert count == 40
 
     rows = store.query("vocabulary")
-    assert len(rows) == 24
+    assert len(rows) == 40
     latency = [r for r in rows if r["id"] == "inference-latency"]
     assert len(latency) == 1
     assert latency[0]["name"] == "Inference Latency"
@@ -71,7 +103,7 @@ def test_load_seed_vocabulary_is_idempotent(tmp_path):
     count = load_seed_vocabulary(store)
     assert count == 0
     rows = store.query("vocabulary")
-    assert len(rows) == 24
+    assert len(rows) == 40
 
 
 def test_process_new_concepts_accepts_new_entries(tmp_path):
@@ -154,7 +186,7 @@ def test_end_to_end_guided_extraction_pipeline(tmp_path):
 
     # 1. Seed vocabulary
     count = load_seed_vocabulary(store)
-    assert count == 24
+    assert count == 40
 
     # 2. Simulate guided extraction results
     store.add_rows(

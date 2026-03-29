@@ -143,6 +143,88 @@ SEED_VOCABULARY: list[dict[str, str]] = [
         "kind": "principle",
         "description": "Multiple LLM agents coordinating to solve complex tasks",
     },
+    # Architecture Slots
+    {
+        "name": "Attention Mechanism",
+        "kind": "arch_slot",
+        "description": "How the model attends to different parts of the input",
+    },
+    {
+        "name": "Positional Encoding",
+        "kind": "arch_slot",
+        "description": "Methods for representing token position in sequences",
+    },
+    {
+        "name": "FFN",
+        "kind": "arch_slot",
+        "description": "Feed-forward network layers within transformer blocks",
+    },
+    {
+        "name": "Normalization",
+        "kind": "arch_slot",
+        "description": "Layer or batch normalization techniques",
+    },
+    {
+        "name": "Activation Function",
+        "kind": "arch_slot",
+        "description": "Non-linear activation functions in the network",
+    },
+    {
+        "name": "MoE Routing",
+        "kind": "arch_slot",
+        "description": "Routing strategies for mixture-of-experts architectures",
+    },
+    {
+        "name": "Optimizer",
+        "kind": "arch_slot",
+        "description": "Training optimization algorithms and strategies",
+    },
+    {
+        "name": "Loss Function",
+        "kind": "arch_slot",
+        "description": "Objective functions used during training",
+    },
+    {
+        "name": "Quantization Method",
+        "kind": "arch_slot",
+        "description": "Techniques for reducing numerical precision",
+    },
+    {
+        "name": "Retrieval Mechanism",
+        "kind": "arch_slot",
+        "description": "Methods for retrieving external knowledge",
+    },
+    # Agentic Categories
+    {
+        "name": "Reasoning",
+        "kind": "agentic_category",
+        "description": "Patterns for multi-step logical inference and problem solving",
+    },
+    {
+        "name": "Planning",
+        "kind": "agentic_category",
+        "description": "Patterns for decomposing goals into executable steps",
+    },
+    {
+        "name": "Tool Use",
+        "kind": "agentic_category",
+        "description": "Patterns for LLM interaction with external tools and APIs",
+    },
+    {
+        "name": "Multi-Agent Systems",
+        "kind": "agentic_category",
+        "description": "Patterns involving multiple coordinating agents",
+    },
+    {
+        "name": "Self-Reflection",
+        "kind": "agentic_category",
+        "description": "Patterns for self-evaluation and iterative improvement",
+    },
+    {
+        "name": "Code Generation",
+        "kind": "agentic_category",
+        "description": "Patterns for generating, testing, and debugging code",
+    },
 ]
 
 

@@ -113,8 +113,9 @@ class VocabularyEntry(BaseModel):
     @field_validator("kind")
     @classmethod
     def _check_kind(cls, v: str) -> str:
-        if v not in ("parameter", "principle"):
-            raise ValueError(f"kind must be 'parameter' or 'principle', got '{v}'")
+        valid = ("parameter", "principle", "arch_slot", "agentic_category")
+        if v not in valid:
+            raise ValueError(f"kind must be one of {valid}, got '{v}'")
         return v
 
     @field_validator("source")
