@@ -102,38 +102,6 @@ def test_agentic_extraction_model():
     assert ext.components == ["actor", "evaluator", "memory"]
 
 
-def test_parameter_model():
-    from lens.store.models import Parameter
-
-    param = Parameter(
-        id=1,
-        name="Inference Latency",
-        description="Time to generate output tokens",
-        raw_strings=["inference time", "latency"],
-        paper_ids=["2401.12345"],
-        taxonomy_version=1,
-        embedding=[0.1] * 768,
-    )
-    assert param.name == "Inference Latency"
-    assert len(param.embedding) == 768
-
-
-def test_principle_model():
-    from lens.store.models import Principle
-
-    principle = Principle(
-        id=1,
-        name="Knowledge Distillation",
-        description="Transfer knowledge from large to small model",
-        sub_techniques=["response distillation", "feature distillation"],
-        raw_strings=["distillation", "model compression"],
-        paper_ids=["2401.12345"],
-        taxonomy_version=1,
-        embedding=[0.1] * 768,
-    )
-    assert principle.sub_techniques == ["response distillation", "feature distillation"]
-
-
 def test_architecture_slot_model():
     from lens.store.models import ArchitectureSlot
 

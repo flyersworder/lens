@@ -15,8 +15,6 @@ def test_init_creates_regular_tables(store):
         "tradeoff_extractions",
         "architecture_extractions",
         "agentic_extractions",
-        "parameters",
-        "principles",
         "architecture_slots",
         "architecture_variants",
         "agentic_patterns",
@@ -33,8 +31,7 @@ def test_init_creates_vec_tables(store):
     tables = {row[0] for row in cursor.fetchall()}
     for vec_table in [
         "papers_vec",
-        "parameters_vec",
-        "principles_vec",
+        "vocabulary_vec",
         "architecture_variants_vec",
         "agentic_patterns_vec",
     ]:
@@ -215,22 +212,6 @@ def test_json_list_fields_roundtrip(store, sample_paper_data):
     store.add_rows("papers", [sample_paper_data])
     rows = store.query("papers")
     assert rows[0]["authors"] == ["Vaswani", "Shazeer"]
-
-
-def test_json_list_fields_roundtrip_parameters(store):
-    row = {
-        "id": 1,
-        "name": "latency",
-        "description": "End-to-end latency",
-        "raw_strings": ["latency", "delay"],
-        "paper_ids": ["p1", "p2"],
-        "taxonomy_version": 1,
-        "embedding": [0.5] * EMBEDDING_DIM,
-    }
-    store.add_rows("parameters", [row])
-    rows = store.query("parameters")
-    assert rows[0]["raw_strings"] == ["latency", "delay"]
-    assert rows[0]["paper_ids"] == ["p1", "p2"]
 
 
 def test_json_list_fields_roundtrip_ideation_gaps(store):

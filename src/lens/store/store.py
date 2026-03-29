@@ -16,8 +16,6 @@ from lens.store.models import EMBEDDING_DIM
 # Maps table_name -> primary key column name and type.
 VEC_TABLES: dict[str, tuple[str, str]] = {
     "papers": ("paper_id", "TEXT"),
-    "parameters": ("id", "INTEGER"),
-    "principles": ("id", "INTEGER"),
     "vocabulary": ("id", "TEXT"),
     "architecture_variants": ("id", "INTEGER"),
     "agentic_patterns": ("id", "INTEGER"),
@@ -27,8 +25,6 @@ VEC_TABLES: dict[str, tuple[str, str]] = {
 JSON_FIELDS: dict[str, set[str]] = {
     "papers": {"authors"},
     "agentic_extractions": {"components"},
-    "parameters": {"raw_strings", "paper_ids"},
-    "principles": {"sub_techniques", "raw_strings", "paper_ids"},
     "architecture_variants": {"replaces", "paper_ids"},
     "agentic_patterns": {"components", "use_cases", "paper_ids"},
     "matrix_cells": {"paper_ids"},
@@ -77,23 +73,6 @@ _TABLE_DDL = [
         use_case TEXT NOT NULL,
         components TEXT NOT NULL,
         confidence REAL NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS parameters (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        raw_strings TEXT NOT NULL,
-        paper_ids TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS principles (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        sub_techniques TEXT NOT NULL,
-        raw_strings TEXT NOT NULL,
-        paper_ids TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
     )""",
     """CREATE TABLE IF NOT EXISTS architecture_slots (
         id INTEGER PRIMARY KEY,

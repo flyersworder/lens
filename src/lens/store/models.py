@@ -97,31 +97,6 @@ class AgenticExtraction(BaseModel):
 # ---------------------------------------------------------------------------
 
 
-class Parameter(BaseModel):
-    """A canonicalised performance/cost parameter in the taxonomy."""
-
-    id: int
-    name: str
-    description: str
-    raw_strings: list[str]
-    paper_ids: list[str]
-    taxonomy_version: int
-    embedding: list[float] = []
-
-
-class Principle(BaseModel):
-    """A design principle / technique in the taxonomy."""
-
-    id: int
-    name: str
-    description: str
-    sub_techniques: list[str]
-    raw_strings: list[str]
-    paper_ids: list[str]
-    taxonomy_version: int
-    embedding: list[float] = []
-
-
 class VocabularyEntry(BaseModel):
     """A canonical parameter or principle in the vocabulary."""
 
