@@ -22,11 +22,13 @@ acquire_app = typer.Typer(help="Acquire papers from various sources.")
 build_app = typer.Typer(help="Build taxonomy, matrix, and other derived artefacts.")
 explore_app = typer.Typer(help="Explore the LENS knowledge base interactively.")
 config_app = typer.Typer(help="View and modify LENS configuration.")
+vocab_app = typer.Typer(help="Manage the canonical vocabulary.")
 
 app.add_typer(acquire_app, name="acquire")
 app.add_typer(build_app, name="build")
 app.add_typer(explore_app, name="explore")
 app.add_typer(config_app, name="config")
+app.add_typer(vocab_app, name="vocab")
 
 
 # ---------------------------------------------------------------------------
@@ -50,7 +52,16 @@ def _get_config_path() -> Path | None:
     return None
 
 
-def _llm_kwargs(config: dict) -> dict:
+def _get_store() -> LensStore:
+    """Return an initialised LensStore using the current config."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+    return store
+
+
+def _llm_kwargs(config: dict, key: str = "default_model") -> dict:
     """Extract api_base and api_key from config for LLMClient."""
     llm_cfg = config.get("llm", {})
     kwargs: dict = {}
@@ -439,7 +450,7 @@ async def _enrich_openalex_async(papers, mailto: str = ""):
 
 @build_app.command()
 def taxonomy() -> None:
-    """Build taxonomy by clustering extraction strings."""
+    """Build taxonomy from current extractions."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir / "lens.db"))
@@ -447,29 +458,67 @@ def taxonomy() -> None:
 
     from lens.llm.client import LLMClient
     from lens.taxonomy import (
-        build_taxonomy,  # ty: ignore[unresolved-import]  # TODO: Task 9 will replace
+        build_agentic_taxonomy,
+        build_architecture_taxonomy,
+        get_next_version,
+        record_version,
     )
+    from lens.taxonomy.vocabulary import build_tradeoff_taxonomy
 
     llm_model = config["llm"]["label_model"]
     client = LLMClient(model=llm_model, **_llm_kwargs(config))
-    tax_config = config["taxonomy"]
+    tax_cfg = config.get("taxonomy", {})
     emb_config = config.get("embeddings", {})
-    version = asyncio.run(
-        build_taxonomy(
+    emb_kwargs = dict(
+        embedding_provider=emb_config.get("provider", "local"),
+        embedding_model=emb_config.get("model"),
+        embedding_api_base=emb_config.get("api_base"),
+        embedding_api_key=emb_config.get("api_key"),
+    )
+
+    version_id = get_next_version(store)
+
+    # Tradeoff taxonomy (vocabulary-based, synchronous)
+    build_tradeoff_taxonomy(store, **emb_kwargs)
+
+    # Architecture + agentic (clustering-based, async)
+    arch_result = asyncio.run(
+        build_architecture_taxonomy(
             store,
             client,
-            min_cluster_size=tax_config["min_cluster_size"],
-            target_parameters=tax_config["target_parameters"],
-            target_principles=tax_config["target_principles"],
-            target_arch_variants=tax_config["target_arch_variants"],
-            target_agentic_patterns=tax_config["target_agentic_patterns"],
-            embedding_provider=emb_config.get("provider", "local"),
-            embedding_model=emb_config.get("model"),
-            embedding_api_base=emb_config.get("api_base"),
-            embedding_api_key=emb_config.get("api_key"),
+            version_id=version_id,
+            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
+            target_arch_variants=tax_cfg.get("target_arch_variants", 20),
+            **emb_kwargs,
         )
     )
-    rprint(f"[green]Built taxonomy version {version}[/green]")
+    slot_entries = arch_result["slot_entries"]
+    variant_entries = arch_result["variant_entries"]
+    pattern_entries = asyncio.run(
+        build_agentic_taxonomy(
+            store,
+            client,
+            version_id=version_id,
+            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
+            target_agentic_patterns=tax_cfg.get("target_agentic_patterns", 15),
+            **emb_kwargs,
+        )
+    )
+
+    # Record version
+    paper_count = len(store.query("papers"))
+    vocab = store.query("vocabulary")
+    record_version(
+        store,
+        version_id,
+        paper_count=paper_count,
+        param_count=len([v for v in vocab if v["kind"] == "parameter"]),
+        principle_count=len([v for v in vocab if v["kind"] == "principle"]),
+        slot_count=len(slot_entries),
+        variant_count=len(variant_entries),
+        pattern_count=len(pattern_entries),
+    )
+    rprint(f"[green]Taxonomy v{version_id} built.[/green]")
 
 
 @build_app.command(name="matrix")
@@ -502,30 +551,68 @@ def build_all() -> None:
     from lens.knowledge.matrix import build_matrix
     from lens.llm.client import LLMClient
     from lens.taxonomy import (
-        build_taxonomy,  # ty: ignore[unresolved-import]  # TODO: Task 9 will replace
+        build_agentic_taxonomy,
+        build_architecture_taxonomy,
+        get_next_version,
+        record_version,
     )
+    from lens.taxonomy.vocabulary import build_tradeoff_taxonomy
 
     llm_model = config["llm"]["label_model"]
     client = LLMClient(model=llm_model, **_llm_kwargs(config))
-    tax_config = config["taxonomy"]
+    tax_cfg = config.get("taxonomy", {})
     emb_config = config.get("embeddings", {})
-    version = asyncio.run(
-        build_taxonomy(
+    emb_kwargs = dict(
+        embedding_provider=emb_config.get("provider", "local"),
+        embedding_model=emb_config.get("model"),
+        embedding_api_base=emb_config.get("api_base"),
+        embedding_api_key=emb_config.get("api_key"),
+    )
+
+    version_id = get_next_version(store)
+
+    # Tradeoff taxonomy (vocabulary-based, synchronous)
+    build_tradeoff_taxonomy(store, **emb_kwargs)
+
+    # Architecture + agentic (clustering-based, async)
+    arch_result = asyncio.run(
+        build_architecture_taxonomy(
             store,
             client,
-            min_cluster_size=tax_config["min_cluster_size"],
-            target_parameters=tax_config["target_parameters"],
-            target_principles=tax_config["target_principles"],
-            target_arch_variants=tax_config["target_arch_variants"],
-            target_agentic_patterns=tax_config["target_agentic_patterns"],
-            embedding_provider=emb_config.get("provider", "local"),
-            embedding_model=emb_config.get("model"),
-            embedding_api_base=emb_config.get("api_base"),
-            embedding_api_key=emb_config.get("api_key"),
+            version_id=version_id,
+            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
+            target_arch_variants=tax_cfg.get("target_arch_variants", 20),
+            **emb_kwargs,
         )
     )
+    slot_entries = arch_result["slot_entries"]
+    variant_entries = arch_result["variant_entries"]
+    pattern_entries = asyncio.run(
+        build_agentic_taxonomy(
+            store,
+            client,
+            version_id=version_id,
+            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
+            target_agentic_patterns=tax_cfg.get("target_agentic_patterns", 15),
+            **emb_kwargs,
+        )
+    )
+
+    # Record version
+    paper_count = len(store.query("papers"))
+    vocab = store.query("vocabulary")
+    record_version(
+        store,
+        version_id,
+        paper_count=paper_count,
+        param_count=len([v for v in vocab if v["kind"] == "parameter"]),
+        principle_count=len([v for v in vocab if v["kind"] == "principle"]),
+        slot_count=len(slot_entries),
+        variant_count=len(variant_entries),
+        pattern_count=len(pattern_entries),
+    )
     build_matrix(store)
-    rprint(f"[green]Built taxonomy v{version} + matrix[/green]")
+    rprint(f"[green]Built taxonomy v{version_id} + matrix.[/green]")
 
 
 # ---------------------------------------------------------------------------
@@ -787,6 +874,65 @@ def ideas(
         if row.get("llm_hypothesis"):
             rprint(f"    → {row['llm_hypothesis']}")
         rprint()
+
+
+# ---------------------------------------------------------------------------
+# Vocab subcommands
+# ---------------------------------------------------------------------------
+
+
+@vocab_app.command(name="init")
+def vocab_init() -> None:
+    """Load seed vocabulary into the database."""
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    store = _get_store()
+    count = load_seed_vocabulary(store)
+    if count:
+        typer.echo(f"Loaded {count} seed vocabulary entries.")
+    else:
+        typer.echo("Vocabulary already initialized — no new entries.")
+
+
+@vocab_app.command(name="list")
+def vocab_list(
+    kind: str | None = typer.Option(None, help="Filter by kind: parameter or principle"),
+) -> None:
+    """List vocabulary entries with evidence stats."""
+    store = _get_store()
+    rows = store.query("vocabulary", "kind = ?", (kind,)) if kind else store.query("vocabulary")
+
+    if not rows:
+        typer.echo("No vocabulary entries found.")
+        return
+
+    for r in rows:
+        marker = "S" if r["source"] == "seed" else "E"
+        typer.echo(
+            f"  [{marker}] {r['name']} ({r['kind']}) — "
+            f"papers={r['paper_count']}, conf={r['avg_confidence']:.2f}"
+        )
+
+
+@vocab_app.command(name="show")
+def vocab_show(
+    entry_id: str = typer.Argument(..., help="Vocabulary entry ID (slug)"),
+) -> None:
+    """Show details for a vocabulary entry."""
+    store = _get_store()
+    rows = store.query("vocabulary", "id = ?", (entry_id,))
+    if not rows:
+        typer.echo(f"No vocabulary entry with ID '{entry_id}'")
+        raise typer.Exit(1)
+
+    r = rows[0]
+    typer.echo(f"Name:        {r['name']}")
+    typer.echo(f"Kind:        {r['kind']}")
+    typer.echo(f"Description: {r['description']}")
+    typer.echo(f"Source:      {r['source']}")
+    typer.echo(f"First seen:  {r['first_seen']}")
+    typer.echo(f"Papers:      {r['paper_count']}")
+    typer.echo(f"Avg conf:    {r['avg_confidence']:.4f}")
 
 
 # ---------------------------------------------------------------------------

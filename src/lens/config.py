@@ -42,8 +42,6 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "api_key": "",
     },
     "taxonomy": {
-        "target_parameters": 25,
-        "target_principles": 35,
         "target_arch_variants": 20,
         "target_agentic_patterns": 15,
         "min_cluster_size": 3,
