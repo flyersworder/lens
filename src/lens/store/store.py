@@ -311,14 +311,22 @@ class LensStore:
         self.conn.commit()
 
     def upsert_embedding(self, table: str, row_id: str | int, embedding: list[float]) -> None:
-        """Insert or replace the embedding for a row in the companion vec table."""
+        """Insert or replace the embedding for a row in the companion vec table.
+
+        sqlite-vec virtual tables do not support INSERT OR REPLACE,
+        so we delete-then-insert instead.
+        """
         vec_info = VEC_TABLES.get(table)
         if not vec_info:
             raise ValueError(f"Table '{table}' does not have a companion vec table")
         id_col, _ = vec_info
         emb_bytes = _pack_embedding(embedding)
         self.conn.execute(
-            f"INSERT OR REPLACE INTO {table}_vec ({id_col}, embedding) VALUES (?, ?)",
+            f"DELETE FROM {table}_vec WHERE {id_col} = ?",
+            (row_id,),
+        )
+        self.conn.execute(
+            f"INSERT INTO {table}_vec ({id_col}, embedding) VALUES (?, ?)",
             (row_id, emb_bytes),
         )
         self.conn.commit()
