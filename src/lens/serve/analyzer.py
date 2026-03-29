@@ -144,6 +144,7 @@ async def analyze_architecture(
     store: LensStore,
     llm_client: LLMClient,
     taxonomy_version: int,
+    embedding_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Analyze a query about transformer architecture and return matching variants."""
     taxonomy_version = int(taxonomy_version)  # defense-in-depth: ensure int for SQL filter
@@ -170,7 +171,7 @@ async def analyze_architecture(
             identified_slot_id = None
 
     # Embed query for vector search
-    query_embeddings = embed_strings([query])
+    query_embeddings = embed_strings([query], **(embedding_kwargs or {}))
     if len(query_embeddings) == 0:
         return {
             "query": query,
@@ -220,11 +221,12 @@ async def analyze_agentic(
     store: LensStore,
     llm_client: LLMClient,
     taxonomy_version: int,
+    embedding_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Analyze a query about agentic design patterns and return matching patterns."""
     taxonomy_version = int(taxonomy_version)  # defense-in-depth: ensure int for SQL filter
     # Embed query for vector search
-    query_embeddings = embed_strings([query])
+    query_embeddings = embed_strings([query], **(embedding_kwargs or {}))
     if len(query_embeddings) == 0:
         return {
             "query": query,

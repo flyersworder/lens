@@ -18,10 +18,11 @@ def resolve_concept(
     store: LensStore,
     taxonomy_version: int,
     top_k: int = 3,
+    embedding_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any] | None:
     """Resolve a query to the best matching taxonomy entry."""
     taxonomy_version = int(taxonomy_version)  # defense-in-depth for SQL filters
-    query_embedding = embed_strings([query])[0].tolist()
+    query_embedding = embed_strings([query], **(embedding_kwargs or {}))[0].tolist()
 
     best_match: dict[str, Any] | None = None
     best_distance = float("inf")
@@ -222,9 +223,12 @@ async def explain(
     llm_client: LLMClient,
     taxonomy_version: int,
     focus: str | None = None,
+    embedding_kwargs: dict[str, Any] | None = None,
 ) -> ExplanationResult | None:
     """Explain a concept: resolve -> graph walk -> synthesize."""
-    resolved = resolve_concept(query, store, taxonomy_version=taxonomy_version)
+    resolved = resolve_concept(
+        query, store, taxonomy_version=taxonomy_version, embedding_kwargs=embedding_kwargs
+    )
     if resolved is None:
         return None
 

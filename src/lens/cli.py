@@ -62,6 +62,23 @@ def _llm_kwargs(config: dict) -> dict:
     return kwargs
 
 
+def _embedding_kwargs(config: dict) -> dict:
+    """Extract embedding config for embed_strings calls in the serve layer."""
+    emb_cfg = config.get("embeddings", {})
+    kwargs: dict = {}
+    provider = emb_cfg.get("provider", "local")
+    if provider != "local":
+        kwargs["provider"] = provider
+    if emb_cfg.get("model"):
+        kwargs["model_name"] = emb_cfg["model"]
+    if emb_cfg.get("api_base"):
+        kwargs["api_base"] = emb_cfg["api_base"]
+    api_key = emb_cfg.get("api_key") or os.environ.get("OPENROUTER_API_KEY", "")
+    if api_key:
+        kwargs["api_key"] = api_key
+    return kwargs
+
+
 # ---------------------------------------------------------------------------
 # Top-level commands
 # ---------------------------------------------------------------------------
@@ -110,7 +127,12 @@ def analyze(
     if type_ == "architecture":
         from lens.serve.analyzer import analyze_architecture
 
-        result = asyncio.run(analyze_architecture(query, store, client, taxonomy_version=version))
+        emb_kw = _embedding_kwargs(config)
+        result = asyncio.run(
+            analyze_architecture(
+                query, store, client, taxonomy_version=version, embedding_kwargs=emb_kw
+            )
+        )
         rprint(f"\n[bold]Query:[/bold] {result['query']}")
         rprint(f"[bold]Slot:[/bold] {result.get('slot')}")
         if result["variants"]:
@@ -123,7 +145,12 @@ def analyze(
     elif type_ == "agentic":
         from lens.serve.analyzer import analyze_agentic
 
-        result = asyncio.run(analyze_agentic(query, store, client, taxonomy_version=version))
+        emb_kw = _embedding_kwargs(config)
+        result = asyncio.run(
+            analyze_agentic(
+                query, store, client, taxonomy_version=version, embedding_kwargs=emb_kw
+            )
+        )
         rprint(f"\n[bold]Query:[/bold] {result['query']}")
         if result["patterns"]:
             rprint("\n[bold]Matching agentic patterns:[/bold]")
@@ -178,7 +205,12 @@ def explain(
         focus = "evolution"
 
     client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
-    result = asyncio.run(do_explain(concept, store, client, taxonomy_version=version, focus=focus))
+    emb_kw = _embedding_kwargs(config)
+    result = asyncio.run(
+        do_explain(
+            concept, store, client, taxonomy_version=version, focus=focus, embedding_kwargs=emb_kw
+        )
+    )
 
     if result is None:
         rprint(f"[yellow]Concept '{concept}' not found.[/yellow]")
@@ -770,10 +802,20 @@ def ideas(
 
 @config_app.command()
 def show() -> None:
-    """Show the current LENS configuration."""
+    """Show the current LENS configuration (API keys masked)."""
+    import copy
+
     config_path = _get_config_path()
     config = load_config(config_path)
-    print(yaml.dump(config, default_flow_style=False, sort_keys=False), end="")
+    # Mask sensitive keys
+    display = copy.deepcopy(config)
+    for section in display.values():
+        if isinstance(section, dict):
+            for key in section:
+                if "key" in key.lower() and section[key]:
+                    val = str(section[key])
+                    section[key] = val[:8] + "..." if len(val) > 8 else "***"
+    print(yaml.dump(display, default_flow_style=False, sort_keys=False), end="")
 
 
 @config_app.command()
