@@ -56,96 +56,69 @@ def list_matrix_overview(store: LensStore) -> list[dict[str, Any]]:
     return rows
 
 
-def list_architecture_slots(store: LensStore, taxonomy_version: int) -> list[dict[str, Any]]:
-    """List all architecture slots for a version, enriched with variant_count, sorted by name."""
-    rows = store.query_sql(
-        "SELECT s.*, COALESCE(v.variant_count, 0) AS variant_count "
-        "FROM architecture_slots s "
-        "LEFT JOIN ("
-        "  SELECT slot_id, COUNT(*) AS variant_count "
-        "  FROM architecture_variants "
-        "  WHERE taxonomy_version = ? "
-        "  GROUP BY slot_id"
-        ") v ON s.id = v.slot_id "
-        "WHERE s.taxonomy_version = ? "
-        "ORDER BY s.name",
-        (taxonomy_version, taxonomy_version),
-    )
-    return rows
-
-
-def list_architecture_variants(
-    store: LensStore, slot_name: str, taxonomy_version: int
-) -> list[dict[str, Any]]:
-    """Find the slot by name, then list all variants with that slot_id."""
-    slots = store.query(
-        "architecture_slots",
-        "name = ? AND taxonomy_version = ?",
-        (slot_name, taxonomy_version),
-    )
-    if not slots:
-        return []
-    slot_id = slots[0]["id"]
-
-    variants = store.query(
-        "architecture_variants",
-        "slot_id = ? AND taxonomy_version = ?",
-        (slot_id, taxonomy_version),
-    )
-    for v in variants:
-        v.pop("embedding", None)
-    return variants
-
-
-def list_agentic_patterns(
-    store: LensStore, taxonomy_version: int, category: str | None = None
-) -> list[dict[str, Any]]:
-    """List all agentic patterns for a version, optionally filtered by category."""
-    if category is not None:
-        rows = store.query(
-            "agentic_patterns",
-            "taxonomy_version = ? AND category = ?",
-            (taxonomy_version, category),
-        )
-    else:
-        rows = store.query("agentic_patterns", "taxonomy_version = ?", (taxonomy_version,))
+def list_architecture_slots(store: LensStore) -> list[dict[str, Any]]:
+    """List all architecture slots from vocabulary."""
+    rows = store.query("vocabulary", "kind = ?", ("arch_slot",))
+    extractions = store.query("architecture_extractions")
     for r in rows:
         r.pop("embedding", None)
+        r["variant_count"] = len(
+            set(e["variant_name"] for e in extractions if e["component_slot"] == r["name"])
+        )
     return rows
 
 
-def get_architecture_timeline(
-    store: LensStore, slot_name: str, taxonomy_version: int
-) -> list[dict[str, Any]]:
-    """List variants for a slot ordered by earliest paper date ascending."""
-    slots = store.query(
-        "architecture_slots",
-        "name = ? AND taxonomy_version = ?",
-        (slot_name, taxonomy_version),
-    )
-    if not slots:
-        return []
-    slot_id = slots[0]["id"]
+def list_architecture_variants(store: LensStore, slot_name: str) -> list[dict[str, Any]]:
+    """List architecture variants for a given slot name."""
+    extractions = store.query("architecture_extractions")
+    matching = [e for e in extractions if e["component_slot"] == slot_name]
+    by_name: dict[str, dict[str, Any]] = {}
+    for v in matching:
+        name = v["variant_name"]
+        if name not in by_name:
+            by_name[name] = {
+                "variant_name": name,
+                "slot": slot_name,
+                "replaces": v.get("replaces"),
+                "key_properties": v.get("key_properties", ""),
+                "paper_ids": [],
+                "confidence": v["confidence"],
+            }
+        by_name[name]["paper_ids"].append(v["paper_id"])
+    return list(by_name.values())
 
-    variants = store.query(
-        "architecture_variants",
-        "slot_id = ? AND taxonomy_version = ?",
-        (slot_id, taxonomy_version),
-    )
+
+def list_agentic_patterns(store: LensStore, category: str | None = None) -> list[dict[str, Any]]:
+    """List agentic patterns from extractions, optionally filtered by category."""
+    extractions = store.query("agentic_extractions")
+    if category:
+        extractions = [e for e in extractions if e.get("category") == category]
+    by_name: dict[str, dict[str, Any]] = {}
+    for e in extractions:
+        name = e["pattern_name"]
+        if name not in by_name:
+            by_name[name] = {
+                "pattern_name": name,
+                "category": e.get("category", ""),
+                "structure": e.get("structure", ""),
+                "use_case": e.get("use_case", ""),
+                "components": e.get("components", []),
+                "paper_ids": [],
+            }
+        by_name[name]["paper_ids"].append(e["paper_id"])
+    return list(by_name.values())
+
+
+def get_architecture_timeline(store: LensStore, slot_name: str) -> list[dict[str, Any]]:
+    """List variants for a slot ordered by earliest paper date."""
+    variants = list_architecture_variants(store, slot_name)
     if not variants:
         return []
-
-    # Build a paper_id -> date map
     papers = store.query("papers")
     paper_date_map = {p["paper_id"]: p["date"] for p in papers}
-
-    # Find earliest paper date per variant
     for v in variants:
-        v.pop("embedding", None)
-        paper_ids = v.get("paper_ids", [])
-        dates = [paper_date_map[pid] for pid in paper_ids if pid in paper_date_map]
+        dates = [paper_date_map[pid] for pid in v.get("paper_ids", []) if pid in paper_date_map]
         v["earliest_date"] = min(dates) if dates else None
-
     variants.sort(key=lambda x: x.get("earliest_date") or "9999-99-99")
     return variants
 

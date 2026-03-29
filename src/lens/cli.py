@@ -139,34 +139,28 @@ def analyze(
         from lens.serve.analyzer import analyze_architecture
 
         emb_kw = _embedding_kwargs(config)
-        result = asyncio.run(
-            analyze_architecture(
-                query, store, client, taxonomy_version=version, embedding_kwargs=emb_kw
-            )
-        )
+        result = asyncio.run(analyze_architecture(query, store, client, embedding_kwargs=emb_kw))
         rprint(f"\n[bold]Query:[/bold] {result['query']}")
         rprint(f"[bold]Slot:[/bold] {result.get('slot')}")
         if result["variants"]:
             rprint("\n[bold]Matching architecture variants:[/bold]")
             for v in result["variants"]:
                 props = v.get("properties") or ""
-                rprint(f"  • {v['name']} — {props}" if props else f"  • {v['name']}")
+                name = v.get("variant_name") or v.get("name", "")
+                rprint(f"  • {name} — {props}" if props else f"  • {name}")
         else:
             rprint("[yellow]No matching architecture variants found.[/yellow]")
     elif type_ == "agentic":
         from lens.serve.analyzer import analyze_agentic
 
         emb_kw = _embedding_kwargs(config)
-        result = asyncio.run(
-            analyze_agentic(
-                query, store, client, taxonomy_version=version, embedding_kwargs=emb_kw
-            )
-        )
+        result = asyncio.run(analyze_agentic(query, store, client, embedding_kwargs=emb_kw))
         rprint(f"\n[bold]Query:[/bold] {result['query']}")
         if result["patterns"]:
             rprint("\n[bold]Matching agentic patterns:[/bold]")
             for p in result["patterns"]:
-                rprint(f"  • [{p.get('category')}] {p['name']} — {p.get('description', '')}")
+                name = p.get("pattern_name") or p.get("name", "")
+                rprint(f"  • [{p.get('category')}] {name} — {p.get('use_case', '')}")
         else:
             rprint("[yellow]No matching agentic patterns found.[/yellow]")
     else:
@@ -628,22 +622,21 @@ def architecture(
         raise typer.Exit(code=1)
 
     if slot is None:
-        slots = list_architecture_slots(store, taxonomy_version=version)
+        slots = list_architecture_slots(store)
         if not slots:
             rprint("[yellow]No architecture slots found.[/yellow]")
             return
         for s in slots:
             rprint(f"[bold]{s['name']}[/bold] — {s.get('variant_count', 0)} variant(s)")
     else:
-        variants = list_architecture_variants(store, slot_name=slot, taxonomy_version=version)
+        variants = list_architecture_variants(store, slot_name=slot)
         if not variants:
             rprint(f"[yellow]No variants found for slot '{slot}'.[/yellow]")
             return
         for v in variants:
-            props = v.get("properties") or ""
-            rprint(
-                f"  [bold]{v['name']}[/bold] — {props}" if props else f"  [bold]{v['name']}[/bold]"
-            )
+            name = v.get("variant_name") or v.get("name", "")
+            props = v.get("key_properties") or v.get("properties") or ""
+            rprint(f"  [bold]{name}[/bold] — {props}" if props else f"  [bold]{name}[/bold]")
 
 
 @explore_app.command()
@@ -664,7 +657,7 @@ def agents(
         rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
 
-    patterns = list_agentic_patterns(store, taxonomy_version=version, category=category)
+    patterns = list_agentic_patterns(store, category=category)
     if not patterns:
         rprint("[yellow]No agentic patterns found.[/yellow]")
         return
@@ -678,10 +671,12 @@ def agents(
         for cat, pats in sorted(by_cat.items()):
             rprint(f"\n[bold]{cat}[/bold]")
             for p in pats:
-                rprint(f"  • {p['name']} — {p.get('description', '')}")
+                name = p.get("pattern_name") or p.get("name", "")
+                rprint(f"  • {name} — {p.get('use_case', '')}")
     else:
         for p in patterns:
-            rprint(f"  • {p['name']} — {p.get('description', '')}")
+            name = p.get("pattern_name") or p.get("name", "")
+            rprint(f"  • {name} — {p.get('use_case', '')}")
 
 
 @explore_app.command()
@@ -702,7 +697,7 @@ def evolution(
         rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
 
-    timeline = get_architecture_timeline(store, slot_name=slot, taxonomy_version=version)
+    timeline = get_architecture_timeline(store, slot_name=slot)
     if not timeline:
         rprint(f"[yellow]No variants found for slot '{slot}'.[/yellow]")
         return
@@ -712,7 +707,8 @@ def evolution(
         date_str = v.get("earliest_date") or "unknown date"
         replaces = v.get("replaces")
         replaces_str = f" (replaces: {replaces})" if replaces else ""
-        rprint(f"  {date_str}  [bold]{v['name']}[/bold]{replaces_str}")
+        name = v.get("variant_name") or v.get("name", "")
+        rprint(f"  {date_str}  [bold]{name}[/bold]{replaces_str}")
 
 
 @explore_app.command()
