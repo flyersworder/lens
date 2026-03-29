@@ -161,7 +161,7 @@ def analyze(
     else:
         from lens.serve.analyzer import analyze as do_analyze
 
-        result = asyncio.run(do_analyze(query, store, client, taxonomy_version=version))
+        result = asyncio.run(do_analyze(query, store, client))
         rprint(f"\n[bold]Query:[/bold] {result['query']}")
         rprint(f"[bold]Improving:[/bold] {result['improving']}")
         rprint(f"[bold]Worsening:[/bold] {result['worsening']}")
@@ -206,11 +206,7 @@ def explain(
 
     client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
     emb_kw = _embedding_kwargs(config)
-    result = asyncio.run(
-        do_explain(
-            concept, store, client, taxonomy_version=version, focus=focus, embedding_kwargs=emb_kw
-        )
-    )
+    result = asyncio.run(do_explain(concept, store, client, focus=focus, embedding_kwargs=emb_kw))
 
     if result is None:
         rprint(f"[yellow]Concept '{concept}' not found.[/yellow]")
@@ -553,7 +549,7 @@ def parameters() -> None:
         rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
 
-    params = list_parameters(store, taxonomy_version=version)
+    params = list_parameters(store)
     if not params:
         rprint("[yellow]No parameters found.[/yellow]")
         return
@@ -577,7 +573,7 @@ def principles() -> None:
         rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
 
-    princs = list_principles(store, taxonomy_version=version)
+    princs = list_principles(store)
     if not princs:
         rprint("[yellow]No principles found.[/yellow]")
         return
@@ -587,8 +583,8 @@ def principles() -> None:
 
 @explore_app.command()
 def matrix(
-    param_a: int | None = typer.Argument(None, help="First parameter ID."),
-    param_b: int | None = typer.Argument(None, help="Second parameter ID."),
+    param_a: str | None = typer.Argument(None, help="First parameter ID (slug)."),
+    param_b: str | None = typer.Argument(None, help="Second parameter ID (slug)."),
 ) -> None:
     """Explore the parameter-principle matrix."""
     config = load_config(_get_config_path())
@@ -597,15 +593,9 @@ def matrix(
     store.init_tables()
 
     from lens.serve.explorer import get_matrix_cell, list_matrix_overview
-    from lens.taxonomy.versioning import get_latest_version
-
-    version = get_latest_version(store)
-    if version is None:
-        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
-        raise typer.Exit(code=1)
 
     if param_a is not None and param_b is not None:
-        cells = get_matrix_cell(store, param_a, param_b, taxonomy_version=version)
+        cells = get_matrix_cell(store, param_a, param_b)
         if not cells:
             rprint("[yellow]No matrix cells found for that parameter pair.[/yellow]")
             return
@@ -616,7 +606,7 @@ def matrix(
                 f"avg_confidence={cell['avg_confidence']:.2f}"
             )
     else:
-        overview = list_matrix_overview(store, taxonomy_version=version)
+        overview = list_matrix_overview(store)
         if not overview:
             rprint("[yellow]Matrix is empty. Run 'lens build matrix' first.[/yellow]")
             return

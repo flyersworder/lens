@@ -35,11 +35,10 @@ async def analyze(
     query: str,
     store: LensStore,
     llm_client: LLMClient,
-    taxonomy_version: int,
 ) -> dict[str, Any]:
     """Analyze a tradeoff query and return ranked principles."""
-    # Load parameters
-    params = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
+    # Load parameters from vocabulary
+    params = store.query("vocabulary", "kind = ?", ("parameter",))
     if not params:
         return {
             "query": query,
@@ -82,8 +81,8 @@ async def analyze(
     # Look up matrix
     cells = store.query(
         "matrix_cells",
-        "taxonomy_version = ? AND improving_param_id = ? AND worsening_param_id = ?",
-        (taxonomy_version, improving_id, worsening_id),
+        "improving_param_id = ? AND worsening_param_id = ?",
+        (improving_id, worsening_id),
     )
 
     if not cells:
@@ -99,7 +98,7 @@ async def analyze(
         c["score"] = c["count"] * c["avg_confidence"]
     cells.sort(key=lambda x: x["score"], reverse=True)
 
-    princs = store.query("principles", "taxonomy_version = ?", (taxonomy_version,))
+    princs = store.query("vocabulary", "kind = ?", ("principle",))
     princ_id_to_name = {p["id"]: p["name"] for p in princs}
 
     principles = []

@@ -3,61 +3,39 @@
 import pytest
 
 from lens.store.models import EMBEDDING_DIM
+from lens.taxonomy.vocabulary import load_seed_vocabulary
 
 
 @pytest.fixture
 def populated_store(tmp_path):
-    """Store with taxonomy and matrix data for exploration."""
+    """Store with vocabulary and matrix data for exploration.
+
+    Returns a tuple (store, ids_dict) where ids_dict contains test IDs.
+    """
     from lens.store.store import LensStore
 
     store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
 
-    store.add_rows(
-        "parameters",
-        [
-            {
-                "id": 1,
-                "name": "Inference Latency",
-                "description": "Speed",
-                "raw_strings": ["latency"],
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-            {
-                "id": 2,
-                "name": "Model Accuracy",
-                "description": "Quality",
-                "raw_strings": ["accuracy"],
-                "paper_ids": ["p1", "p2"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-        ],
-    )
-    store.add_rows(
-        "principles",
-        [
-            {
-                "id": 50001,
-                "name": "Quantization",
-                "description": "Reduce precision",
-                "sub_techniques": ["int8", "int4"],
-                "raw_strings": ["quantization"],
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-        ],
-    )
+    load_seed_vocabulary(store)
+
+    # Get two parameter IDs from the loaded vocabulary
+    params = store.query("vocabulary", "kind = ?", ("parameter",))
+    princs = store.query("vocabulary", "kind = ?", ("principle",))
+    assert len(params) >= 2, "Need at least 2 parameters in seed vocabulary"
+    assert len(princs) >= 1, "Need at least 1 principle in seed vocabulary"
+
+    param_id_1 = params[0]["id"]
+    param_id_2 = params[1]["id"]
+    princ_id = princs[0]["id"]
+
     store.add_rows(
         "matrix_cells",
         [
             {
-                "improving_param_id": 1,
-                "worsening_param_id": 2,
-                "principle_id": 50001,
+                "improving_param_id": param_id_1,
+                "worsening_param_id": param_id_2,
+                "principle_id": princ_id,
                 "count": 5,
                 "avg_confidence": 0.85,
                 "paper_ids": ["p1", "p2"],
@@ -72,54 +50,64 @@ def populated_store(tmp_path):
                 "version_id": 1,
                 "created_at": "2026-03-21T00:00:00",
                 "paper_count": 10,
-                "param_count": 2,
-                "principle_count": 1,
+                "param_count": len(params),
+                "principle_count": len(princs),
                 "slot_count": 0,
                 "variant_count": 0,
                 "pattern_count": 0,
             },
         ],
     )
-    return store
+    ids = {"param_id_1": param_id_1, "param_id_2": param_id_2, "princ_id": princ_id}
+    return store, ids
 
 
 def test_list_parameters(populated_store):
     from lens.serve.explorer import list_parameters
 
-    params = list_parameters(populated_store, taxonomy_version=1)
-    assert len(params) == 2
+    store, _ = populated_store
+    params = list_parameters(store)
+    assert len(params) >= 2
     names = {p["name"] for p in params}
-    assert "Inference Latency" in names
+    # Seed vocabulary contains parameters like "Inference Latency"
+    assert any("Latency" in n or "Throughput" in n or "Accuracy" in n for n in names)
 
 
 def test_list_principles(populated_store):
     from lens.serve.explorer import list_principles
 
-    principles = list_principles(populated_store, taxonomy_version=1)
-    assert len(principles) == 1
-    assert principles[0]["name"] == "Quantization"
+    store, _ = populated_store
+    principles = list_principles(store)
+    assert len(principles) >= 1
 
 
 def test_get_matrix_cell(populated_store):
     from lens.serve.explorer import get_matrix_cell
 
-    cell = get_matrix_cell(populated_store, 1, 2, taxonomy_version=1)
+    store, ids = populated_store
+    param_id_1 = ids["param_id_1"]
+    param_id_2 = ids["param_id_2"]
+    princ_id = ids["princ_id"]
+
+    cell = get_matrix_cell(store, param_id_1, param_id_2)
     assert cell is not None
     assert len(cell) >= 1
-    assert cell[0]["principle_id"] == 50001
+    assert cell[0]["principle_id"] == princ_id
 
 
 def test_get_matrix_cell_not_found(populated_store):
     from lens.serve.explorer import get_matrix_cell
 
-    cell = get_matrix_cell(populated_store, 99, 99, taxonomy_version=1)
+    store, _ = populated_store
+    cell = get_matrix_cell(store, "nonexistent-param", "also-nonexistent")
     assert len(cell) == 0
 
 
 def test_get_paper(populated_store):
     from lens.serve.explorer import get_paper
 
-    populated_store.add_papers(
+    store, _ = populated_store
+    store.add_papers(
         [
             {
                 "paper_id": "p1",
@@ -136,7 +124,7 @@ def test_get_paper(populated_store):
             }
         ]
     )
-    paper = get_paper(populated_store, "p1")
+    paper = get_paper(store, "p1")
     assert paper is not None
     assert paper["title"] == "Test Paper"
 
@@ -144,14 +132,16 @@ def test_get_paper(populated_store):
 def test_get_paper_not_found(populated_store):
     from lens.serve.explorer import get_paper
 
-    paper = get_paper(populated_store, "nonexistent")
+    store, _ = populated_store
+    paper = get_paper(store, "nonexistent")
     assert paper is None
 
 
 def test_list_matrix_overview(populated_store):
     from lens.serve.explorer import list_matrix_overview
 
-    overview = list_matrix_overview(populated_store, taxonomy_version=1)
+    store, _ = populated_store
+    overview = list_matrix_overview(store)
     assert len(overview) >= 1
 
 

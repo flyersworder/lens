@@ -7,18 +7,17 @@ from typing import Any
 from lens.store.store import LensStore
 
 
-def list_parameters(store: LensStore, taxonomy_version: int) -> list[dict[str, Any]]:
-    """List all parameters for a taxonomy version."""
-    rows = store.query("parameters", "taxonomy_version = ?", (taxonomy_version,))
-    # Remove embedding field from results
+def list_parameters(store: LensStore) -> list[dict[str, Any]]:
+    """List all vocabulary entries of kind 'parameter'."""
+    rows = store.query("vocabulary", "kind = ?", ("parameter",))
     for r in rows:
         r.pop("embedding", None)
     return rows
 
 
-def list_principles(store: LensStore, taxonomy_version: int) -> list[dict[str, Any]]:
-    """List all principles for a taxonomy version."""
-    rows = store.query("principles", "taxonomy_version = ?", (taxonomy_version,))
+def list_principles(store: LensStore) -> list[dict[str, Any]]:
+    """List all vocabulary entries of kind 'principle'."""
+    rows = store.query("vocabulary", "kind = ?", ("principle",))
     for r in rows:
         r.pop("embedding", None)
     return rows
@@ -26,15 +25,14 @@ def list_principles(store: LensStore, taxonomy_version: int) -> list[dict[str, A
 
 def get_matrix_cell(
     store: LensStore,
-    improving_param_id: int,
-    worsening_param_id: int,
-    taxonomy_version: int,
+    improving_param_id: str,
+    worsening_param_id: str,
 ) -> list[dict[str, Any]]:
     """Get matrix cells for a specific parameter pair, sorted by score."""
     cells = store.query(
         "matrix_cells",
-        "taxonomy_version = ? AND improving_param_id = ? AND worsening_param_id = ?",
-        (taxonomy_version, improving_param_id, worsening_param_id),
+        "improving_param_id = ? AND worsening_param_id = ?",
+        (improving_param_id, worsening_param_id),
     )
     if not cells:
         return []
@@ -44,16 +42,16 @@ def get_matrix_cell(
     return cells
 
 
-def list_matrix_overview(store: LensStore, taxonomy_version: int) -> list[dict[str, Any]]:
+def list_matrix_overview(store: LensStore) -> list[dict[str, Any]]:
     """Get overview of all populated matrix cells."""
     rows = store.query_sql(
         "SELECT improving_param_id, worsening_param_id, "
         "COUNT(principle_id) AS num_principles, "
         "SUM(count) AS total_evidence "
-        "FROM matrix_cells WHERE taxonomy_version = ? "
+        "FROM matrix_cells "
         "GROUP BY improving_param_id, worsening_param_id "
         "ORDER BY total_evidence DESC",
-        (taxonomy_version,),
+        (),
     )
     return rows
 

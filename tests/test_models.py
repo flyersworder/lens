@@ -283,7 +283,7 @@ def test_explanation_result_model():
 
     result = ExplanationResult(
         resolved_type="parameter",
-        resolved_id=1,
+        resolved_id="inference-latency",
         resolved_name="Inference Latency",
         narrative="Inference latency is...",
         evolution=["v1", "v2"],

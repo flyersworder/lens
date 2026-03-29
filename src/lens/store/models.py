@@ -261,7 +261,7 @@ class ExplanationResult(BaseModel):
     """Result returned by the /explain query endpoint."""
 
     resolved_type: str
-    resolved_id: int
+    resolved_id: str
     resolved_name: str
     narrative: str
     evolution: list[str]
