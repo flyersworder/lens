@@ -40,14 +40,18 @@ def test_seed_manifest_has_categories():
     assert "agentic" in categories
 
 
+def test_seed_manifest_has_abstracts():
+    """Enriched manifest should include pre-fetched abstracts."""
+    from lens.acquire.seed import load_seed_manifest
+
+    papers = load_seed_manifest()
+    with_abstracts = [p for p in papers if p.get("abstract")]
+    assert len(with_abstracts) >= 40  # most should have abstracts
+
+
 @pytest.mark.asyncio
 async def test_acquire_seed_papers(tmp_path):
-    """Test seed acquisition with mocked API clients."""
-    import json
-    from unittest.mock import AsyncMock, patch
-
-    import httpx
-
+    """Test seed acquisition from enriched manifest — no API calls needed."""
     from lens.acquire.seed import acquire_seed
     from lens.store.store import LensStore
 
@@ -59,6 +63,52 @@ async def test_acquire_seed_papers(tmp_path):
                     {
                         "arxiv_id": "1706.03762",
                         "title": "Attention Is All You Need",
+                        "abstract": "We propose a new architecture based on attention.",
+                        "authors": ["Vaswani", "Shazeer"],
+                        "date": "2017-06-12",
+                        "category": "foundational",
+                    },
+                    {
+                        "arxiv_id": "2305.18290",
+                        "title": "Direct Preference Optimization",
+                        "abstract": "DPO is a simple approach to RLHF.",
+                        "authors": ["Rafailov"],
+                        "date": "2023-05-29",
+                        "category": "training",
+                    },
+                ]
+            }
+        )
+    )
+
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+    count = await acquire_seed(store, manifest_path=manifest)
+    assert count == 2
+
+    papers = store.query("papers")
+    assert len(papers) == 2
+    assert papers[0]["abstract"] == "We propose a new architecture based on attention."
+    assert papers[0]["authors"] == ["Vaswani", "Shazeer"]
+
+
+@pytest.mark.asyncio
+async def test_acquire_seed_skips_existing(tmp_path):
+    """Papers already in the database should be skipped."""
+    from lens.acquire.seed import acquire_seed
+    from lens.store.store import LensStore
+
+    manifest = tmp_path / "seeds.yaml"
+    manifest.write_text(
+        yaml.dump(
+            {
+                "papers": [
+                    {
+                        "arxiv_id": "1706.03762",
+                        "title": "Attention Is All You Need",
+                        "abstract": "Test",
+                        "authors": [],
+                        "date": "2017-06-12",
                         "category": "foundational",
                     },
                 ]
@@ -66,67 +116,13 @@ async def test_acquire_seed_papers(tmp_path):
         )
     )
 
-    arxiv_xml = """<?xml version="1.0"?>
-    <feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
-      <entry>
-        <id>http://arxiv.org/abs/1706.03762v1</id>
-        <title>Attention Is All You Need</title>
-        <summary>Test abstract</summary>
-        <published>2017-06-12T00:00:00Z</published>
-        <author><name>Vaswani</name></author>
-      </entry>
-    </feed>"""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
 
-    s2_json = json.dumps(
-        {
-            "paperId": "abc",
-            "externalIds": {"ArXiv": "1706.03762"},
-            "title": "Attention",
-            "embedding": {"model": "specter2", "vector": [0.1] * 768},
-        }
-    )
+    # First run — acquires 1
+    count1 = await acquire_seed(store, manifest_path=manifest)
+    assert count1 == 1
 
-    openalex_json = json.dumps(
-        {
-            "results": [
-                {
-                    "id": "W1",
-                    "doi": None,
-                    "title": "Attention",
-                    "cited_by_count": 100000,
-                    "publication_date": "2017-06-12",
-                    "primary_location": {"source": {"display_name": "NeurIPS"}},
-                    "authorships": [],
-                }
-            ]
-        }
-    )
-
-    async def mock_get(url, **kwargs):
-        url_str = str(url)
-        if "openalex" in url_str:
-            return httpx.Response(
-                200, text=openalex_json, headers={"content-type": "application/json"}
-            )
-        elif "semanticscholar" in url_str:
-            return httpx.Response(200, text=s2_json, headers={"content-type": "application/json"})
-        elif "arxiv" in url_str:
-            return httpx.Response(200, text=arxiv_xml)
-        return httpx.Response(404)
-
-    mock_client = AsyncMock()
-    mock_client.get = mock_get
-    mock_client.__aenter__ = AsyncMock(return_value=mock_client)
-    mock_client.__aexit__ = AsyncMock(return_value=False)
-
-    with (
-        patch("lens.acquire.seed.httpx.AsyncClient", return_value=mock_client),
-        patch("lens.acquire.semantic_scholar.httpx.AsyncClient", return_value=mock_client),
-        patch("lens.acquire.openalex.httpx.AsyncClient", return_value=mock_client),
-    ):
-        store = LensStore(str(tmp_path / "test.db"))
-        store.init_tables()
-        count = await acquire_seed(store, manifest_path=manifest)
-        assert count >= 1
-        papers = store.query("papers")
-        assert len(papers) >= 1
+    # Second run — skips (already stored)
+    count2 = await acquire_seed(store, manifest_path=manifest)
+    assert count2 == 0

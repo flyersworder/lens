@@ -1,166 +1,1235 @@
 # Curated seed papers for LENS bootstrap.
-# ~50 landmark papers covering major LLM subfields.
+# Metadata pre-fetched — no arXiv API calls needed during acquisition.
 papers:
-  # --- Foundational architectures (5) ---
   - arxiv_id: "1706.03762"
-    title: "Attention Is All You Need"
+    title: "Attention is All you Need"
     category: foundational
+    authors: ["Ashish Vaswani", "Noam Shazeer", "Niki Parmar", "Jakob Uszkoreit", "Llion Jones", "Aidan N. Gomez", "Lukasz Kaiser", "I. Polosukhin"]
+    date: "2017-06-12"
+    abstract: >-
+      The dominant sequence transduction models are based on complex recurrent
+      or convolutional neural networks in an encoder-decoder configuration.
+      The best performing models also connect the encoder and decoder through
+      an attention mechanism. We propose a new simple network architecture,
+      the Transformer, based solely on attention mechanisms, dispensing with
+      recurrence and convolutions entirely. Experiments on two machine
+      translation tasks show these models to be superior in quality while
+      being more parallelizable and requiring significantly less time to
+      train. Our model achieves 28.4 BLEU on the WMT 2014 English-to-German
+      translation task, improving over the existing best results, including
+      ensembles by over 2 BLEU. On the WMT 2014 English-to-French translation
+      task, our model establishes a new single-model state-of-the-art BLEU
+      score of 41.8 after training for 3.5 days on eight GPUs, a small
+      fraction of the training costs of the best models from the literature.
+      We show that the Transformer generalizes well to other tasks by applying
+      it successfully to English constituency parsing both with large and
+      limited training data.
   - arxiv_id: "2005.14165"
-    title: "Language Models are Few-Shot Learners (GPT-3)"
+    title: "Language Models are Few-Shot Learners"
     category: foundational
+    authors: ["Tom B. Brown", "Benjamin Mann", "Nick Ryder", "Melanie Subbiah", "J. Kaplan", "Prafulla Dhariwal", "Arvind Neelakantan", "Pranav Shyam", "G. Sastry", "Amanda Askell", "S. Agarwal", "Ariel Herbert-Voss", "Gretchen Krueger", "T. Henighan", "R. Child", "A. Ramesh", "Daniel M. Ziegler", "Jeff Wu", "Clemens Winter", "Christopher Hesse", "Mark Chen", "Eric Sigler", "Ma-teusz Litwin", "Scott Gray", "Benjamin Chess", "Jack Clark", "Christopher Berner", "Sam McCandlish", "Alec Radford", "I. Sutskever", "Dario Amodei"]
+    date: "2020-05-28"
+    abstract: >-
+      Recent work has demonstrated substantial gains on many NLP tasks and
+      benchmarks by pre-training on a large corpus of text followed by
+      fine-tuning on a specific task. While typically task-agnostic in
+      architecture, this method still requires task-specific fine-tuning
+      datasets of thousands or tens of thousands of examples. By contrast,
+      humans can generally perform a new language task from only a few
+      examples or from simple instructions - something which current NLP
+      systems still largely struggle to do. Here we show that scaling up
+      language models greatly improves task-agnostic, few-shot performance,
+      sometimes even reaching competitiveness with prior state-of-the-art
+      fine-tuning approaches. Specifically, we train GPT-3, an autoregressive
+      language model with 175 billion parameters, 10x more than any previous
+      non-sparse language model, and test its performance in the few-shot
+      setting. For all tasks, GPT-3 is applied without any gradient updates or
+      fine-tuning, with tasks and few-shot demonstrations specified purely via
+      text interaction with the model. GPT-3 achieves strong performance on
+      many NLP datasets, including translation, question-answering, and cloze
+      tasks, as well as several tasks that require on-the-fly reasoning or
+      domain adaptation, such as unscrambling words, using a novel word in a
+      sentence, or performing 3-digit arithmetic. At the same time, we also
+      identify some datasets where GPT-3's few-shot learning still struggles,
+      as well as some datasets where GPT-3 faces methodological issues related
+      to training on large web corpora. Finally, we find that GPT-3 can
+      generate samples of news articles which human evaluators have difficulty
+      distinguishing from articles written by humans. We discuss broader
+      societal impacts of this finding and of GPT-3 in general.
   - arxiv_id: "2302.13971"
     title: "LLaMA: Open and Efficient Foundation Language Models"
     category: foundational
+    authors: ["Hugo Touvron", "Thibaut Lavril", "Gautier Izacard", "X. Martinet", "M. Lachaux", "Timoth\u00e9e Lacroix", "Baptiste Rozi\u00e8re", "Naman Goyal", "Eric Hambro", "Faisal Azhar", "Aur'elien Rodriguez", "Armand Joulin", "Edouard Grave", "Guillaume Lample"]
+    date: "2023-02-27"
+    abstract: >-
+      We introduce LLaMA, a collection of foundation language models ranging
+      from 7B to 65B parameters. We train our models on trillions of tokens,
+      and show that it is possible to train state-of-the-art models using
+      publicly available datasets exclusively, without resorting to
+      proprietary and inaccessible datasets. In particular, LLaMA-13B
+      outperforms GPT-3 (175B) on most benchmarks, and LLaMA-65B is
+      competitive with the best models, Chinchilla-70B and PaLM-540B. We
+      release all our models to the research community.
   - arxiv_id: "2307.09288"
     title: "Llama 2: Open Foundation and Fine-Tuned Chat Models"
     category: foundational
+    authors: ["Hugo Touvron", "Louis Martin", "Kevin R. Stone", "Peter Albert", "Amjad Almahairi", "Yasmine Babaei", "Niko-lay Bashlykov", "Soumya Batra", "Prajjwal Bhargava", "Shruti Bhosale", "D. Bikel", "Lukas Blecher", "Cristian Canton Ferrer", "Moya Chen", "Guillem Cucurull", "David Esiobu", "Jude Fernandes", "J. Fu", "Wenyin Fu", "Brian Fuller", "Cynthia Gao", "Vedanuj Goswami", "Naman Goyal", "A. Hartshorn", "Saghar Hosseini", "Rui Hou", "Hakan Inan", "Marcin Kardas", "Viktor Kerkez", "Madian Khabsa", "Isabel M. Kloumann", "A. Korenev", "Punit Singh Koura", "M. Lachaux", "Thibaut Lavril", "Jenya Lee", "Diana Liskovich", "Yinghai Lu", "Yuning Mao", "X. Martinet", "Todor Mihaylov", "Pushkar Mishra", "Igor Molybog", "Yixin Nie", "Andrew Poulton", "J. Reizenstein", "Rashi Rungta", "Kalyan Saladi", "A. Schelten", "Ruan Silva", "Eric Michael Smith", "R. Subramanian", "Xia Tan", "Binh Tang", "Ross Taylor", "Adina Williams", "Jian Xiang Kuan", "Puxin Xu", "Zhengxu Yan", "Iliyan Zarov", "Yuchen Zhang", "Angela Fan", "M. Kambadur", "Sharan Narang", "Aur'elien Rodriguez", "Robert Stojnic", "Sergey Edunov", "Thomas Scialom"]
+    date: "2023-07-18"
+    abstract: >-
+      In this work, we develop and release Llama 2, a collection of pretrained
+      and fine-tuned large language models (LLMs) ranging in scale from 7
+      billion to 70 billion parameters. Our fine-tuned LLMs, called Llama
+      2-Chat, are optimized for dialogue use cases. Our models outperform
+      open-source chat models on most benchmarks we tested, and based on our
+      human evaluations for helpfulness and safety, may be a suitable
+      substitute for closed-source models. We provide a detailed description
+      of our approach to fine-tuning and safety improvements of Llama 2-Chat
+      in order to enable the community to build on our work and contribute to
+      the responsible development of LLMs.
   - arxiv_id: "2407.21783"
     title: "The Llama 3 Herd of Models"
     category: foundational
-
-  # --- Attention & positional encoding innovations (8) ---
+    authors: ["Abhimanyu Dubey", "Abhinav Jauhri", "Abhinav Pandey", "Abhishek Kadian", "Ahmad Al-Dahle", "Aiesha Letman", "Akhil Mathur", "A. Schelten", "Amy Yang", "Angela Fan", "Anirudh Goyal", "Anthony S. Hartshorn", "Aobo Yang", "Archi Mitra", "A. Sravankumar", "A. Korenev", "Arthur Hinsvark", "Arun Rao", "Aston Zhang", "Aur'elien Rodriguez", "Austen Gregerson", "Ava Spataru", "Baptiste Rozi\u00e8re", "B. Biron", "Binh Tang", "Bobbie Chern", "Charlotte Caucheteux", "Chaya Nayak", "Chloe Bi", "Chris Marra", "Chris McConnell", "Christian Keller", "C. Touret", "Chunyang Wu", "C. Wong", "Cristian Canton Ferrer", "Cyrus Nikolaidis", "Damien Allonsius", "D. Song", "D. Pintz", "D. Livshits", "David Esiobu", "Dhruv Choudhary", "Dhruv Mahajan", "Diego Garcia-Olano", "Diego Perino", "Dieuwke Hupkes", "Egor Lakomkin", "Ehab A. AlBadawy", "E. Lobanova", "Emily Dinan", "E. Smith", "Filip Radenovic", "Frank Zhang", "Gabriel Synnaeve", "Gabrielle Lee", "Georgia Lewis Anderson", "G. Nail", "G. Mialon", "Guanglong Pang", "Guillem Cucurell", "Hailey Nguyen", "Hannah Korevaar", "Hu Xu", "Hugo Touvron", "Iliyan Zarov", "Imanol Arrieta Ibarra", "Isabel M. Kloumann", "Ishan Misra", "Ivan Evtimov", "Jade Copet", "Jaewon Lee", "Jan Geffert", "Jana Vranes", "Jason Park", "Jay Mahadeokar", "Jeet Shah", "J. V. D. Linde", "J. Billock", "Jenny Hong", "Jenya Lee", "J. Fu", "Jianfeng Chi", "Jianyu Huang", "Jiawen Liu", "Jie Wang", "Jiecao Yu", "Joanna Bitton", "Joe Spisak", "Jongsoo Park", "Joseph Rocca", "J. Johnstun", "Joshua Saxe", "Ju-Qing Jia", "Kalyan Vasuden Alwala", "K. Upasani", "Kate Plawiak", "Keqian Li", "Kenneth Heafield", "Kevin R. Stone", "Khalid El-Arini", "Krithika Iyer", "Kshitiz Malik", "Kuen-ley Chiu", "Kunal Bhalla", "Lauren Rantala-Yeary", "L. Maaten", "Lawrence Chen", "Liang Tan", "Liz Jenkins", "Louis Martin", "Lovish Madaan", "Lubo Malo", "Lukas Blecher", "Lukas Landzaat", "Luke de Oliveira", "M. Muzzi", "Ma-hesh Pasupuleti", "Mannat Singh", "Manohar Paluri", "Marcin Kardas", "Mathew Oldham", "Mathieu Rita", "Maya Pavlova", "M. Kambadur", "Mike Lewis", "Min Si", "Mitesh Kumar Singh", "Mona Hassan", "Naman Goyal", "Narjes Torabi", "Niko-lay Bashlykov", "Nikolay Bogoychev", "Niladri S. Chatterji", "Olivier Duchenne", "Onur cCelebi", "Patrick Alrassy", "Pengchuan Zhang", "Pengwei Li", "Petar Vasi\u0107", "Peter Weng", "Prajjwal Bhargava", "P. Dubal", "Praveen Krishnan", "Punit Singh Koura", "Puxin Xu", "Q. He", "Qingxiao Dong", "Ragavan Srinivasan", "R. Ganapathy", "Ramon Calderer", "Ricardo Sil-veira Cabral", "Robert Stojnic", "R. Raileanu", "Rohit Girdhar", "Rohit Patel", "Romain Sauvestre", "Ron-nie Polidoro", "Roshan Sumbaly", "Ross Taylor", "Ruan Silva", "Rui Hou", "Rui Wang", "S. Hosseini", "Sa-hana Chennabasappa", "Sanjay Singh", "Sean Bell", "S. Kim", "Sergey Edunov", "Shaoliang Nie", "Sharan Narang", "S. Raparthy", "Sheng Shen", "Shengye Wan", "Shruti Bhosale", "Shun Zhang", "Simon Vandenhende", "Soumya Batra", "Spencer Whitman", "Sten Sootla", "S. Collot", "Suchin Gururangan", "S. Borodinsky", "Tamar Herman", "T. Fowler", "Tarek Sheasha", "Thomas Georgiou", "Thomas Scialom", "Tobias Speckbacher", "Todor Mihaylov", "Tong Xiao", "Ujjwal Karn", "Vedanuj Goswami", "Vibhor Gupta", "Vignesh Ramanathan", "Viktor Kerkez", "Vincent Gonguet", "Virginie Do", "Vish Vogeti", "Vladan Petrovic", "Weiwei Chu", "Wenhan Xiong", "Wenyin Fu", "Whit-ney Meers", "X. Martinet", "Xiaodong Wang", "X. Tan", "Xinfeng Xie", "Xuchao Jia", "Xuewei Wang", "Yaelle Goldschlag", "Yashesh Gaur", "Yasmine Babaei", "Yiqian Wen", "Yiwen Song", "Yuchen Zhang", "Yue Li", "Yuning Mao", "Zacharie Delpierre Coudert", "Zhengxu Yan", "Zhengxing Chen", "Zoe Papakipos", "Aaditya K. Singh", "Aaron Grattafiori", "Abha Jain", "A. Kelsey", "Adam Shajnfeld", "Adi Gangidi", "Adolfo Victoria", "Ahuva Goldstand", "A. Menon", "Ajay Sharma", "Alex Boesenberg", "Alex Vaughan", "Alexei Baevski", "Allie Feinstein", "Amanda Kallet", "Amit Sangani", "Anam Yunus", "Andrei Lupu", "Andres Alvarado", "A. Caples", "Andrew Gu", "Andrew Ho", "Andrew Poulton", "Andrew Ryan", "Ankit Ramchandani", "Annie Franco", "Aparajita Saraf", "Arkabandhu Chowdhury", "Ashley Gabriel", "Ashwin Bharambe", "Assaf Eisenman", "Azadeh Yazdan", "Beau James", "Ben Maurer", "B. Leonhardi", "Po-Yao (Bernie) Huang", "Beth Loyd", "Beto de Paola", "Bhargavi Paranjape", "Bing Liu", "Bo Wu", "B. Ni", "Braden Hancock", "Bram Wasti", "Brandon Spence", "B. Stojkovic", "Brian Gamido", "Britt Montalvo", "Carl Parker", "Carly Burton", "Catalina Mejia", "Changhan Wang", "Changkyu Kim", "Chao Zhou", "Chester Hu", "Ching-Hsiang Chu", "Chris Cai", "Chris Tindal", "Christoph Feichtenhofer", "Damon Civin", "D. Beaty", "Daniel Kreymer", "Shang-Wen Li", "Danny Wyatt", "David Adkins", "David Xu", "Davide Testuggine", "Delia David", "Devi Parikh", "Diana Liskovich", "Didem Foss", "Dingkang Wang", "Duc Le", "Dustin Holland", "Edward Dowling", "Eissa Jamil", "Elaine Montgomery", "Eleonora Presani", "Emily Hahn", "Emily Wood", "Erik Brinkman", "E. Arcaute", "Evan Dunbar", "Evan Smothers", "Fei Sun", "F. Kreuk", "Feng Tian", "Firat Ozgenel", "Francesco Caggioni", "Francisco (Paco) Guzm\u00e1n", "Frank J. Kanayet", "Frank Seide", "Gabriela Medina Florez", "Gabriella Schwarz", "Gada Badeer", "Georgia Swee", "Gil Halpern", "Govind Thattai", "Grant Herman", "Grigory Sizov", "Guangyi Zhang", "G. Lakshminarayanan", "Hamid Shojanazeri", "Han Zou", "Hannah Wang", "Han Zha", "Haroun Habeeb", "Harrison Rudolph", "Helen Suk", "Henry Aspegren", "Hunter Goldman", "Igor Molybog", "Igor Tufanov", "Irina-Elena Veliche", "Itai Gat", "J. Weissman", "James Geboski", "James Kohli", "Japhet Asher", "Jean-Baptiste Gaya", "Jeff Marcus", "Jeff Tang", "J. Chan", "Jenny Zhen", "J. Reizenstein", "J. Teboul", "J. Zhong", "Jian Jin", "Jingyi Yang", "Joe Cummings", "J. Carvill", "Jon Shepard", "J. McPhie", "J. Torres", "Josh Ginsburg", "Junjie Wang", "Kaixing(Kai) Wu", "U. KamHou", "Karan Saxena", "Karthik Prasad", "Kartikay Khandelwal", "Katayoun Zand", "Kathy Matosich", "K. Veeraraghavan", "Kelly Michelena", "Keqian Li", "Kun Huang", "Kunal Chawla", "Kushal Lakhotia", "Kyle Huang", "Lailin Chen", "Lakshya Garg", "A. Lavender", "Leandro Silva", "Lee Bell", "Lei Zhang", "Liangpeng Guo", "Licheng Yu", "Liron Moshkovich", "Luca Wehrstedt", "Madian Khabsa", "Manav Avalani", "M. Bhatt", "M. Tsimpoukelli", "Martynas Mankus", "Matan Hasson", "M. Lennie", "Matthias Reso", "M. Groshev", "M. Naumov", "Maya Lathi", "Meghan Keneally", "M. Seltzer", "Michal Valko", "Michelle Restrepo", "M. Patel", "Mik Vyatskov", "Mikayel Samvelyan", "Mike Clark", "M. Macey", "Mike Wang", "Miquel Jubert Hermoso", "Mo Metanat", "Mohammad Rastegari", "Mun-ish Bansal", "N. Santhanam", "Natascha Parks", "Natasha White", "Navy-ata Bawa", "Nayan Singhal", "Nick Egebo", "Nicolas Usunier", "Nikolay Pavlovich Laptev", "Ning Dong", "Ning Zhang", "Norman Cheng", "Oleg Chernoguz", "O. Hart", "Omkar Salpekar", "Ozlem Kalinli", "Parkin Kent", "Parth Parekh", "Paul Saab", "Pavan Balaji", "Pe-dro Rittner", "Philip Bontrager", "Pierre Roux", "Piotr Doll\u00e1r", "Polina Zvyagina", "Prashant Ratanchandani", "P. Yuvraj", "Qian Liang", "Rachad Alao", "R. Rodriguez", "Rafi Ayub", "Raghotham Murthy", "Raghu Nayani", "Rahul Mitra", "Raymond Li", "Rebekkah Hogan", "Robin Battey", "Rocky Wang", "R. Maheswari", "Russ Howes", "Ruty Rinott", "Sai Jayesh Bondu", "Samyak Datta", "Sara Chugh", "Sara Hunt", "Sargun Dhillon", "S. Sidorov", "S. Pan", "Saurabh Verma", "Seiji Yamamoto", "Sharadh Ramaswamy", "Shaun Lindsay", "Sheng Feng", "Shenghao Lin", "Shengxin Zha", "S. Shankar", "Shuqiang Zhang", "Sinong Wang", "Sneha Agarwal", "Soji Sajuyigbe", "Soumith Chintala", "Stephanie Max", "Stephen Chen", "Steve Kehoe", "Steve Satterfield", "Sudarshan Govindaprasad", "S. Gupta", "Sung-Bae Cho", "Sunny Virk", "Suraj Subramanian", "Sy Choudhury", "Sydney Goldman", "Tal Remez", "Tamar Glaser", "Tamara Best", "Thilo Kohler", "Thomas Robinson", "Tianhe Li", "Tianjun Zhang", "Tim Matthews", "Timothy Chou", "Tzook Shaked", "Varun Vontimitta", "Victoria O Ajayi", "Victoria Montanez", "Vijai Mohan", "Vinay Kumar", "Vishal Mangla", "Vlad Ionescu", "V. Poenaru", "Vlad T. Mihailescu", "V. Ivanov", "Wei Li", "Wenchen Wang"]
+    date: "2024-07-31"
+    abstract: >-
+      Modern artificial intelligence (AI) systems are powered by foundation
+      models. This paper presents a new set of foundation models, called Llama
+      3. It is a herd of language models that natively support
+      multilinguality, coding, reasoning, and tool usage. Our largest model is
+      a dense Transformer with 405B parameters and a context window of up to
+      128K tokens. This paper presents an extensive empirical evaluation of
+      Llama 3. We find that Llama 3 delivers comparable quality to leading
+      language models such as GPT-4 on a plethora of tasks. We publicly
+      release Llama 3, including pre-trained and post-trained versions of the
+      405B parameter language model and our Llama Guard 3 model for input and
+      output safety. The paper also presents the results of experiments in
+      which we integrate image, video, and speech capabilities into Llama 3
+      via a compositional approach. We observe this approach performs
+      competitively with the state-of-the-art on image, video, and speech
+      recognition tasks. The resulting models are not yet being broadly
+      released as they are still under development.
   - arxiv_id: "2305.13245"
-    title: "GQA: Training Generalized Multi-Query Transformer Models"
+    title: "GQA: Training Generalized Multi-Query Transformer Models from Multi-Head Checkpoints"
     category: architecture
+    authors: ["J. Ainslie", "J. Lee-Thorp", "Michiel de Jong", "Yury Zemlyanskiy", "Federico Lebr'on", "Sumit K. Sanghai"]
+    date: "2023-05-22"
+    abstract: >-
+      Multi-query attention (MQA), which only uses a single key-value head,
+      drastically speeds up decoder inference. However, MQA can lead to
+      quality degradation, and moreover it may not be desirable to train a
+      separate model just for faster inference. We (1) propose a recipe for
+      uptraining existing multi-head language model checkpoints into models
+      with MQA using 5% of original pre-training compute, and (2) introduce
+      grouped-query attention (GQA), a generalization of multi-query attention
+      which uses an intermediate (more than one, less than number of query
+      heads) number of key-value heads. We show that uptrained GQA achieves
+      quality close to multi-head attention with comparable speed to MQA.
   - arxiv_id: "2104.09864"
     title: "RoFormer: Enhanced Transformer with Rotary Position Embedding"
     category: architecture
+    authors: ["Jianlin Su", "Yu Lu", "Shengfeng Pan", "Bo Wen", "Yunfeng Liu"]
+    date: "2021-04-20"
+    abstract: >-
+      Position encoding recently has shown effective in the transformer
+      architecture. It enables valuable supervision for dependency modeling
+      between elements at different positions of the sequence. In this paper,
+      we first investigate various methods to integrate positional information
+      into the learning process of transformer-based language models. Then, we
+      propose a novel method named Rotary Position Embedding(RoPE) to
+      effectively leverage the positional information. Specifically, the
+      proposed RoPE encodes the absolute position with a rotation matrix and
+      meanwhile incorporates the explicit relative position dependency in
+      self-attention formulation. Notably, RoPE enables valuable properties,
+      including the flexibility of sequence length, decaying inter-token
+      dependency with increasing relative distances, and the capability of
+      equipping the linear self-attention with relative position encoding.
+      Finally, we evaluate the enhanced transformer with rotary position
+      embedding, also called RoFormer, on various long text classification
+      benchmark datasets. Our experiments show that it consistently overcomes
+      its alternatives. Furthermore, we provide a theoretical analysis to
+      explain some experimental results. RoFormer is already integrated into
+      Huggingface:
+      \url{https://huggingface.co/docs/transformers/model_doc/roformer}.
   - arxiv_id: "2205.14135"
-    title: "FlashAttention: Fast and Memory-Efficient Exact Attention"
+    title: "FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness"
     category: architecture
+    authors: ["Tri Dao", "Daniel Y. Fu", "Stefano Ermon", "A. Rudra", "Christopher R'e"]
+    date: "2022-05-27"
+    abstract: >-
+      Transformers are slow and memory-hungry on long sequences, since the
+      time and memory complexity of self-attention are quadratic in sequence
+      length. Approximate attention methods have attempted to address this
+      problem by trading off model quality to reduce the compute complexity,
+      but often do not achieve wall-clock speedup. We argue that a missing
+      principle is making attention algorithms IO-aware -- accounting for
+      reads and writes between levels of GPU memory. We propose
+      FlashAttention, an IO-aware exact attention algorithm that uses tiling
+      to reduce the number of memory reads/writes between GPU high bandwidth
+      memory (HBM) and GPU on-chip SRAM. We analyze the IO complexity of
+      FlashAttention, showing that it requires fewer HBM accesses than
+      standard attention, and is optimal for a range of SRAM sizes. We also
+      extend FlashAttention to block-sparse attention, yielding an approximate
+      attention algorithm that is faster than any existing approximate
+      attention method. FlashAttention trains Transformers faster than
+      existing baselines: 15% end-to-end wall-clock speedup on BERT-large
+      (seq. length 512) compared to the MLPerf 1.1 training speed record,
+      3$\times$ speedup on GPT-2 (seq. length 1K), and 2.4$\times$ speedup on
+      long-range arena (seq. length 1K-4K). FlashAttention and block-sparse
+      FlashAttention enable longer context in Transformers, yielding higher
+      quality models (0.7 better perplexity on GPT-2 and 6.4 points of lift on
+      long-document classification) and entirely new capabilities: the first
+      Transformers to achieve better-than-chance performance on the Path-X
+      challenge (seq. length 16K, 61.4% accuracy) and Path-256 (seq. length
+      64K, 63.1% accuracy).
   - arxiv_id: "2307.08691"
-    title: "FlashAttention-2: Faster Attention with Better Parallelism"
+    title: "FlashAttention-2: Faster Attention with Better Parallelism and Work Partitioning"
     category: architecture
+    authors: ["Tri Dao"]
+    date: "2023-07-17"
+    abstract: >-
+      Scaling Transformers to longer sequence lengths has been a major problem
+      in the last several years, promising to improve performance in language
+      modeling and high-resolution image understanding, as well as to unlock
+      new applications in code, audio, and video generation. The attention
+      layer is the main bottleneck in scaling to longer sequences, as its
+      runtime and memory increase quadratically in the sequence length.
+      FlashAttention exploits the asymmetric GPU memory hierarchy to bring
+      significant memory saving (linear instead of quadratic) and runtime
+      speedup (2-4$\times$ compared to optimized baselines), with no
+      approximation. However, FlashAttention is still not nearly as fast as
+      optimized matrix-multiply (GEMM) operations, reaching only 25-40\% of
+      the theoretical maximum FLOPs/s. We observe that the inefficiency is due
+      to suboptimal work partitioning between different thread blocks and
+      warps on the GPU, causing either low-occupancy or unnecessary shared
+      memory reads/writes. We propose FlashAttention-2, with better work
+      partitioning to address these issues. In particular, we (1) tweak the
+      algorithm to reduce the number of non-matmul FLOPs (2) parallelize the
+      attention computation, even for a single head, across different thread
+      blocks to increase occupancy, and (3) within each thread block,
+      distribute the work between warps to reduce communication through shared
+      memory. These yield around 2$\times$ speedup compared to FlashAttention,
+      reaching 50-73\% of the theoretical maximum FLOPs/s on A100 and getting
+      close to the efficiency of GEMM operations. We empirically validate that
+      when used end-to-end to train GPT-style models, FlashAttention-2 reaches
+      training speed of up to 225 TFLOPs/s per A100 GPU (72\% model FLOPs
+      utilization).
   - arxiv_id: "2309.17453"
-    title: "Mistral 7B"
+    title: "Efficient Streaming Language Models with Attention Sinks"
     category: architecture
+    authors: ["Guangxuan Xiao", "Yuandong Tian", "Beidi Chen", "Song Han", "Mike Lewis"]
+    date: "2023-09-29"
+    abstract: >-
+      Deploying Large Language Models (LLMs) in streaming applications such as
+      multi-round dialogue, where long interactions are expected, is urgently
+      needed but poses two major challenges. Firstly, during the decoding
+      stage, caching previous tokens' Key and Value states (KV) consumes
+      extensive memory. Secondly, popular LLMs cannot generalize to longer
+      texts than the training sequence length. Window attention, where only
+      the most recent KVs are cached, is a natural approach -- but we show
+      that it fails when the text length surpasses the cache size. We observe
+      an interesting phenomenon, namely attention sink, that keeping the KV of
+      initial tokens will largely recover the performance of window attention.
+      In this paper, we first demonstrate that the emergence of attention sink
+      is due to the strong attention scores towards initial tokens as
+      a"sink"even if they are not semantically important. Based on the above
+      analysis, we introduce StreamingLLM, an efficient framework that enables
+      LLMs trained with a finite length attention window to generalize to
+      infinite sequence lengths without any fine-tuning. We show that
+      StreamingLLM can enable Llama-2, MPT, Falcon, and Pythia to perform
+      stable and efficient language modeling with up to 4 million tokens and
+      more. In addition, we discover that adding a placeholder token as a
+      dedicated attention sink during pre-training can further improve
+      streaming deployment. In streaming settings, StreamingLLM outperforms
+      the sliding window recomputation baseline by up to 22.2x speedup. Code
+      and datasets are provided at
+      https://github.com/mit-han-lab/streaming-llm.
   - arxiv_id: "2401.04088"
-    title: "DeepSeek-MoE: Towards Ultimate Expert Specialization"
+    title: "Mixtral of Experts"
     category: architecture
+    authors: ["Albert Q. Jiang", "Alexandre Sablayrolles", "Antoine Roux", "Arthur Mensch", "Blanche Savary", "Chris Bamford", "Devendra Singh Chaplot", "Diego de Las Casas", "Emma Bou Hanna", "Florian Bressand", "Gianna Lengyel", "Guillaume Bour", "Guillaume Lample", "L\u00e9lio Renard Lavaud", "Lucile Saulnier", "M. Lachaux", "Pierre Stock", "Sandeep Subramanian", "Sophia Yang", "Szymon Antoniak", "Teven Le Scao", "Th\u00e9ophile Gervet", "Thibaut Lavril", "Thomas Wang", "Timoth\u00e9e Lacroix", "William El Sayed"]
+    date: "2024-01-08"
+    abstract: >-
+      We introduce Mixtral 8x7B, a Sparse Mixture of Experts (SMoE) language
+      model. Mixtral has the same architecture as Mistral 7B, with the
+      difference that each layer is composed of 8 feedforward blocks (i.e.
+      experts). For every token, at each layer, a router network selects two
+      experts to process the current state and combine their outputs. Even
+      though each token only sees two experts, the selected experts can be
+      different at each timestep. As a result, each token has access to 47B
+      parameters, but only uses 13B active parameters during inference.
+      Mixtral was trained with a context size of 32k tokens and it outperforms
+      or matches Llama 2 70B and GPT-3.5 across all evaluated benchmarks. In
+      particular, Mixtral vastly outperforms Llama 2 70B on mathematics, code
+      generation, and multilingual benchmarks. We also provide a model
+      fine-tuned to follow instructions, Mixtral 8x7B - Instruct, that
+      surpasses GPT-3.5 Turbo, Claude-2.1, Gemini Pro, and Llama 2 70B - chat
+      model on human benchmarks. Both the base and instruct models are
+      released under the Apache 2.0 license.
   - arxiv_id: "2501.12948"
-    title: "DeepSeek-R1: Incentivizing Reasoning Capability in LLMs"
+    title: "DeepSeek-R1 incentivizes reasoning in LLMs through reinforcement learning"
     category: architecture
+    authors: ["DeepSeek-AI", "Daya Guo", "Dejian Yang", "Haowei Zhang", "Jun-Mei Song", "Ruoyu Zhang", "R. Xu", "Qihao Zhu", "Shirong Ma", "Peiyi Wang", "Xiaoling Bi", "Xiaokang Zhang", "Xingkai Yu", "Yu Wu", "Z. F. Wu", "Zhibin Gou", "Zhihong Shao", "Zhuoshu Li", "Ziyi Gao", "A. Liu", "Bing Xue", "Bing-Li Wang", "Bochao Wu", "B. Feng", "Chengda Lu", "Chenggang Zhao", "C. Deng", "Chenyu Zhang", "C. Ruan", "Damai Dai", "Deli Chen", "Dong-Li Ji", "Erhang Li", "Fangyun Lin", "Fucong Dai", "Fuli Luo", "Guangbo Hao", "Guanting Chen", "Guowei Li", "H. Zhang", "Han Bao", "Hanwei Xu", "Haocheng Wang", "Honghui Ding", "Huajian Xin", "Huazuo Gao", "Hui Qu", "Hui Li", "Jianzhong Guo", "Jiashi Li", "Jiawei Wang", "JingChang Chen", "Jingyang Yuan", "Junjie Qiu", "Junlong Li", "J. Cai", "J. Ni", "Jian Liang", "Jin Chen", "Kai Dong", "Kai Hu", "Kaige Gao", "Kang Guan", "Kexin Huang", "K. Yu", "Lean Wang", "Lecong Zhang", "Liang Zhao", "Litong Wang", "Liyue Zhang", "Lei Xu", "Leyi Xia", "Mingchuan Zhang", "Minghua Zhang", "M. Tang", "Meng Li", "Miaojun Wang", "Mingming Li", "Ning Tian", "Panpan Huang", "Peng Zhang", "Qiancheng Wang", "Qinyu Chen", "Qiushi Du", "Ruiqi Ge", "Ruisong Zhang", "Ruizhe Pan", "Runji Wang", "R. J. Chen", "R. Jin", "Ruyi Chen", "Shanghao Lu", "Shangyan Zhou", "Shanhuang Chen", "Shengfeng Ye", "Shiyu Wang", "Shuiping Yu", "Shunfeng Zhou", "Shuting Pan", "S. Li", "Shuang Zhou", "Shao-Kang Wu", "Tao Yun", "Tian Pei", "T. Sun", "T. Wang", "Wangding Zeng", "Wanjia Zhao", "Wen Liu", "W. Liang", "Wenjun Gao", "Wen-Xia Yu", "Wentao Zhang", "W. Xiao", "Wei An", "Xiaodong Liu", "Xiaohan Wang", "Xiaokang Chen", "X. Nie", "Xin Cheng", "Xin Liu", "Xin Xie", "Xingchao Liu", "Xinyu Yang", "Xinyuan Li", "Xuecheng Su", "Xuheng Lin", "X. Q. Li", "Xiangyu Jin", "Xi-Cheng Shen", "Xiaosha Chen", "Xiaowen Sun", "Xiaoxiang Wang", "Xinnan Song", "Xinyi Zhou", "Xianzu Wang", "Xinxia Shan", "Y. K. Li", "Y. Q. Wang", "Y. X. Wei", "Yang Zhang", "Yanhong Xu", "Yao Li", "Yao Zhao", "Yaofeng Sun", "Yaohui Wang", "Yi Yu", "Yichao Zhang", "Yifan Shi", "Yi Xiong", "Ying He", "Y. Piao", "Yisong Wang", "Yixuan Tan", "Yiyang Ma", "Yiyuan Liu", "Yongqiang Guo", "Y. Ou", "Yuduan Wang", "Yue Gong", "Yu-Jing Zou", "Yujia He", "Yunfan Xiong", "Yu-Wei Luo", "Yu-mei You", "Yuxuan Liu", "Yuyang Zhou", "Y. X. Zhu", "Yanping Huang", "Yao Li", "Yi Zheng", "Yuchen Zhu", "Yunxiang Ma", "Ying Tang", "Y. Zha", "Yuting Yan", "Z. Ren", "Z. Ren", "Zhangli Sha", "Zhe Fu", "Zhean Xu", "Zhenda Xie", "Zhen-guo Zhang", "Zhewen Hao", "Zhicheng Ma", "Zhigang Yan", "Zhiyu Wu", "Zihui Gu", "Zijia Zhu", "Zijun Liu", "Zi-An Li", "Ziwei Xie", "Ziyang Song", "Zizheng Pan", "Zhen Huang", "Zhipeng Xu", "Zhongyu Zhang", "Zhen Zhang"]
+    date: "2025-01-22"
+    abstract: >-
+      General reasoning represents a long-standing and formidable challenge in
+      artificial intelligence (AI). Recent breakthroughs, exemplified by large
+      language models (LLMs)1,2 and chain-of-thought (CoT) prompting3, have
+      achieved considerable success on foundational reasoning tasks. However,
+      this success is heavily contingent on extensive human-annotated
+      demonstrations and the capabilities of models are still insufficient for
+      more complex problems. Here we show that the reasoning abilities of LLMs
+      can be incentivized through pure reinforcement learning (RL), obviating
+      the need for human-labelled reasoning trajectories. The proposed RL
+      framework facilitates the emergent development of advanced reasoning
+      patterns, such as self-reflection, verification and dynamic strategy
+      adaptation. Consequently, the trained model achieves superior
+      performance on verifiable tasks such as mathematics, coding competitions
+      and STEM fields, surpassing its counterparts trained through
+      conventional supervised learning on human demonstrations. Moreover, the
+      emergent reasoning patterns exhibited by these large-scale models can be
+      systematically used to guide and enhance the reasoning capabilities of
+      smaller models. A new artificial intelligence model, DeepSeek-R1, is
+      introduced, demonstrating that the reasoning abilities of large language
+      models can be incentivized through pure reinforcement learning, removing
+      the need for human-annotated demonstrations.
   - arxiv_id: "2502.13923"
-    title: "Native Sparse Attention: Hardware-Aligned and Natively Trainable Sparse Attention"
+    title: "Qwen2.5-VL Technical Report"
     category: architecture
-
-  # --- Training & alignment (8) ---
+    authors: ["Shuai Bai", "Keqin Chen", "Xuejing Liu", "Jialin Wang", "Wenbin Ge", "Sibo Song", "Kai Dang", "Peng Wang", "Shijie Wang", "Jun Tang", "Humen Zhong", "Yuanzhi Zhu", "Mingkun Yang", "Zhaohai Li", "Jianqiang Wan", "Pengfei Wang", "Wei Ding", "Zheren Fu", "Yiheng Xu", "Jiabo Ye", "Xi Zhang", "Tianbao Xie", "Zesen Cheng", "Hang Zhang", "Zhibo Yang", "Haiyang Xu", "Junyang Lin"]
+    date: "2025-02-19"
+    abstract: >-
+      We introduce Qwen2.5-VL, the latest flagship model of Qwen
+      vision-language series, which demonstrates significant advancements in
+      both foundational capabilities and innovative functionalities.
+      Qwen2.5-VL achieves a major leap forward in understanding and
+      interacting with the world through enhanced visual recognition, precise
+      object localization, robust document parsing, and long-video
+      comprehension. A standout feature of Qwen2.5-VL is its ability to
+      localize objects using bounding boxes or points accurately. It provides
+      robust structured data extraction from invoices, forms, and tables, as
+      well as detailed analysis of charts, diagrams, and layouts. To handle
+      complex inputs, Qwen2.5-VL introduces dynamic resolution processing and
+      absolute time encoding, enabling it to process images of varying sizes
+      and videos of extended durations (up to hours) with second-level event
+      localization. This allows the model to natively perceive spatial scales
+      and temporal dynamics without relying on traditional normalization
+      techniques. By training a native dynamic-resolution Vision Transformer
+      (ViT) from scratch and incorporating Window Attention, we reduce
+      computational overhead while maintaining native resolution. As a result,
+      Qwen2.5-VL excels not only in static image and document understanding
+      but also as an interactive visual agent capable of reasoning, tool
+      usage, and task execution in real-world scenarios such as operating
+      computers and mobile devices. Qwen2.5-VL is available in three sizes,
+      addressing diverse use cases from edge AI to high-performance computing.
+      The flagship Qwen2.5-VL-72B model matches state-of-the-art models like
+      GPT-4o and Claude 3.5 Sonnet, particularly excelling in document and
+      diagram understanding. Additionally, Qwen2.5-VL maintains robust
+      linguistic performance, preserving the core language competencies of the
+      Qwen2.5 LLM.
   - arxiv_id: "2203.02155"
-    title: "Training language models to follow instructions with human feedback (InstructGPT)"
+    title: "Training language models to follow instructions with human feedback"
     category: training
+    authors: ["Long Ouyang", "Jeff Wu", "Xu Jiang", "Diogo Almeida", "Carroll L. Wainwright", "Pamela Mishkin", "Chong Zhang", "S. Agarwal", "Katarina Slama", "Alex Ray", "John Schulman", "Jacob Hilton", "Fraser Kelton", "Luke E. Miller", "M. Simens", "Amanda Askell", "Peter Welinder", "P. Christiano", "Jan Leike", "Ryan J. Lowe"]
+    date: "2022-03-04"
+    abstract: >-
+      Making language models bigger does not inherently make them better at
+      following a user's intent. For example, large language models can
+      generate outputs that are untruthful, toxic, or simply not helpful to
+      the user. In other words, these models are not aligned with their users.
+      In this paper, we show an avenue for aligning language models with user
+      intent on a wide range of tasks by fine-tuning with human feedback.
+      Starting with a set of labeler-written prompts and prompts submitted
+      through the OpenAI API, we collect a dataset of labeler demonstrations
+      of the desired model behavior, which we use to fine-tune GPT-3 using
+      supervised learning. We then collect a dataset of rankings of model
+      outputs, which we use to further fine-tune this supervised model using
+      reinforcement learning from human feedback. We call the resulting models
+      InstructGPT. In human evaluations on our prompt distribution, outputs
+      from the 1.3B parameter InstructGPT model are preferred to outputs from
+      the 175B GPT-3, despite having 100x fewer parameters. Moreover,
+      InstructGPT models show improvements in truthfulness and reductions in
+      toxic output generation while having minimal performance regressions on
+      public NLP datasets. Even though InstructGPT still makes simple
+      mistakes, our results show that fine-tuning with human feedback is a
+      promising direction for aligning language models with human intent.
   - arxiv_id: "2305.18290"
-    title: "Direct Preference Optimization (DPO)"
+    title: "Direct Preference Optimization: Your Language Model is Secretly a Reward Model"
     category: training
+    authors: ["Rafael Rafailov", "Archit Sharma", "E. Mitchell", "Stefano Ermon", "Christopher D. Manning", "Chelsea Finn"]
+    date: "2023-05-29"
+    abstract: >-
+      While large-scale unsupervised language models (LMs) learn broad world
+      knowledge and some reasoning skills, achieving precise control of their
+      behavior is difficult due to the completely unsupervised nature of their
+      training. Existing methods for gaining such steerability collect human
+      labels of the relative quality of model generations and fine-tune the
+      unsupervised LM to align with these preferences, often with
+      reinforcement learning from human feedback (RLHF). However, RLHF is a
+      complex and often unstable procedure, first fitting a reward model that
+      reflects the human preferences, and then fine-tuning the large
+      unsupervised LM using reinforcement learning to maximize this estimated
+      reward without drifting too far from the original model. In this paper
+      we introduce a new parameterization of the reward model in RLHF that
+      enables extraction of the corresponding optimal policy in closed form,
+      allowing us to solve the standard RLHF problem with only a simple
+      classification loss. The resulting algorithm, which we call Direct
+      Preference Optimization (DPO), is stable, performant, and
+      computationally lightweight, eliminating the need for sampling from the
+      LM during fine-tuning or performing significant hyperparameter tuning.
+      Our experiments show that DPO can fine-tune LMs to align with human
+      preferences as well as or better than existing methods. Notably,
+      fine-tuning with DPO exceeds PPO-based RLHF in ability to control
+      sentiment of generations, and matches or improves response quality in
+      summarization and single-turn dialogue while being substantially simpler
+      to implement and train.
   - arxiv_id: "2402.03300"
-    title: "KTO: Model Alignment as Prospect Theoretic Optimization"
+    title: "DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models"
     category: training
+    authors: ["Zhihong Shao", "Peiyi Wang", "Qihao Zhu", "R. Xu", "Jun-Mei Song", "Mingchuan Zhang", "Y. K. Li", "Yu Wu", "Daya Guo"]
+    date: "2024-02-05"
+    abstract: >-
+      Mathematical reasoning poses a significant challenge for language models
+      due to its complex and structured nature. In this paper, we introduce
+      DeepSeekMath 7B, which continues pre-training DeepSeek-Coder-Base-v1.5
+      7B with 120B math-related tokens sourced from Common Crawl, together
+      with natural language and code data. DeepSeekMath 7B has achieved an
+      impressive score of 51.7% on the competition-level MATH benchmark
+      without relying on external toolkits and voting techniques, approaching
+      the performance level of Gemini-Ultra and GPT-4. Self-consistency over
+      64 samples from DeepSeekMath 7B achieves 60.9% on MATH. The mathematical
+      reasoning capability of DeepSeekMath is attributed to two key factors:
+      First, we harness the significant potential of publicly available web
+      data through a meticulously engineered data selection pipeline. Second,
+      we introduce Group Relative Policy Optimization (GRPO), a variant of
+      Proximal Policy Optimization (PPO), that enhances mathematical reasoning
+      abilities while concurrently optimizing the memory usage of PPO.
   - arxiv_id: "2402.13228"
-    title: "GRPO: Group Relative Policy Optimization"
+    title: "Smaug: Fixing Failure Modes of Preference Optimisation with DPO-Positive"
     category: training
+    authors: ["Arka Pal", "Deep Karkhanis", "Samuel Dooley", "Manley Roberts", "Siddartha Naidu", "Colin White"]
+    date: "2024-02-20"
+    abstract: >-
+      Direct Preference Optimisation (DPO) is effective at significantly
+      improving the performance of large language models (LLMs) on downstream
+      tasks such as reasoning, summarisation, and alignment. Using pairs of
+      preferred and dispreferred data, DPO models the relative probability of
+      picking one response over another. In this work, first we show
+      theoretically that the standard DPO loss can lead to a reduction of the
+      model's likelihood of the preferred examples, as long as the relative
+      probability between the preferred and dispreferred classes increases. We
+      then show empirically that this phenomenon occurs when fine-tuning LLMs
+      on common datasets, especially datasets in which the edit distance
+      between pairs of completions is low. Using these insights, we design
+      DPO-Positive (DPOP), a new loss function and training procedure which
+      avoids this failure mode. Surprisingly, we find that DPOP outperforms
+      DPO and other fine-tuning procedures across a wide variety of datasets
+      and downstream tasks, including datasets with high edit distances
+      between completions. Furthermore, we find that the DPOP-tuned model
+      outperforms the DPO-tuned model (all else equal) on benchmarks
+      independent of the fine-tuning data, such as MT-Bench. Finally, using
+      DPOP, we create and open-source Smaug-34B and Smaug-72B, with the latter
+      becoming the first open-source LLM to surpass an average accuracy of 80%
+      on the HuggingFace Open LLM Leaderboard.
   - arxiv_id: "2001.08361"
     title: "Scaling Laws for Neural Language Models"
     category: training
+    authors: ["J. Kaplan", "Sam McCandlish", "T. Henighan", "Tom B. Brown", "Benjamin Chess", "R. Child", "Scott Gray", "Alec Radford", "Jeff Wu", "Dario Amodei"]
+    date: "2020-01-23"
+    abstract: >-
+      We study empirical scaling laws for language model performance on the
+      cross-entropy loss. The loss scales as a power-law with model size,
+      dataset size, and the amount of compute used for training, with some
+      trends spanning more than seven orders of magnitude. Other architectural
+      details such as network width or depth have minimal effects within a
+      wide range. Simple equations govern the dependence of overfitting on
+      model/dataset size and the dependence of training speed on model size.
+      These relationships allow us to determine the optimal allocation of a
+      fixed compute budget. Larger models are significantly more
+      sample-efficient, such that optimally compute-efficient training
+      involves training very large models on a relatively modest amount of
+      data and stopping significantly before convergence.
   - arxiv_id: "2203.15556"
-    title: "Training Compute-Optimal Large Language Models (Chinchilla)"
+    title: "Training Compute-Optimal Large Language Models"
     category: training
+    authors: ["Jordan Hoffmann", "Sebastian Borgeaud", "Arthur Mensch", "Elena Buchatskaya", "Trevor Cai", "Eliza Rutherford", "Diego de Las Casas", "Lisa Anne Hendricks", "Johannes Welbl", "Aidan Clark", "T. Hennigan", "Eric Noland", "Katie Millican", "George van den Driessche", "Bogdan Damoc", "Aurelia Guy", "Simon Osindero", "K. Simonyan", "Erich Elsen", "Jack W. Rae", "O. Vinyals", "L. Sifre"]
+    date: "2022-03-29"
+    abstract: >-
+      We investigate the optimal model size and number of tokens for training
+      a transformer language model under a given compute budget. We find that
+      current large language models are significantly undertrained, a
+      consequence of the recent focus on scaling language models whilst
+      keeping the amount of training data constant. By training over 400
+      language models ranging from 70 million to over 16 billion parameters on
+      5 to 500 billion tokens, we find that for compute-optimal training, the
+      model size and the number of training tokens should be scaled equally:
+      for every doubling of model size the number of training tokens should
+      also be doubled. We test this hypothesis by training a predicted
+      compute-optimal model, Chinchilla, that uses the same compute budget as
+      Gopher but with 70B parameters and 4$\times$ more more data. Chinchilla
+      uniformly and significantly outperforms Gopher (280B), GPT-3 (175B),
+      Jurassic-1 (178B), and Megatron-Turing NLG (530B) on a large range of
+      downstream evaluation tasks. This also means that Chinchilla uses
+      substantially less compute for fine-tuning and inference, greatly
+      facilitating downstream usage. As a highlight, Chinchilla reaches a
+      state-of-the-art average accuracy of 67.5% on the MMLU benchmark,
+      greater than a 7% improvement over Gopher.
   - arxiv_id: "2204.05862"
-    title: "Training a Helpful and Harmless Assistant with RLHF (Anthropic)"
+    title: "Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback"
     category: training
+    authors: ["Yuntao Bai", "Andy Jones", "Kamal Ndousse", "Amanda Askell", "Anna Chen", "Nova Dassarma", "Dawn Drain", "Stanislav Fort", "Deep Ganguli", "T. Henighan", "Nicholas Joseph", "Saurav Kadavath", "John Kernion", "Tom Conerly", "S. El-Showk", "Nelson Elhage", "Zac Hatfield-Dodds", "Danny Hernandez", "Tristan Hume", "Scott Johnston", "Shauna Kravec", "Liane Lovitt", "Neel Nanda", "Catherine Olsson", "Dario Amodei", "Tom B. Brown", "Jack Clark", "Sam McCandlish", "Chris Olah", "Benjamin Mann", "Jared Kaplan"]
+    date: "2022-04-12"
+    abstract: >-
+      We apply preference modeling and reinforcement learning from human
+      feedback (RLHF) to ﬁnetune language models to act as helpful and
+      harmless assistants. We ﬁnd this alignment training improves performance
+      on almost all NLP evaluations, and is fully compatible with training for
+      specialized skills such as python coding and summarization. We explore
+      an iterated online mode of training, where preference models and RL
+      policies are updated on a weekly cadence with fresh human feedback data,
+      efﬁciently improving our datasets and models. Finally, we investigate
+      the robustness of RLHF training, and identify a roughly linear relation
+      between the RL reward and the square root of the KL divergence between
+      the policy and its initialization. Alongside our main results, we
+      perform peripheral analyses on calibration, competing objectives, and
+      the use of OOD detection, compare our models with human writers, and
+      provide samples from our models using prompts appearing in recent
+      related work. Figure These plots show that PM accuracy decreases as we
+      focus exclusively on comparisons between pairs of samples with high
+      score. We have normalized all preference models to have the same mean
+      score on a held-out dataset so that they’re directly comparable, and
+      then plotted accuracy for the comparisons where both samples have scores
+      above a speciﬁc threshold.
   - arxiv_id: "2212.08073"
     title: "Constitutional AI: Harmlessness from AI Feedback"
     category: training
-
-  # --- Efficiency & deployment (8) ---
+    authors: ["Yuntao Bai", "Saurav Kadavath", "Sandipan Kundu", "Amanda Askell", "John Kernion", "Andy Jones", "A. Chen", "Anna Goldie", "Azalia Mirhoseini", "C. McKinnon", "Carol Chen", "Catherine Olsson", "Chris Olah", "Danny Hernandez", "Dawn Drain", "Deep Ganguli", "Dustin Li", "Eli Tran-Johnson", "E. Perez", "Jamie Kerr", "J. Mueller", "Jeffrey Ladish", "J. Landau", "Kamal Ndousse", "Kamil\u0117 Luko\u0161i\u016bt\u0117", "Liane Lovitt", "M. Sellitto", "Nelson Elhage", "Nicholas Schiefer", "Noem'i Mercado", "Nova Dassarma", "R. Lasenby", "Robin Larson", "Sam Ringer", "Scott Johnston", "Shauna Kravec", "S. E. Showk", "Stanislav Fort", "Tamera Lanham", "Timothy Telleen-Lawton", "Tom Conerly", "T. Henighan", "Tristan Hume", "Sam Bowman", "Zac Hatfield-Dodds", "Benjamin Mann", "Dario Amodei", "Nicholas Joseph", "Sam McCandlish", "Tom B. Brown", "Jared Kaplan"]
+    date: "2022-12-15"
+    abstract: >-
+      As AI systems become more capable, we would like to enlist their help to
+      supervise other AIs. We experiment with methods for training a harmless
+      AI assistant through self-improvement, without any human labels
+      identifying harmful outputs. The only human oversight is provided
+      through a list of rules or principles, and so we refer to the method as
+      'Constitutional AI'. The process involves both a supervised learning and
+      a reinforcement learning phase. In the supervised phase we sample from
+      an initial model, then generate self-critiques and revisions, and then
+      finetune the original model on revised responses. In the RL phase, we
+      sample from the finetuned model, use a model to evaluate which of the
+      two samples is better, and then train a preference model from this
+      dataset of AI preferences. We then train with RL using the preference
+      model as the reward signal, i.e. we use 'RL from AI Feedback' (RLAIF).
+      As a result we are able to train a harmless but non-evasive AI assistant
+      that engages with harmful queries by explaining its objections to them.
+      Both the SL and RL methods can leverage chain-of-thought style reasoning
+      to improve the human-judged performance and transparency of AI decision
+      making. These methods make it possible to control AI behavior more
+      precisely and with far fewer human labels.
   - arxiv_id: "2106.09685"
     title: "LoRA: Low-Rank Adaptation of Large Language Models"
     category: efficiency
+    authors: ["J. Hu", "Yelong Shen", "Phillip Wallis", "Zeyuan Allen-Zhu", "Yuanzhi Li", "Shean Wang", "Weizhu Chen"]
+    date: "2021-06-17"
+    abstract: >-
+      An important paradigm of natural language processing consists of
+      large-scale pre-training on general domain data and adaptation to
+      particular tasks or domains. As we pre-train larger models, full
+      fine-tuning, which retrains all model parameters, becomes less feasible.
+      Using GPT-3 175B as an example -- deploying independent instances of
+      fine-tuned models, each with 175B parameters, is prohibitively
+      expensive. We propose Low-Rank Adaptation, or LoRA, which freezes the
+      pre-trained model weights and injects trainable rank decomposition
+      matrices into each layer of the Transformer architecture, greatly
+      reducing the number of trainable parameters for downstream tasks.
+      Compared to GPT-3 175B fine-tuned with Adam, LoRA can reduce the number
+      of trainable parameters by 10,000 times and the GPU memory requirement
+      by 3 times. LoRA performs on-par or better than fine-tuning in model
+      quality on RoBERTa, DeBERTa, GPT-2, and GPT-3, despite having fewer
+      trainable parameters, a higher training throughput, and, unlike
+      adapters, no additional inference latency. We also provide an empirical
+      investigation into rank-deficiency in language model adaptation, which
+      sheds light on the efficacy of LoRA. We release a package that
+      facilitates the integration of LoRA with PyTorch models and provide our
+      implementations and model checkpoints for RoBERTa, DeBERTa, and GPT-2 at
+      https://github.com/microsoft/LoRA.
   - arxiv_id: "2305.14314"
-    title: "QLoRA: Efficient Finetuning of Quantized Language Models"
+    title: "QLoRA: Efficient Finetuning of Quantized LLMs"
     category: efficiency
+    authors: ["Tim Dettmers", "Artidoro Pagnoni", "Ari Holtzman", "Luke Zettlemoyer"]
+    date: "2023-05-23"
+    abstract: >-
+      We present QLoRA, an efficient finetuning approach that reduces memory
+      usage enough to finetune a 65B parameter model on a single 48GB GPU
+      while preserving full 16-bit finetuning task performance. QLoRA
+      backpropagates gradients through a frozen, 4-bit quantized pretrained
+      language model into Low Rank Adapters~(LoRA). Our best model family,
+      which we name Guanaco, outperforms all previous openly released models
+      on the Vicuna benchmark, reaching 99.3% of the performance level of
+      ChatGPT while only requiring 24 hours of finetuning on a single GPU.
+      QLoRA introduces a number of innovations to save memory without
+      sacrificing performance: (a) 4-bit NormalFloat (NF4), a new data type
+      that is information theoretically optimal for normally distributed
+      weights (b) double quantization to reduce the average memory footprint
+      by quantizing the quantization constants, and (c) paged optimziers to
+      manage memory spikes. We use QLoRA to finetune more than 1,000 models,
+      providing a detailed analysis of instruction following and chatbot
+      performance across 8 instruction datasets, multiple model types (LLaMA,
+      T5), and model scales that would be infeasible to run with regular
+      finetuning (e.g. 33B and 65B parameter models). Our results show that
+      QLoRA finetuning on a small high-quality dataset leads to
+      state-of-the-art results, even when using smaller models than the
+      previous SoTA. We provide a detailed analysis of chatbot performance
+      based on both human and GPT-4 evaluations showing that GPT-4 evaluations
+      are a cheap and reasonable alternative to human evaluation. Furthermore,
+      we find that current chatbot benchmarks are not trustworthy to
+      accurately evaluate the performance levels of chatbots. A lemon-picked
+      analysis demonstrates where Guanaco fails compared to ChatGPT. We
+      release all of our models and code, including CUDA kernels for 4-bit
+      training.
   - arxiv_id: "2210.17323"
     title: "GPTQ: Accurate Post-Training Quantization for Generative Pre-trained Transformers"
     category: efficiency
+    authors: ["Elias Frantar", "Saleh Ashkboos", "T. Hoefler", "Dan Alistarh"]
+    date: "2022-10-31"
+    abstract: >-
+      Generative Pre-trained Transformer models, known as GPT or OPT, set
+      themselves apart through breakthrough performance across complex
+      language modelling tasks, but also by their extremely high computational
+      and storage costs. Specifically, due to their massive size, even
+      inference for large, highly-accurate GPT models may require multiple
+      performant GPUs, which limits the usability of such models. While there
+      is emerging work on relieving this pressure via model compression, the
+      applicability and performance of existing compression techniques is
+      limited by the scale and complexity of GPT models. In this paper, we
+      address this challenge, and propose GPTQ, a new one-shot weight
+      quantization method based on approximate second-order information, that
+      is both highly-accurate and highly-efficient. Specifically, GPTQ can
+      quantize GPT models with 175 billion parameters in approximately four
+      GPU hours, reducing the bitwidth down to 3 or 4 bits per weight, with
+      negligible accuracy degradation relative to the uncompressed baseline.
+      Our method more than doubles the compression gains relative to
+      previously-proposed one-shot quantization methods, preserving accuracy,
+      allowing us for the first time to execute an 175 billion-parameter model
+      inside a single GPU for generative inference. Moreover, we also show
+      that our method can still provide reasonable accuracy in the extreme
+      quantization regime, in which weights are quantized to 2-bit or even
+      ternary quantization levels. We show experimentally that these
+      improvements can be leveraged for end-to-end inference speedups over
+      FP16, of around 3.25x when using high-end GPUs (NVIDIA A100) and 4.5x
+      when using more cost-effective ones (NVIDIA A6000). The implementation
+      is available at https://github.com/IST-DASLab/gptq.
   - arxiv_id: "2306.00978"
-    title: "AWQ: Activation-aware Weight Quantization for LLM Compression"
+    title: "AWQ: Activation-aware Weight Quantization for On-Device LLM Compression and Acceleration"
     category: efficiency
+    authors: ["Ji Lin", "Jiaming Tang", "Haotian Tang", "Shang Yang", "Xingyu Dang", "Song Han"]
+    date: "2023-06-01"
+    abstract: >-
+      Large language models (LLMs) have transformed numerous AI applications.
+      On-device LLM is becoming increasingly important: running LLMs locally
+      on edge devices can reduce cloud computing costs and protect users'
+      privacy. However, the astronomical model size and the limited hardware
+      resources pose significant deployment challenges. To solve these issues,
+      we propose Activation-aware Weight Quantization (AWQ) and TinyChat, an
+      algorithm-system full-stack solution for efficient on-device LLM
+      deployment. AWQ is a novel quantization method that identifies and
+      protects salient weights based on activation distribution, significantly
+      reducing model size while preserving performance. TinyChat, an optimized
+      inference framework, translates AWQ's theoretical memory savings into
+      practical speedups through techniques such as on-the-fly dequantization,
+      SIMD-aware weight packing, and kernel fusion. Together, they enable 4x
+      model size reduction and 3-4x acceleration across various edge
+      platforms, from high-end desktop GPUs to resource-constrained IoT
+      devices. This solution democratizes on-device LLM deployment, offering
+      privacy-preserving, low-latency AI capabilities across a wide range of
+      applications.
   - arxiv_id: "2211.17192"
-    title: "Speculative Decoding"
+    title: "Fast Inference from Transformers via Speculative Decoding"
     category: efficiency
+    authors: ["Yaniv Leviathan", "Matan Kalman", "Yossi Matias"]
+    date: "2022-11-30"
+    abstract: >-
+      Inference from large autoregressive models like Transformers is slow -
+      decoding K tokens takes K serial runs of the model. In this work we
+      introduce speculative decoding - an algorithm to sample from
+      autoregressive models faster without any changes to the outputs, by
+      computing several tokens in parallel. At the heart of our approach lie
+      the observations that (1) hard language-modeling tasks often include
+      easier subtasks that can be approximated well by more efficient models,
+      and (2) using speculative execution and a novel sampling method, we can
+      make exact decoding from the large models faster, by running them in
+      parallel on the outputs of the approximation models, potentially
+      generating several tokens concurrently, and without changing the
+      distribution. Our method can accelerate existing off-the-shelf models
+      without retraining or architecture changes. We demonstrate it on T5-XXL
+      and show a 2X-3X acceleration compared to the standard T5X
+      implementation, with identical outputs.
   - arxiv_id: "2309.06180"
-    title: "Efficient Memory Management for Large Language Model Serving with PagedAttention (vLLM)"
+    title: "Efficient Memory Management for Large Language Model Serving with PagedAttention"
     category: efficiency
+    authors: ["Woosuk Kwon", "Zhuohan Li", "Siyuan Zhuang", "Ying Sheng", "Lianmin Zheng", "Cody Hao Yu", "Joseph E. Gonzalez", "Haotong Zhang", "Ion Stoica"]
+    date: "2023-09-12"
+    abstract: >-
+      High throughput serving of large language models (LLMs) requires
+      batching sufficiently many requests at a time. However, existing systems
+      struggle because the key-value cache (KV cache) memory for each request
+      is huge and grows and shrinks dynamically. When managed inefficiently,
+      this memory can be significantly wasted by fragmentation and redundant
+      duplication, limiting the batch size. To address this problem, we
+      propose PagedAttention, an attention algorithm inspired by the classical
+      virtual memory and paging techniques in operating systems. On top of it,
+      we build vLLM, an LLM serving system that achieves (1) near-zero waste
+      in KV cache memory and (2) flexible sharing of KV cache within and
+      across requests to further reduce memory usage. Our evaluations show
+      that vLLM improves the throughput of popular LLMs by 2--4× with the same
+      level of latency compared to the state-of-the-art systems, such as
+      FasterTransformer and Orca. The improvement is more pronounced with
+      longer sequences, larger models, and more complex decoding algorithms.
+      vLLM's source code is publicly available at
+      https://github.com/vllm-project/vllm.
   - arxiv_id: "2402.07616"
-    title: "Distilling Step-by-Step: Outperforming Larger LMs with Less Training Data"
+    title: "Anchor-based Large Language Models"
     category: efficiency
+    authors: ["Jianhui Pang", "Fanghua Ye", "Derek F. Wong", "Longyue Wang"]
+    date: "2024-02-12"
+    abstract: >-
+      Large language models (LLMs) predominantly employ decoder-only
+      transformer architectures, necessitating the retention of keys/values
+      information for historical tokens to provide contextual information and
+      avoid redundant computation. However, the substantial size and parameter
+      volume of these LLMs require massive GPU memory. This memory demand
+      increases with the length of the input text, leading to an urgent need
+      for more efficient methods of information storage and processing. This
+      study introduces Anchor-based LLMs (AnLLMs), which utilize an innovative
+      anchor-based self-attention network (AnSAN) and also an anchor-based
+      inference strategy. This approach enables LLMs to compress sequence
+      information into an anchor token, reducing the keys/values cache and
+      enhancing inference efficiency. Experiments on question-answering
+      benchmarks reveal that AnLLMs maintain similar accuracy levels while
+      achieving up to 99% keys/values cache reduction and up to 3.5 times
+      faster inference. Despite a minor compromise in accuracy, the
+      substantial enhancements of AnLLMs employing the AnSAN technique in
+      resource utilization and computational efficiency underscore their
+      potential for practical LLM applications.
   - arxiv_id: "2403.03507"
     title: "GaLore: Memory-Efficient LLM Training by Gradient Low-Rank Projection"
     category: efficiency
-
-  # --- Reasoning & capabilities (8) ---
+    authors: ["Jiawei Zhao", "Zhenyu Zhang", "Beidi Chen", "Zhangyang Wang", "Anima Anandkumar", "Yuandong Tian"]
+    date: "2024-03-06"
+    abstract: >-
+      Training Large Language Models (LLMs) presents significant memory
+      challenges, predominantly due to the growing size of weights and
+      optimizer states. Common memory-reduction approaches, such as low-rank
+      adaptation (LoRA), add a low-rank perturbation to the frozen pre-trained
+      weight to reduce trainable parameters and optimizer states. However,
+      such approaches typically underperform training with full-rank weights
+      in both pre-training and fine-tuning stages since they limit the
+      parameter search to a low-rank subspace and alter the training dynamics.
+      We propose Gradient Low-Rank Projection (GaLore), a training strategy
+      that allows full-parameter learning but is more memory-efficient than
+      common low-rank adaptation methods.
   - arxiv_id: "2201.11903"
-    title: "Chain-of-Thought Prompting Elicits Reasoning in Large Language Models"
+    title: "Chain of Thought Prompting Elicits Reasoning in Large Language Models"
     category: capabilities
+    authors: ["Jason Wei", "Xuezhi Wang", "Dale Schuurmans", "Maarten Bosma", "Ed H. Chi", "F. Xia", "Quoc Le", "Denny Zhou"]
+    date: "2022-01-28"
+    abstract: >-
+      We explore how generating a chain of thought -- a series of intermediate
+      reasoning steps -- significantly improves the ability of large language
+      models to perform complex reasoning. In particular, we show how such
+      reasoning abilities emerge naturally in sufficiently large language
+      models via a simple method called chain of thought prompting, where a
+      few chain of thought demonstrations are provided as exemplars in
+      prompting. Experiments on three large language models show that chain of
+      thought prompting improves performance on a range of arithmetic,
+      commonsense, and symbolic reasoning tasks. The empirical gains can be
+      striking. For instance, prompting a 540B-parameter language model with
+      just eight chain of thought exemplars achieves state of the art accuracy
+      on the GSM8K benchmark of math word problems, surpassing even finetuned
+      GPT-3 with a verifier.
   - arxiv_id: "2203.11171"
-    title: "Self-Consistency Improves Chain of Thought Reasoning"
+    title: "Self-Consistency Improves Chain of Thought Reasoning in Language Models"
     category: capabilities
+    authors: ["Xuezhi Wang", "Jason Wei", "D. Schuurmans", "Quoc Le", "Ed H. Chi", "Denny Zhou"]
+    date: "2022-03-21"
+    abstract: >-
+      Chain-of-thought prompting combined with pre-trained large language
+      models has achieved encouraging results on complex reasoning tasks. In
+      this paper, we propose a new decoding strategy, self-consistency, to
+      replace the naive greedy decoding used in chain-of-thought prompting. It
+      first samples a diverse set of reasoning paths instead of only taking
+      the greedy one, and then selects the most consistent answer by
+      marginalizing out the sampled reasoning paths. Self-consistency
+      leverages the intuition that a complex reasoning problem typically
+      admits multiple different ways of thinking leading to its unique correct
+      answer. Our extensive empirical evaluation shows that self-consistency
+      boosts the performance of chain-of-thought prompting with a striking
+      margin on a range of popular arithmetic and commonsense reasoning
+      benchmarks, including GSM8K (+17.9%), SVAMP (+11.0%), AQuA (+12.2%),
+      StrategyQA (+6.4%) and ARC-challenge (+3.9%).
   - arxiv_id: "2305.10601"
-    title: "Tree of Thoughts: Deliberate Problem Solving with LLMs"
+    title: "Tree of Thoughts: Deliberate Problem Solving with Large Language Models"
     category: capabilities
+    authors: ["Shunyu Yao", "Dian Yu", "Jeffrey Zhao", "Izhak Shafran", "T. Griffiths", "Yuan Cao", "Karthik Narasimhan"]
+    date: "2023-05-17"
+    abstract: >-
+      Language models are increasingly being deployed for general problem
+      solving across a wide range of tasks, but are still confined to
+      token-level, left-to-right decision-making processes during inference.
+      This means they can fall short in tasks that require exploration,
+      strategic lookahead, or where initial decisions play a pivotal role. To
+      surmount these challenges, we introduce a new framework for language
+      model inference, Tree of Thoughts (ToT), which generalizes over the
+      popular Chain of Thought approach to prompting language models, and
+      enables exploration over coherent units of text (thoughts) that serve as
+      intermediate steps toward problem solving. ToT allows LMs to perform
+      deliberate decision making by considering multiple different reasoning
+      paths and self-evaluating choices to decide the next course of action,
+      as well as looking ahead or backtracking when necessary to make global
+      choices. Our experiments show that ToT significantly enhances language
+      models' problem-solving abilities on three novel tasks requiring
+      non-trivial planning or search: Game of 24, Creative Writing, and Mini
+      Crosswords. For instance, in Game of 24, while GPT-4 with
+      chain-of-thought prompting only solved 4% of tasks, our method achieved
+      a success rate of 74%. Code repo with all prompts:
+      https://github.com/princeton-nlp/tree-of-thought-llm.
   - arxiv_id: "2005.11401"
     title: "Retrieval-Augmented Generation for Knowledge-Intensive NLP Tasks"
     category: capabilities
+    authors: ["Patrick Lewis", "Ethan Perez", "Aleksandara Piktus", "F. Petroni", "Vladimir Karpukhin", "Naman Goyal", "Heinrich Kuttler", "M. Lewis", "Wen-tau Yih", "Tim Rockt\u00e4schel", "Sebastian Riedel", "Douwe Kiela"]
+    date: "2020-05-22"
+    abstract: >-
+      Large pre-trained language models have been shown to store factual
+      knowledge in their parameters, and achieve state-of-the-art results when
+      fine-tuned on downstream NLP tasks. However, their ability to access and
+      precisely manipulate knowledge is still limited, and hence on
+      knowledge-intensive tasks, their performance lags behind task-specific
+      architectures. Additionally, providing provenance for their decisions
+      and updating their world knowledge remain open research problems.
+      Pre-trained models with a differentiable access mechanism to explicit
+      non-parametric memory can overcome this issue, but have so far been only
+      investigated for extractive downstream tasks. We explore a
+      general-purpose fine-tuning recipe for retrieval-augmented generation
+      (RAG) -- models which combine pre-trained parametric and non-parametric
+      memory for language generation. We introduce RAG models where the
+      parametric memory is a pre-trained seq2seq model and the non-parametric
+      memory is a dense vector index of Wikipedia, accessed with a pre-trained
+      neural retriever. We compare two RAG formulations, one which conditions
+      on the same retrieved passages across the whole generated sequence, the
+      other can use different passages per token. We fine-tune and evaluate
+      our models on a wide range of knowledge-intensive NLP tasks and set the
+      state-of-the-art on three open domain QA tasks, outperforming parametric
+      seq2seq models and task-specific retrieve-and-extract architectures. For
+      language generation tasks, we find that RAG models generate more
+      specific, diverse and factual language than a state-of-the-art
+      parametric-only seq2seq baseline.
   - arxiv_id: "2312.10997"
     title: "Retrieval-Augmented Generation for Large Language Models: A Survey"
     category: capabilities
+    authors: ["Yunfan Gao", "Yun Xiong", "Xinyu Gao", "Kangxiang Jia", "Jin Pan", "Yuxi Bi", "Yi Dai", "Jiawei Sun", "Qianyu Guo", "Meng Wang", "Haofen Wang"]
+    date: "2023-12-18"
+    abstract: >-
+      Large Language Models (LLMs) showcase impressive capabilities but
+      encounter challenges like hallucination, outdated knowledge, and
+      non-transparent, untraceable reasoning processes. Retrieval-Augmented
+      Generation (RAG) has emerged as a promising solution by incorporating
+      knowledge from external databases. This enhances the accuracy and
+      credibility of the generation, particularly for knowledge-intensive
+      tasks, and allows for continuous knowledge updates and integration of
+      domain-specific information. RAG synergistically merges LLMs' intrinsic
+      knowledge with the vast, dynamic repositories of external databases.
+      This comprehensive review paper offers a detailed examination of the
+      progression of RAG paradigms, encompassing the Naive RAG, the Advanced
+      RAG, and the Modular RAG. It meticulously scrutinizes the tripartite
+      foundation of RAG frameworks, which includes the retrieval, the
+      generation and the augmentation techniques. The paper highlights the
+      state-of-the-art technologies embedded in each of these critical
+      components, providing a profound understanding of the advancements in
+      RAG systems. Furthermore, this paper introduces up-to-date evaluation
+      framework and benchmark. At the end, this article delineates the
+      challenges currently faced and points out prospective avenues for
+      research and development.
   - arxiv_id: "2303.08774"
     title: "GPT-4 Technical Report"
     category: capabilities
+    authors: ["OpenAI Josh Achiam", "Steven Adler", "S. Agarwal", "L. Ahmad", "Ilge Akkaya", "Florencia Leoni Aleman", "D. Almeida", "Janko Altenschmidt", "S. Altman", "Shyamal Anadkat", "Red Avila", "Igor Babuschkin", "S. Balaji", "Valerie Balcom", "Paul Baltescu", "Haim-ing Bao", "Mo Bavarian", "Jeff Belgum", "Irwan Bello", "Jake Berdine", "Gabriel Bernadett-Shapiro", "Christopher Berner", "Lenny Bogdonoff", "O. Boiko", "Made-laine Boyd", "Anna-Luisa Brakman", "Greg Brockman", "Tim Brooks", "Miles Brundage", "Kevin Button", "Trevor Cai", "Rosie Campbell", "Andrew Cann", "Brittany Carey", "Chelsea Carlson", "Rory Carmichael", "Brooke Chan", "Che Chang", "Fotis Chantzis", "Derek Chen", "Sully Chen", "Ruby Chen", "Jason Chen", "Mark Chen", "Benjamin Chess", "Chester Cho", "Casey Chu", "Hyung Won Chung", "Dave Cummings", "Jeremiah Currier", "Yunxing Dai", "Cory Decareaux", "Thomas Degry", "Noah Deutsch", "Damien Deville", "Arka Dhar", "David Dohan", "Steve Dowling", "Sheila Dunning", "Adrien Ecoffet", "Atty Eleti", "Tyna Eloundou", "David Farhi", "L. Fedus", "Niko Felix", "S. Fishman", "Juston Forte", "Is-abella Fulford", "Leo Gao", "Elie Georges", "C. Gibson", "Vik Goel", "Tarun Gogineni", "Gabriel Goh", "Raphael Gontijo-Lopes", "J. Gordon", "Morgan Grafstein", "Scott Gray", "Ryan Greene", "Joshua Gross", "S. Gu", "Yufei Guo", "Chris Hallacy", "Jesse Han", "J. Harris", "Yuchen He", "Mike Heaton", "Johannes Heidecke", "Chris Hesse", "Alan Hickey", "W. Hickey", "P. Hoeschele", "Brandon Houghton", "Kenny Hsu", "Shengli Hu", "Xin Hu", "Joost Huizinga", "Shantanu Jain", "Shawn Jain", "Joanne Jang", "Angela Jiang", "R. Jiang", "Haozhun Jin", "Denny Jin", "Shino Jomoto", "Billie Jonn", "Heewoo Jun", "Tomer Kaftan", "Lukasz Kaiser", "Ali Kamali", "I. Kanitscheider", "N. Keskar", "Tabarak Khan", "Logan Kilpatrick", "Jong Wook Kim", "Christina Kim", "Yongjik Kim", "Hendrik Kirchner", "J. Kiros", "Matthew Knight", "Daniel Kokotajlo", "Lukasz Kondraciuk", "Andrew Kondrich", "Aris Konstantinidis", "Kyle Kosic", "Gretchen Krueger", "Vishal Kuo", "Michael Lampe", "Ikai Lan", "Teddy Lee", "Jan Leike", "Jade Leung", "Daniel Levy", "Chak Li", "Rachel Lim", "Molly Lin", "Stephanie L. Lin", "Ma-teusz Litwin", "Theresa Lopez", "Ryan Lowe", "Patricia Lue", "A. Makanju", "Kim Malfacini", "Sam Manning", "Todor Markov", "Yaniv Markovski", "Bianca Martin", "Katie Mayer", "Andrew Mayne", "Bob McGrew", "S. McKinney", "Christine McLeavey", "Paul McMillan", "Jake McNeil", "David Medina", "Aalok Mehta", "Jacob Menick", "Luke Metz", "Andrey Mishchenko", "Pamela Mishkin", "Vinnie Monaco", "Evan Morikawa", "Daniel P. Mossing", "Tong Mu", "M. Murati", "O. Murk", "David M'ely", "Ashvin Nair", "Reiichiro Nakano", "Rajeev Nayak", "Arvind Neelakantan", "R. Ngo", "Hyeonwoo Noh", "Ouyang Long", "Cullen O'Keefe", "J. Pachocki", "A. Paino", "Joe Palermo", "Ashley Pantuliano", "Giambattista Parascandolo", "J. Parish", "Emy Parparita", "Alexandre Passos", "Mikhail Pavlov", "Andrew Peng", "Adam Perelman", "Filipe de Avila Belbute Peres", "Michael Petrov", "Henrique Pond\u00e9 de Oliveira Pinto", "Michael Pokorny", "Michelle Pokrass", "Vitchyr H. Pong", "Tolly Powell", "Alethea Power", "Boris Power", "Elizabeth Proehl", "Raul Puri", "Alec Radford", "Jack W. Rae", "Aditya Ramesh", "Cameron Raymond", "F. Real", "Kendra Rimbach", "Carl Ross", "Bob Rotsted", "Henri Roussez", "N. Ryder", "M. Saltarelli", "Ted Sanders", "Shibani Santurkar", "G. Sastry", "Heather Schmidt", "David Schnurr", "John Schulman", "Daniel Selsam", "Kyla Sheppard", "T. Sherbakov", "Jessica Shieh", "S. Shoker", "Pranav Shyam", "Szymon Sidor", "Eric Sigler", "M. Simens", "Jordan Sitkin", "Katarina Slama", "Ian Sohl", "Benjamin Sokolowsky", "Yang Song", "N. Staudacher", "F. Such", "Natalie Summers", "I. Sutskever", "Jie Tang", "N. Tezak", "Madeleine Thompson", "P. Tillet", "Amin Tootoonchian", "Elizabeth Tseng", "Preston Tuggle", "Nick Turley", "Jerry Tworek", "Juan Felipe Cer'on Uribe", "Andrea Vallone", "Arun Vijayvergiya", "Chelsea Voss", "Carroll L. Wainwright", "Justin Wang", "Alvin Wang", "Ben Wang", "Jonathan Ward", "Jason Wei", "CJ Weinmann", "Akila Welihinda", "Peter Welinder", "Jiayi Weng", "Lilian Weng", "Matt Wiethoff", "Dave Willner", "Clemens Winter", "Samuel Wolrich", "Hannah Wong", "Lauren Workman", "Sherwin Wu", "Jeff Wu", "Michael Wu", "Kai Xiao", "Tao Xu", "Sarah Yoo", "Kevin Yu", "Qim-ing Yuan", "Wojciech Zaremba", "Rowan Zellers", "Chong Zhang", "Marvin Zhang", "Shengjia Zhao", "Tianhao Zheng", "Juntang Zhuang", "William Zhuk", "Barret Zoph"]
+    date: "2023-03-15"
+    abstract: >-
+      We report the development of GPT-4, a large-scale, multimodal model
+      which can accept image and text inputs and produce text outputs. While
+      less capable than humans in many real-world scenarios, GPT-4 exhibits
+      human-level performance on various professional and academic benchmarks,
+      including passing a simulated bar exam with a score around the top 10%
+      of test takers. GPT-4 is a Transformer-based model pre-trained to
+      predict the next token in a document. The post-training alignment
+      process results in improved performance on measures of factuality and
+      adherence to desired behavior. A core component of this project was
+      developing infrastructure and optimization methods that behave
+      predictably across a wide range of scales. This allowed us to accurately
+      predict some aspects of GPT-4's performance based on models trained with
+      no more than 1/1,000th the compute of GPT-4.
   - arxiv_id: "2307.03172"
     title: "Lost in the Middle: How Language Models Use Long Contexts"
     category: capabilities
+    authors: ["Nelson F. Liu", "Kevin Lin", "John Hewitt", "Ashwin Paranjape", "Michele Bevilacqua", "F. Petroni", "Percy Liang"]
+    date: "2023-07-06"
+    abstract: >-
+      While recent language models have the ability to take long contexts as
+      input, relatively little is known about how well they use longer
+      context. We analyze the performance of language models on two tasks that
+      require identifying relevant information in their input contexts:
+      multi-document question answering and key-value retrieval. We find that
+      performance can degrade significantly when changing the position of
+      relevant information, indicating that current language models do not
+      robustly make use of information in long input contexts. In particular,
+      we observe that performance is often highest when relevant information
+      occurs at the beginning or end of the input context, and significantly
+      degrades when models must access relevant information in the middle of
+      long contexts, even for explicitly long-context models. Our analysis
+      provides a better understanding of how language models use their input
+      context and provides new evaluation protocols for future long-context
+      language models.
   - arxiv_id: "2304.15004"
     title: "Are Emergent Abilities of Large Language Models a Mirage?"
     category: capabilities
-
-  # --- Agentic systems (8) ---
+    authors: ["Rylan Schaeffer", "B. Miranda", "Oluwasanmi Koyejo"]
+    date: "None"
+    abstract: >-
+      Recent work claims that large language models display emergent
+      abilities, abilities not present in smaller-scale models that are
+      present in larger-scale models. What makes emergent abilities intriguing
+      is two-fold: their sharpness, transitioning seemingly instantaneously
+      from not present to present, and their unpredictability, appearing at
+      seemingly unforeseeable model scales. Here, we present an alternative
+      explanation for emergent abilities: that for a particular task and model
+      family, when analyzing fixed model outputs, emergent abilities appear
+      due to the researcher's choice of metric rather than due to fundamental
+      changes in model behavior with scale. Specifically, nonlinear or
+      discontinuous metrics produce apparent emergent abilities, whereas
+      linear or continuous metrics produce smooth, continuous predictable
+      changes in model performance. We present our alternative explanation in
+      a simple mathematical model, then test it in three complementary ways:
+      we (1) make, test and confirm three predictions on the effect of metric
+      choice using the InstructGPT/GPT-3 family on tasks with claimed emergent
+      abilities; (2) make, test and confirm two predictions about metric
+      choices in a meta-analysis of emergent abilities on BIG-Bench; and (3)
+      show to choose metrics to produce never-before-seen seemingly emergent
+      abilities in multiple vision tasks across diverse deep networks. Via all
+      three analyses, we provide evidence that alleged emergent abilities
+      evaporate with different metrics or with better statistics, and may not
+      be a fundamental property of scaling AI models.
   - arxiv_id: "2210.03629"
     title: "ReAct: Synergizing Reasoning and Acting in Language Models"
     category: agentic
+    authors: ["Shunyu Yao", "Jeffrey Zhao", "Dian Yu", "Nan Du", "Izhak Shafran", "Karthik Narasimhan", "Yuan Cao"]
+    date: "2022-10-06"
+    abstract: >-
+      While large language models (LLMs) have demonstrated impressive
+      capabilities across tasks in language understanding and interactive
+      decision making, their abilities for reasoning (e.g. chain-of-thought
+      prompting) and acting (e.g. action plan generation) have primarily been
+      studied as separate topics. In this paper, we explore the use of LLMs to
+      generate both reasoning traces and task-specific actions in an
+      interleaved manner, allowing for greater synergy between the two:
+      reasoning traces help the model induce, track, and update action plans
+      as well as handle exceptions, while actions allow it to interface with
+      external sources, such as knowledge bases or environments, to gather
+      additional information. We apply our approach, named ReAct, to a diverse
+      set of language and decision making tasks and demonstrate its
+      effectiveness over state-of-the-art baselines, as well as improved human
+      interpretability and trustworthiness over methods without reasoning or
+      acting components. Concretely, on question answering (HotpotQA) and fact
+      verification (Fever), ReAct overcomes issues of hallucination and error
+      propagation prevalent in chain-of-thought reasoning by interacting with
+      a simple Wikipedia API, and generates human-like task-solving
+      trajectories that are more interpretable than baselines without
+      reasoning traces. On two interactive decision making benchmarks
+      (ALFWorld and WebShop), ReAct outperforms imitation and reinforcement
+      learning methods by an absolute success rate of 34% and 10%
+      respectively, while being prompted with only one or two in-context
+      examples. Project site with code: https://react-lm.github.io
   - arxiv_id: "2303.11366"
-    title: "Reflexion: Language Agents with Verbal Reinforcement Learning"
+    title: "Reflexion: language agents with verbal reinforcement learning"
     category: agentic
+    authors: ["Noah Shinn", "Federico Cassano", "Beck Labash", "A. Gopinath", "Karthik Narasimhan", "Shunyu Yao"]
+    date: "2023-03-20"
+    abstract: >-
+      Large language models (LLMs) have been increasingly used to interact
+      with external environments (e.g., games, compilers, APIs) as goal-driven
+      agents. However, it remains challenging for these language agents to
+      quickly and efficiently learn from trial-and-error as traditional
+      reinforcement learning methods require extensive training samples and
+      expensive model fine-tuning. We propose Reflexion, a novel framework to
+      reinforce language agents not by updating weights, but instead through
+      linguistic feedback. Concretely, Reflexion agents verbally reflect on
+      task feedback signals, then maintain their own reflective text in an
+      episodic memory buffer to induce better decision-making in subsequent
+      trials. Reflexion is flexible enough to incorporate various types
+      (scalar values or free-form language) and sources (external or
+      internally simulated) of feedback signals, and obtains significant
+      improvements over a baseline agent across diverse tasks (sequential
+      decision-making, coding, language reasoning). For example, Reflexion
+      achieves a 91% pass@1 accuracy on the HumanEval coding benchmark,
+      surpassing the previous state-of-the-art GPT-4 that achieves 80%. We
+      also conduct ablation and analysis studies using different feedback
+      signals, feedback incorporation methods, and agent types, and provide
+      insights into how they affect performance.
   - arxiv_id: "2308.00352"
-    title: "MetaGPT: Meta Programming for A Multi-Agent Collaborative Framework"
+    title: "MetaGPT: Meta Programming for Multi-Agent Collaborative Framework"
     category: agentic
+    authors: ["Sirui Hong", "Xiawu Zheng", "Jonathan P. Chen", "Yuheng Cheng", "Ceyao Zhang", "Zili Wang", "Steven Ka Shing Yau", "Z. Lin", "Liyang Zhou", "Chenyu Ran", "Lingfeng Xiao", "Chenglin Wu"]
+    date: "2023-08-01"
+    abstract: >-
+      Recently, remarkable progress has been made in automated task-solving
+      through the use of multi-agent driven by large language models (LLMs).
+      However, existing LLM-based multi-agent works primarily focus on solving
+      simple dialogue tasks, and complex tasks are rarely studied, mainly due
+      to the LLM hallucination problem. This type of hallucination becomes
+      cascading when naively chaining multiple intelligent agents, resulting
+      in a failure to effectively address complex problems. Therefore, we
+      introduce MetaGPT, an innovative framework that incorporates efficient
+      human workflows as a meta programming approach into LLM-based
+      multi-agent collaboration. Specifically, MetaGPT encodes Standardized
+      Operating Procedures (SOPs) into prompts to enhance structured
+      coordination. Subsequently, it mandates modular outputs, empowering
+      agents with domain expertise comparable to human professionals, to
+      validate outputs and minimize compounded errors. In this way, MetaGPT
+      leverages the assembly line paradigm to assign diverse roles to various
+      agents, thereby establishing a framework that can effectively and
+      cohesively deconstruct complex multi-agent collaborative problems. Our
+      experiments on collaborative software engineering benchmarks demonstrate
+      that MetaGPT generates more coherent and correct solutions compared to
+      existing chat-based multi-agent systems. This highlights the potential
+      of integrating human domain knowledge into multi-agent systems, thereby
+      creating new opportunities to tackle complex real-world challenges. The
+      GitHub repository of this project is publicly available
+      on:https://github.com/geekan/MetaGPT.
   - arxiv_id: "2308.08155"
     title: "AutoGen: Enabling Next-Gen LLM Applications via Multi-Agent Conversation"
     category: agentic
+    authors: ["Qingyun Wu", "Gagan Bansal", "Jieyu Zhang", "Yiran Wu", "Beibin Li", "E. Zhu", "Li Jiang", "Xiaoyun Zhang", "Shaokun Zhang", "Jiale Liu", "A. Awadallah", "Ryen W. White", "Doug Burger", "Chi Wang"]
+    date: "2023-08-16"
+    abstract: >-
+      AutoGen is an open-source framework that allows developers to build LLM
+      applications via multiple agents that can converse with each other to
+      accomplish tasks. AutoGen agents are customizable, conversable, and can
+      operate in various modes that employ combinations of LLMs, human inputs,
+      and tools. Using AutoGen, developers can also flexibly define agent
+      interaction behaviors. Both natural language and computer code can be
+      used to program flexible conversation patterns for different
+      applications. AutoGen serves as a generic infrastructure to build
+      diverse applications of various complexities and LLM capacities.
+      Empirical studies demonstrate the effectiveness of the framework in many
+      example applications, with domains ranging from mathematics, coding,
+      question answering, operations research, online decision-making,
+      entertainment, etc.
   - arxiv_id: "2310.04406"
-    title: "Language Agent Tree Search Unifies Reasoning, Acting, and Planning"
+    title: "Language Agent Tree Search Unifies Reasoning Acting and Planning in Language Models"
     category: agentic
+    authors: ["Andy Zhou", "Kai Yan", "Michal Shlapentokh-Rothman", "Haohan Wang", "Yu-Xiong Wang"]
+    date: "2023-10-06"
+    abstract: >-
+      While language models (LMs) have shown potential across a range of
+      decision-making tasks, their reliance on simple acting processes limits
+      their broad deployment as autonomous agents. In this paper, we introduce
+      Language Agent Tree Search (LATS) -- the first general framework that
+      synergizes the capabilities of LMs in reasoning, acting, and planning.
+      By leveraging the in-context learning ability of LMs, we integrate Monte
+      Carlo Tree Search into LATS to enable LMs as agents, along with
+      LM-powered value functions and self-reflections for proficient
+      exploration and enhanced decision-making. A key feature of our approach
+      is the incorporation of an environment for external feedback, which
+      offers a more deliberate and adaptive problem-solving mechanism that
+      surpasses the constraints of existing techniques. Our experimental
+      evaluation across diverse domains, including programming, interactive
+      question-answering (QA), web navigation, and math, validates the
+      effectiveness and generality of LATS in decision-making while
+      maintaining competitive or improved reasoning performance. Notably, LATS
+      achieves state-of-the-art pass@1 accuracy (92.7%) for programming on
+      HumanEval with GPT-4 and demonstrates gradient-free performance (average
+      score of 75.9) comparable to gradient-based fine-tuning for web
+      navigation on WebShop with GPT-3.5. Code can be found at
+      https://github.com/lapisrocks/LanguageAgentTreeSearch
   - arxiv_id: "2305.16291"
     title: "Voyager: An Open-Ended Embodied Agent with Large Language Models"
     category: agentic
+    authors: ["Guanzhi Wang", "Yuqi Xie", "Yunfan Jiang", "A. Mandlekar", "Chaowei Xiao", "Yuke Zhu", "Linxi (Jim) Fan", "Anima Anandkumar"]
+    date: "2023-05-25"
+    abstract: >-
+      We introduce Voyager, the first LLM-powered embodied lifelong learning
+      agent in Minecraft that continuously explores the world, acquires
+      diverse skills, and makes novel discoveries without human intervention.
+      Voyager consists of three key components: 1) an automatic curriculum
+      that maximizes exploration, 2) an ever-growing skill library of
+      executable code for storing and retrieving complex behaviors, and 3) a
+      new iterative prompting mechanism that incorporates environment
+      feedback, execution errors, and self-verification for program
+      improvement. Voyager interacts with GPT-4 via blackbox queries, which
+      bypasses the need for model parameter fine-tuning. The skills developed
+      by Voyager are temporally extended, interpretable, and compositional,
+      which compounds the agent's abilities rapidly and alleviates
+      catastrophic forgetting. Empirically, Voyager shows strong in-context
+      lifelong learning capability and exhibits exceptional proficiency in
+      playing Minecraft. It obtains 3.3x more unique items, travels 2.3x
+      longer distances, and unlocks key tech tree milestones up to 15.3x
+      faster than prior SOTA. Voyager is able to utilize the learned skill
+      library in a new Minecraft world to solve novel tasks from scratch,
+      while other techniques struggle to generalize. We open-source our full
+      codebase and prompts at https://voyager.minedojo.org/.
   - arxiv_id: "2305.17126"
     title: "Large Language Models as Tool Makers"
     category: agentic
+    authors: ["Tianle Cai", "Xuezhi Wang", "Tengyu Ma", "Xinyun Chen", "Denny Zhou"]
+    date: "2023-05-26"
+    abstract: >-
+      Recent research has highlighted the potential of large language models
+      (LLMs) to improve their problem-solving capabilities with the aid of
+      suitable external tools. In our work, we further advance this concept by
+      introducing a closed-loop framework, referred to as LLMs A s Tool Makers
+      (LATM), where LLMs create their own reusable tools for problem-solving.
+      Our approach consists of two phases: 1) tool making: an LLM acts as the
+      tool maker that crafts tools for a set of tasks. 2) tool using: another
+      LLM acts as the tool user, which applies the tool built by the tool
+      maker for problem-solving. On the problem-solving server side,
+      tool-making enables continual tool generation and caching as new
+      requests emerge. This framework enables subsequent requests to access
+      cached tools via their corresponding APIs, enhancing the efficiency of
+      task resolution. Recognizing that tool-making requires more
+      sophisticated capabilities, we assign this task to a powerful, albeit
+      resource-intensive, model. Conversely, the simpler tool-using phase is
+      delegated to a lightweight model. This strategic division of labor
+      allows the once-off cost of tool-making to be spread over multiple
+      instances of tool-using, significantly reducing average costs while
+      maintaining strong performance. Furthermore, our method offers a
+      functional cache through the caching and reuse of tools, which stores
+      the functionality of a class of requests instead of the natural language
+      responses from LLMs, thus extending the applicability of the
+      conventional cache mechanism. We evaluate our approach across various
+      complex reasoning tasks, including Big-Bench tasks. With GPT-4 as the
+      tool maker and GPT-3.5 as the tool user, LATM demonstrates performance
+      equivalent to using GPT-4 for both roles, but with a significantly
+      reduced inference cost.
   - arxiv_id: "2402.05120"
     title: "More Agents Is All You Need"
     category: agentic
-
-  # --- Safety & evaluation (5) ---
+    authors: ["Junyou Li", "Qin Zhang", "Yangbin Yu", "Qiang Fu", "Deheng Ye"]
+    date: "2024-02-03"
+    abstract: >-
+      We find that, simply via a sampling-and-voting method, the performance
+      of large language models (LLMs) scales with the number of agents
+      instantiated. Also, this method, termed as Agent Forest, is orthogonal
+      to existing complicated methods to further enhance LLMs, while the
+      degree of enhancement is correlated to the task difficulty. We conduct
+      comprehensive experiments on a wide range of LLM benchmarks to verify
+      the presence of our finding, and to study the properties that can
+      facilitate its occurrence. Our code is publicly available at:
+      https://github.com/MoreAgentsIsAllYouNeed/AgentForest
   - arxiv_id: "2209.07858"
-    title: "Red Teaming Language Models to Reduce Harms"
+    title: "Red Teaming Language Models to Reduce Harms: Methods, Scaling Behaviors, and Lessons Learned"
     category: safety
+    authors: ["Deep Ganguli", "Liane Lovitt", "John Kernion", "Amanda Askell", "Yuntao Bai", "Saurav Kadavath", "Benjamin Mann", "Ethan Perez", "Nicholas Schiefer", "Kamal Ndousse", "Andy Jones", "Sam Bowman", "Anna Chen", "Tom Conerly", "Nova Dassarma", "Dawn Drain", "Nelson Elhage", "S. El-Showk", "Stanislav Fort", "Z. Dodds", "T. Henighan", "Danny Hernandez", "Tristan Hume", "Josh Jacobson", "Scott Johnston", "Shauna Kravec", "Catherine Olsson", "Sam Ringer", "Eli Tran-Johnson", "Dario Amodei", "Tom B. Brown", "Nicholas Joseph", "Sam McCandlish", "Chris Olah", "Jared Kaplan", "Jack Clark"]
+    date: "2022-08-23"
+    abstract: >-
+      We describe our early efforts to red team language models in order to
+      simultaneously discover, measure, and attempt to reduce their
+      potentially harmful outputs. We make three main contributions. First, we
+      investigate scaling behaviors for red teaming across 3 model sizes
+      (2.7B, 13B, and 52B parameters) and 4 model types: a plain language
+      model (LM); an LM prompted to be helpful, honest, and harmless; an LM
+      with rejection sampling; and a model trained to be helpful and harmless
+      using reinforcement learning from human feedback (RLHF). We find that
+      the RLHF models are increasingly difficult to red team as they scale,
+      and we find a flat trend with scale for the other model types. Second,
+      we release our dataset of 38,961 red team attacks for others to analyze
+      and learn from. We provide our own analysis of the data and find a
+      variety of harmful outputs, which range from offensive language to more
+      subtly harmful non-violent unethical outputs. Third, we exhaustively
+      describe our instructions, processes, statistical methodologies, and
+      uncertainty about red teaming. We hope that this transparency
+      accelerates our ability to work together as a community in order to
+      develop shared norms, practices, and technical standards for how to red
+      team language models.
   - arxiv_id: "2310.01405"
-    title: "Representation Engineering: A Top-Down Approach to AI Safety"
+    title: "Representation Engineering: A Top-Down Approach to AI Transparency"
     category: safety
+    authors: ["Andy Zou", "Long Phan", "Sarah Chen", "James Campbell", "Phillip Guo", "Richard Ren", "Alexander Pan", "Xuwang Yin", "Mantas Mazeika", "Ann-Kathrin Dombrowski", "Shashwat Goel", "Nathaniel Li", "Michael J. Byun", "Zifan Wang", "Alex Troy Mallen", "Steven Basart", "Sanmi Koyejo", "Dawn Song", "Matt Fredrikson", "Zico Kolter", "Dan Hendrycks"]
+    date: "2023-10-02"
+    abstract: >-
+      In this paper, we identify and characterize the emerging area of
+      representation engineering (RepE), an approach to enhancing the
+      transparency of AI systems that draws on insights from cognitive
+      neuroscience. RepE places population-level representations, rather than
+      neurons or circuits, at the center of analysis, equipping us with novel
+      methods for monitoring and manipulating high-level cognitive phenomena
+      in deep neural networks (DNNs). We provide baselines and an initial
+      analysis of RepE techniques, showing that they offer simple yet
+      effective solutions for improving our understanding and control of large
+      language models. We showcase how these methods can provide traction on a
+      wide range of safety-relevant problems, including honesty, harmlessness,
+      power-seeking, and more, demonstrating the promise of top-down
+      transparency research. We hope that this work catalyzes further
+      exploration of RepE and fosters advancements in the transparency and
+      safety of AI systems.
   - arxiv_id: "2306.05685"
-    title: "Judging LLM-as-a-Judge with MT-Bench and Chatbot Arena"
+    title: "Judging LLM-as-a-judge with MT-Bench and Chatbot Arena"
     category: safety
+    authors: ["Lianmin Zheng", "Wei-Lin Chiang", "Ying Sheng", "Siyuan Zhuang", "Zhanghao Wu", "Yonghao Zhuang", "Zi Lin", "Zhuohan Li", "Dacheng Li", "E. Xing", "Haotong Zhang", "Joseph E. Gonzalez", "Ion Stoica"]
+    date: "2023-06-09"
+    abstract: >-
+      Evaluating large language model (LLM) based chat assistants is
+      challenging due to their broad capabilities and the inadequacy of
+      existing benchmarks in measuring human preferences. To address this, we
+      explore using strong LLMs as judges to evaluate these models on more
+      open-ended questions. We examine the usage and limitations of
+      LLM-as-a-judge, including position, verbosity, and self-enhancement
+      biases, as well as limited reasoning ability, and propose solutions to
+      mitigate some of them. We then verify the agreement between LLM judges
+      and human preferences by introducing two benchmarks: MT-bench, a
+      multi-turn question set; and Chatbot Arena, a crowdsourced battle
+      platform. Our results reveal that strong LLM judges like GPT-4 can match
+      both controlled and crowdsourced human preferences well, achieving over
+      80% agreement, the same level of agreement between humans. Hence,
+      LLM-as-a-judge is a scalable and explainable way to approximate human
+      preferences, which are otherwise very expensive to obtain. Additionally,
+      we show our benchmark and traditional benchmarks complement each other
+      by evaluating several variants of LLaMA and Vicuna. The MT-bench
+      questions, 3K expert votes, and 30K conversations with human preferences
+      are publicly available at
+      https://github.com/lm-sys/FastChat/tree/main/fastchat/llm_judge.
   - arxiv_id: "2311.12022"
-    title: "MMLU-Pro: A More Robust and Challenging Multi-Task Language Understanding Benchmark"
+    title: "GPQA: A Graduate-Level Google-Proof Q&A Benchmark"
     category: safety
+    authors: ["David Rein", "Betty Li Hou", "Asa Cooper Stickland", "Jackson Petty", "Richard Yuanzhe Pang", "Julien Dirani", "Julian Michael", "Samuel R. Bowman"]
+    date: "2023-11-20"
+    abstract: >-
+      We present GPQA, a challenging dataset of 448 multiple-choice questions
+      written by domain experts in biology, physics, and chemistry. We ensure
+      that the questions are high-quality and extremely difficult: experts who
+      have or are pursuing PhDs in the corresponding domains reach 65%
+      accuracy (74% when discounting clear mistakes the experts identified in
+      retrospect), while highly skilled non-expert validators only reach 34%
+      accuracy, despite spending on average over 30 minutes with unrestricted
+      access to the web (i.e., the questions are"Google-proof"). The questions
+      are also difficult for state-of-the-art AI systems, with our strongest
+      GPT-4 based baseline achieving 39% accuracy. If we are to use future AI
+      systems to help us answer very hard questions, for example, when
+      developing new scientific knowledge, we need to develop scalable
+      oversight methods that enable humans to supervise their outputs, which
+      may be difficult even if the supervisors are themselves skilled and
+      knowledgeable. The difficulty of GPQA both for skilled non-experts and
+      frontier AI systems should enable realistic scalable oversight
+      experiments, which we hope can help devise ways for human experts to
+      reliably get truthful information from AI systems that surpass human
+      capabilities.
   - arxiv_id: "2406.04127"
     title: "The Prompt Report: A Systematic Survey of Prompting Techniques"
     category: safety
+    authors: ["Sander Schulhoff", "Michael Ilie", "Nishant Balepur", "Konstantine Kahadze", "Amanda Liu", "Chenxu Shao"]
+    date: "2024-06-06"
+    abstract: >-
+      Generative Artificial Intelligence (GenAI) systems are being
+      increasingly deployed across all parts of industry and research
+      settings. Developers and end users interact with these systems through
+      the use of prompting or prompt engineering. While prompting is a
+      widespread activity, there has been limited systematic analysis of the
+      prompting techniques available. We establish a taxonomy of 33 vocabulary
+      terms used in the prompting literature, a comprehensive taxonomy of 58
+      text-only prompting techniques, and 40 techniques for other modalities.
