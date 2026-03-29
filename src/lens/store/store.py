@@ -132,9 +132,9 @@ _TABLE_DDL = [
     )""",
     """CREATE TABLE IF NOT EXISTS matrix_cells (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
-        improving_param_id INTEGER NOT NULL,
-        worsening_param_id INTEGER NOT NULL,
-        principle_id INTEGER NOT NULL,
+        improving_param_id TEXT NOT NULL,
+        worsening_param_id TEXT NOT NULL,
+        principle_id TEXT NOT NULL,
         count INTEGER NOT NULL,
         avg_confidence REAL NOT NULL,
         paper_ids TEXT NOT NULL,

@@ -194,9 +194,9 @@ class AgenticPattern(BaseModel):
 class MatrixCell(BaseModel):
     """One cell in the tradeoff matrix (improving × worsening × principle)."""
 
-    improving_param_id: int
-    worsening_param_id: int
-    principle_id: int
+    improving_param_id: str
+    worsening_param_id: str
+    principle_id: str
     count: int
     avg_confidence: float
     paper_ids: list[str]

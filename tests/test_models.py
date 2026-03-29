@@ -183,9 +183,9 @@ def test_matrix_cell_model():
     from lens.store.models import MatrixCell
 
     cell = MatrixCell(
-        improving_param_id=1,
-        worsening_param_id=2,
-        principle_id=3,
+        improving_param_id="inference-latency",
+        worsening_param_id="model-accuracy",
+        principle_id="quantization",
         count=5,
         avg_confidence=0.82,
         paper_ids=["2401.12345", "2402.67890"],

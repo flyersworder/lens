@@ -489,7 +489,7 @@ def build_matrix_cmd() -> None:
     if version is None:
         rprint("[red]No taxonomy yet. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
-    build_matrix(store, taxonomy_version=version)
+    build_matrix(store)
     rprint(f"[green]Built matrix for taxonomy v{version}[/green]")
 
 
@@ -524,7 +524,7 @@ def build_all() -> None:
             embedding_api_key=emb_config.get("api_key"),
         )
     )
-    build_matrix(store, taxonomy_version=version)
+    build_matrix(store)
     rprint(f"[green]Built taxonomy v{version} + matrix[/green]")
 
 
