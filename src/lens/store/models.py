@@ -121,6 +121,34 @@ class Principle(BaseModel):
     embedding: list[float] = []
 
 
+class VocabularyEntry(BaseModel):
+    """A canonical parameter or principle in the vocabulary."""
+
+    id: str
+    name: str
+    kind: str  # "parameter" or "principle"
+    description: str
+    source: str  # "seed" or "extracted"
+    first_seen: str
+    paper_count: int = 0
+    avg_confidence: float = 0.0
+    embedding: list[float] = []
+
+    @field_validator("kind")
+    @classmethod
+    def _check_kind(cls, v: str) -> str:
+        if v not in ("parameter", "principle"):
+            raise ValueError(f"kind must be 'parameter' or 'principle', got '{v}'")
+        return v
+
+    @field_validator("source")
+    @classmethod
+    def _check_source(cls, v: str) -> str:
+        if v not in ("seed", "extracted"):
+            raise ValueError(f"source must be 'seed' or 'extracted', got '{v}'")
+        return v
+
+
 class ArchitectureSlot(BaseModel):
     """A named slot in the transformer architecture taxonomy."""
 

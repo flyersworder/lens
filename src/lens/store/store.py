@@ -18,6 +18,7 @@ VEC_TABLES: dict[str, tuple[str, str]] = {
     "papers": ("paper_id", "TEXT"),
     "parameters": ("id", "INTEGER"),
     "principles": ("id", "INTEGER"),
+    "vocabulary": ("id", "TEXT"),
     "architecture_variants": ("id", "INTEGER"),
     "agentic_patterns": ("id", "INTEGER"),
 }
@@ -117,6 +118,16 @@ _TABLE_DDL = [
         use_cases TEXT NOT NULL,
         paper_ids TEXT NOT NULL,
         taxonomy_version INTEGER NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS vocabulary (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        description TEXT NOT NULL,
+        source TEXT NOT NULL,
+        first_seen TEXT NOT NULL,
+        paper_count INTEGER NOT NULL DEFAULT 0,
+        avg_confidence REAL NOT NULL DEFAULT 0.0
     )""",
     """CREATE TABLE IF NOT EXISTS matrix_cells (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
