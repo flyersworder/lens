@@ -63,16 +63,19 @@ _TABLE_DDL = [
         variant_name TEXT NOT NULL,
         replaces TEXT,
         key_properties TEXT NOT NULL,
-        confidence REAL NOT NULL
+        confidence REAL NOT NULL,
+        new_concept_description TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS agentic_extractions (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
         paper_id TEXT NOT NULL,
         pattern_name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
         structure TEXT NOT NULL,
         use_case TEXT NOT NULL,
         components TEXT NOT NULL,
-        confidence REAL NOT NULL
+        confidence REAL NOT NULL,
+        new_concept_description TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS architecture_slots (
         id INTEGER PRIMARY KEY,

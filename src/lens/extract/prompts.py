@@ -24,16 +24,19 @@ EXTRACTION_RESPONSE_SCHEMA = """{
       "variant_name": "specific variant introduced",
       "replaces": "what it replaces or generalizes (null if novel)",
       "key_properties": "key properties or advantages",
-      "confidence": 0.9
+      "confidence": 0.9,
+      "new_concept_description": null
     }
   ],
   "agentic": [
     {
       "pattern_name": "name of the agent pattern",
+      "category": "agentic category",
       "structure": "high-level structure description",
       "use_case": "primary use case",
       "components": ["list", "of", "components"],
-      "confidence": 0.8
+      "confidence": 0.8,
+      "new_concept_description": null
     }
   ]
 }"""
@@ -84,25 +87,65 @@ def _build_tradeoffs_section(
     return base
 
 
-_ARCHITECTURE_SECTION = (
-    "### 2. Architecture Contributions (ArchitectureExtraction)\n"
-    "Identify novel or notable architecture components.\n"
-    '- "component_slot": the category (e.g., attention mechanism, positional encoding,'
-    " normalization, FFN, activation function, MoE routing)\n"
-    '- "variant_name": the specific variant name\n'
-    '- "replaces": what it replaces/generalizes (null if entirely novel)\n'
-    '- "key_properties": key properties or advantages\n'
-    '- "confidence": your confidence score'
-)
+def _build_architecture_section(vocabulary=None):
+    """Build the architecture section, optionally with guided vocabulary."""
+    base = (
+        "### 2. Architecture Contributions (ArchitectureExtraction)\n"
+        "Identify novel or notable architecture components.\n"
+    )
+    if vocabulary:
+        slots = [v["name"] for v in vocabulary if v["kind"] == "arch_slot"]
+        if slots:
+            base += (
+                "\nUse EXACT names from the Architecture Slots below"
+                " for component_slot.\n\nArchitecture Slots:\n"
+            )
+            base += "\n".join(f"- {s}" for s in slots)
+            base += (
+                "\n\nIf a slot genuinely does not match any entry above,"
+                " prefix with NEW: and set new_concept_description to a"
+                " one-line definition.\n"
+            )
+    base += (
+        '\n- "component_slot": the category (use an Architecture Slot name)\n'
+        '- "variant_name": the specific variant name (free text)\n'
+        '- "replaces": what it replaces/generalizes (null if entirely novel)\n'
+        '- "key_properties": key properties or advantages\n'
+        '- "confidence": your confidence score\n'
+        '- "new_concept_description": one-line definition if using NEW: prefix,'
+        " else null"
+    )
+    return base
 
-_AGENTIC_SECTION = """\
-### 3. Agentic Patterns (AgenticExtraction)
-Identify LLM agent design patterns.
-- "pattern_name": name of the pattern
-- "structure": high-level description of the agent structure
-- "use_case": primary use case or application
-- "components": list of key components
-- "confidence": your confidence score"""
+
+def _build_agentic_section(vocabulary=None):
+    """Build the agentic section, optionally with guided vocabulary."""
+    base = "### 3. Agentic Patterns (AgenticExtraction)\nIdentify LLM agent design patterns.\n"
+    if vocabulary:
+        categories = [v["name"] for v in vocabulary if v["kind"] == "agentic_category"]
+        if categories:
+            base += (
+                "\nUse EXACT names from the Agentic Categories below"
+                " for category.\n\nAgentic Categories:\n"
+            )
+            base += "\n".join(f"- {c}" for c in categories)
+            base += (
+                "\n\nIf a category genuinely does not match any entry above,"
+                " prefix with NEW: and set new_concept_description to a"
+                " one-line definition.\n"
+            )
+    base += (
+        '\n- "pattern_name": name of the pattern (free text)\n'
+        '- "category": the category (use an Agentic Category name)\n'
+        '- "structure": high-level description of the agent structure\n'
+        '- "use_case": primary use case or application\n'
+        '- "components": list of key components\n'
+        '- "confidence": your confidence score\n'
+        '- "new_concept_description": one-line definition if using NEW: prefix,'
+        " else null"
+    )
+    return base
+
 
 _CONFIDENCE_SECTION = """\
 ## Confidence Scale
@@ -139,8 +182,8 @@ def build_extraction_prompt(
         f"## Paper\n{paper_content}",
         _TASK_SECTION,
         _build_tradeoffs_section(vocabulary),
-        _ARCHITECTURE_SECTION,
-        _AGENTIC_SECTION,
+        _build_architecture_section(vocabulary),
+        _build_agentic_section(vocabulary),
         _CONFIDENCE_SECTION,
         response_format,
     ]

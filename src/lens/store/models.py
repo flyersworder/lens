@@ -79,6 +79,7 @@ class ArchitectureExtraction(BaseModel):
     replaces: str | None = None
     key_properties: str
     confidence: float
+    new_concept_description: str | None = None
 
 
 class AgenticExtraction(BaseModel):
@@ -86,10 +87,12 @@ class AgenticExtraction(BaseModel):
 
     paper_id: str
     pattern_name: str
+    category: str = ""
     structure: str
     use_case: str
     components: list[str]
     confidence: float
+    new_concept_description: str | None = None
 
 
 # ---------------------------------------------------------------------------

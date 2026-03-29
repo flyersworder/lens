@@ -94,12 +94,14 @@ def test_agentic_extraction_model():
     ext = AgenticExtraction(
         paper_id="2401.12345",
         pattern_name="reflexion",
+        category="single-agent",
         structure="single agent with self-critique loop and memory",
         use_case="code generation with iterative debugging",
         components=["actor", "evaluator", "memory"],
         confidence=0.8,
     )
     assert ext.components == ["actor", "evaluator", "memory"]
+    assert ext.category == "single-agent"
 
 
 def test_architecture_slot_model():
