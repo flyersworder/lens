@@ -14,7 +14,8 @@ EXTRACTION_RESPONSE_SCHEMA = """{
       "technique": "the technique or method used",
       "context": "conditions or constraints mentioned",
       "confidence": 0.85,
-      "evidence_quote": "relevant sentence from the paper"
+      "evidence_quote": "relevant sentence from the paper",
+      "new_concept_description": null
     }
   ],
   "architecture": [
@@ -45,15 +46,43 @@ _TASK_SECTION = (
     " not contain relevant information for that category."
 )
 
-_TRADEOFFS_SECTION = """\
-### 1. Tradeoffs (TradeoffExtraction)
-Identify engineering tradeoffs: when improving one aspect worsens another.
-- "improves": what the technique/method improves
-- "worsens": what gets worse as a consequence
-- "technique": the specific technique or method
-- "context": conditions, benchmarks, or constraints mentioned
-- "confidence": your confidence score (see scale below)
-- "evidence_quote": a relevant sentence from the paper"""
+
+def _build_tradeoffs_section(
+    vocabulary: list[dict[str, str]] | None = None,
+) -> str:
+    """Build the tradeoffs section, optionally with guided vocabulary."""
+    base = (
+        "### 1. Tradeoffs (TradeoffExtraction)\n"
+        "Identify engineering tradeoffs: when improving one aspect worsens another.\n"
+    )
+
+    if vocabulary:
+        params = [v["name"] for v in vocabulary if v["kind"] == "parameter"]
+        principles = [v["name"] for v in vocabulary if v["kind"] == "principle"]
+        base += (
+            "\nUse EXACT names from the vocabulary below for improves, worsens, "
+            "and technique fields.\n"
+            "\nParameters:\n"
+            + "\n".join(f"- {p}" for p in params)
+            + "\n\nPrinciples:\n"
+            + "\n".join(f"- {p}" for p in principles)
+            + "\n\nIf a concept genuinely does not match any entry above, prefix it "
+            'with NEW: (e.g., "NEW: Energy Efficiency") and set '
+            "new_concept_description to a one-line definition.\n"
+        )
+
+    base += (
+        '\n- "improves": what the technique/method improves (use a Parameter name)\n'
+        '- "worsens": what gets worse as a consequence (use a Parameter name)\n'
+        '- "technique": the specific technique or method (use a Principle name)\n'
+        '- "context": conditions, benchmarks, or constraints mentioned\n'
+        '- "confidence": your confidence score (see scale below)\n'
+        '- "evidence_quote": a relevant sentence from the paper\n'
+        '- "new_concept_description": one-line definition if using NEW: prefix, '
+        "else null"
+    )
+    return base
+
 
 _ARCHITECTURE_SECTION = (
     "### 2. Architecture Contributions (ArchitectureExtraction)\n"
@@ -87,6 +116,7 @@ def build_extraction_prompt(
     title: str,
     abstract: str,
     full_text: str | None = None,
+    vocabulary: list[dict[str, str]] | None = None,
 ) -> str:
     """Build the extraction prompt for a single paper."""
     paper_content = f"Title: {title}\n\nAbstract: {abstract}"
@@ -108,7 +138,7 @@ def build_extraction_prompt(
         intro,
         f"## Paper\n{paper_content}",
         _TASK_SECTION,
-        _TRADEOFFS_SECTION,
+        _build_tradeoffs_section(vocabulary),
         _ARCHITECTURE_SECTION,
         _AGENTIC_SECTION,
         _CONFIDENCE_SECTION,

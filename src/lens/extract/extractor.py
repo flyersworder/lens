@@ -88,8 +88,9 @@ async def extract_paper(
     abstract: str,
     llm_client: LLMClient,
     full_text: str | None = None,
+    vocabulary: list[dict[str, str]] | None = None,
 ) -> ExtractionTuple | None:
-    prompt = build_extraction_prompt(title, abstract, full_text=full_text)
+    prompt = build_extraction_prompt(title, abstract, full_text=full_text, vocabulary=vocabulary)
     messages = [{"role": "user", "content": prompt}]
 
     try:
@@ -165,6 +166,12 @@ async def extract_papers(
         logger.info("No papers to extract")
         return 0
 
+    # Load vocabulary for guided extraction
+    vocab_rows = store.query("vocabulary")
+    vocabulary = (
+        [{"name": r["name"], "kind": r["kind"]} for r in vocab_rows] if vocab_rows else None
+    )
+
     semaphore = asyncio.Semaphore(concurrency)
 
     async def extract_one(row: dict) -> tuple[str, ExtractionTuple | None]:
@@ -176,6 +183,7 @@ async def extract_papers(
                 title=row["title"],
                 abstract=row["abstract"],
                 llm_client=llm_client,
+                vocabulary=vocabulary,
             )
             return pid, result
 
