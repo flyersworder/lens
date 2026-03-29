@@ -228,40 +228,53 @@ SEED_VOCABULARY: list[dict[str, str]] = [
 ]
 
 
+def _collect_concept_ref(
+    ext: dict[str, Any],
+    field: str,
+    kind: str,
+    references: dict[str, list[tuple[str, float, str]]],
+    new_concepts: dict[str, dict[str, str]],
+) -> None:
+    """Extract a concept reference from an extraction row."""
+    raw_value = ext.get(field, "")
+    if not raw_value:
+        return
+    if raw_value.startswith("NEW: "):
+        name = raw_value[5:].strip()
+        if name not in new_concepts:
+            desc = ext.get("new_concept_description") or f"Extracted concept: {name}"
+            new_concepts[name] = {"kind": kind, "description": desc}
+    else:
+        name = raw_value
+    references.setdefault(name, []).append((ext["paper_id"], ext["confidence"], kind))
+
+
 def process_new_concepts(store: LensStore) -> dict[str, int]:
-    """Scan extractions for NEW: concepts, accept them, and update vocabulary stats.
-
-    Returns dict with keys: new_entries, updated_entries.
-    """
-    extractions = store.query("tradeoff_extractions")
-    if not extractions:
-        return {"new_entries": 0, "updated_entries": 0}
-
+    """Scan all extraction tables for NEW: concepts, accept them, update stats."""
     existing = store.query("vocabulary")
     existing_by_name: dict[str, dict[str, Any]] = {r["name"]: r for r in existing}
     existing_ids: set[str] = {r["id"] for r in existing}
     today = datetime.now(UTC).strftime("%Y-%m-%d")
 
-    # Collect all concept references: name -> list of (paper_id, confidence, kind)
     references: dict[str, list[tuple[str, float, str]]] = {}
-    new_concepts: dict[str, dict[str, str]] = {}  # name -> {kind, description}
+    new_concepts: dict[str, dict[str, str]] = {}
 
-    for ext in extractions:
+    # Scan tradeoff extractions
+    for ext in store.query("tradeoff_extractions"):
         for field, kind in [
             ("improves", "parameter"),
             ("worsens", "parameter"),
             ("technique", "principle"),
         ]:
-            raw_value = ext[field]
-            if raw_value.startswith("NEW: "):
-                name = raw_value[5:].strip()
-                if name not in new_concepts:
-                    desc = ext.get("new_concept_description") or f"Extracted concept: {name}"
-                    new_concepts[name] = {"kind": kind, "description": desc}
-            else:
-                name = raw_value
+            _collect_concept_ref(ext, field, kind, references, new_concepts)
 
-            references.setdefault(name, []).append((ext["paper_id"], ext["confidence"], kind))
+    # Scan architecture extractions
+    for ext in store.query("architecture_extractions"):
+        _collect_concept_ref(ext, "component_slot", "arch_slot", references, new_concepts)
+
+    # Scan agentic extractions
+    for ext in store.query("agentic_extractions"):
+        _collect_concept_ref(ext, "category", "agentic_category", references, new_concepts)
 
     # Insert new concepts
     new_rows: list[dict[str, Any]] = []
@@ -288,7 +301,7 @@ def process_new_concepts(store: LensStore) -> dict[str, int]:
         store.add_rows("vocabulary", new_rows)
         logger.info("Accepted %d new vocabulary entries", len(new_rows))
 
-    # Update paper_count and avg_confidence for all referenced concepts
+    # Update paper_count and avg_confidence
     updated = 0
     for name, refs in references.items():
         if name not in existing_by_name:
@@ -308,17 +321,14 @@ def process_new_concepts(store: LensStore) -> dict[str, int]:
     return {"new_entries": len(new_rows), "updated_entries": updated}
 
 
-def build_tradeoff_taxonomy(
+def build_vocabulary(
     store: LensStore,
     embedding_provider: str = "local",
     embedding_model: str | None = None,
     embedding_api_base: str | None = None,
     embedding_api_key: str | None = None,
 ) -> dict[str, int]:
-    """Build the tradeoff taxonomy: process new concepts, update stats, embed vocabulary.
-
-    Returns dict with keys: new_entries, updated_entries.
-    """
+    """Process new concepts from all extraction types, update stats, embed vocabulary."""
     stats = process_new_concepts(store)
 
     # Embed all vocabulary entries that lack embeddings
@@ -338,12 +348,16 @@ def build_tradeoff_taxonomy(
             store.upsert_embedding("vocabulary", row["id"], emb.tolist())
 
     logger.info(
-        "Tradeoff taxonomy: %d new, %d updated, %d embedded",
+        "Vocabulary: %d new, %d updated, %d embedded",
         stats["new_entries"],
         stats["updated_entries"],
         len(to_embed),
     )
     return stats
+
+
+# Backward compatibility alias
+build_tradeoff_taxonomy = build_vocabulary
 
 
 def load_seed_vocabulary(store: LensStore) -> int:

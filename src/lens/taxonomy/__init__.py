@@ -18,11 +18,15 @@ from lens.taxonomy.labeler import (
     normalize_slots,
 )
 from lens.taxonomy.versioning import get_next_version, record_version  # noqa: F401
-from lens.taxonomy.vocabulary import build_tradeoff_taxonomy  # noqa: F401
+from lens.taxonomy.vocabulary import (
+    build_tradeoff_taxonomy,  # noqa: F401
+    build_vocabulary,  # noqa: F401
+)
 
 logger = logging.getLogger(__name__)
 
 __all__ = [
+    "build_vocabulary",
     "build_tradeoff_taxonomy",
     "build_architecture_taxonomy",
     "build_agentic_taxonomy",

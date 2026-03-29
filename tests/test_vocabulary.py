@@ -178,6 +178,79 @@ def test_process_new_concepts_updates_paper_count(tmp_path):
     assert quant[0]["avg_confidence"] == 0.8
 
 
+def test_process_new_concepts_handles_architecture(tmp_path):
+    store = LensStore(str(tmp_path / "test.db"))
+    load_seed_vocabulary(store)
+    store.add_rows(
+        "architecture_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "component_slot": "Attention Mechanism",
+                "variant_name": "FlashAttention-2",
+                "replaces": None,
+                "key_properties": "better parallelism",
+                "confidence": 0.9,
+                "new_concept_description": None,
+            },
+            {
+                "paper_id": "p2",
+                "component_slot": "NEW: Embedding Layer",
+                "variant_name": "Rotary Embeddings",
+                "replaces": None,
+                "key_properties": "relative position",
+                "confidence": 0.85,
+                "new_concept_description": "Token embedding and projection layer",
+            },
+        ],
+    )
+    stats = process_new_concepts(store)
+    assert stats["new_entries"] == 1
+    rows = store.query("vocabulary", "id = ?", ("embedding-layer",))
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "arch_slot"
+    assert rows[0]["source"] == "extracted"
+    attn = store.query("vocabulary", "id = ?", ("attention-mechanism",))
+    assert attn[0]["paper_count"] == 1
+
+
+def test_process_new_concepts_handles_agentic(tmp_path):
+    store = LensStore(str(tmp_path / "test.db"))
+    load_seed_vocabulary(store)
+    store.add_rows(
+        "agentic_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "pattern_name": "ReAct",
+                "category": "Reasoning",
+                "structure": "interleaves reasoning and acting",
+                "use_case": "multi-step QA",
+                "components": ["LLM", "tools"],
+                "confidence": 0.9,
+                "new_concept_description": None,
+            },
+            {
+                "paper_id": "p2",
+                "pattern_name": "LATS",
+                "category": "NEW: Search",
+                "structure": "tree search",
+                "use_case": "complex reasoning",
+                "components": ["LLM", "MCTS"],
+                "confidence": 0.8,
+                "new_concept_description": "Patterns using systematic search over solution spaces",
+            },
+        ],
+    )
+    stats = process_new_concepts(store)
+    assert stats["new_entries"] == 1
+    rows = store.query("vocabulary", "id = ?", ("search",))
+    assert len(rows) == 1
+    assert rows[0]["kind"] == "agentic_category"
+    reasoning = store.query("vocabulary", "id = ?", ("reasoning",))
+    assert reasoning[0]["paper_count"] == 1
+
+
 def test_end_to_end_guided_extraction_pipeline(tmp_path):
     """Integration test: seed vocab -> extract -> process -> matrix."""
     from lens.knowledge.matrix import build_matrix
