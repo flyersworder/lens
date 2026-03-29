@@ -16,6 +16,7 @@ dependencies = [
     "hdbscan>=0.8.41",
     "sqlite-vec>=0.1.7",
     "arxiv>=2.4.1",
+    "python-dotenv>=1.2.2",
 ]
 
 [project.optional-dependencies]

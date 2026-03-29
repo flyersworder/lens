@@ -2,6 +2,7 @@
 
 Config is stored as YAML at ~/.lens/config.yaml by default.
 Missing keys fall back to defaults. Nested keys are accessed with dot notation.
+Environment variables from .env are loaded automatically.
 """
 
 from __future__ import annotations
@@ -11,6 +12,10 @@ from pathlib import Path
 from typing import Any
 
 import yaml
+from dotenv import load_dotenv
+
+# Load .env from project root (if present) so API keys are available
+load_dotenv()
 
 DEFAULT_CONFIG: dict[str, Any] = {
     "llm": {

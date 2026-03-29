@@ -56,8 +56,9 @@ def _llm_kwargs(config: dict) -> dict:
     kwargs: dict = {}
     if llm_cfg.get("api_base"):
         kwargs["api_base"] = llm_cfg["api_base"]
-    if llm_cfg.get("api_key"):
-        kwargs["api_key"] = llm_cfg["api_key"]
+    api_key = llm_cfg.get("api_key") or os.environ.get("OPENROUTER_API_KEY", "")
+    if api_key:
+        kwargs["api_key"] = api_key
     return kwargs
 
 

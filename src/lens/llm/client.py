@@ -3,10 +3,13 @@
 Uses litellm if installed (supports any provider via model routing).
 Falls back to the openai SDK with a configurable api_base (works with
 any OpenAI-compatible endpoint such as a litellm gateway, vLLM, Ollama).
+
+Includes automatic retry with exponential backoff for rate limit (429) errors.
 """
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from typing import Any, cast
 
@@ -25,6 +28,11 @@ except ImportError:
 logger = logging.getLogger(__name__)
 
 DEFAULT_MODEL = "openrouter/anthropic/claude-sonnet-4-6"
+
+# Retry config for rate limits
+MAX_RETRIES = 5
+INITIAL_BACKOFF = 10  # seconds
+MAX_BACKOFF = 120  # seconds
 
 
 class LLMClient:
@@ -68,14 +76,54 @@ class LLMClient:
             "  2. Set llm.api_base in ~/.lens/config.yaml to an OpenAI-compatible endpoint"
         )
 
+    @staticmethod
+    def _is_rate_limit(error: Exception) -> bool:
+        """Check if an error is a rate limit (429) that should be retried."""
+        error_str = str(error)
+        error_type = type(error).__name__
+        return "429" in error_str or "RateLimitError" in error_type
+
     async def complete(
         self,
         messages: list[dict[str, str]],
         **kwargs: Any,
     ) -> str:
-        """Send a completion request and return the response text."""
+        """Send a completion request and return the response text.
+
+        Automatically retries with exponential backoff on rate limit (429) errors.
+        """
         self._require_backend()
 
+        last_error: Exception | None = None
+        backoff = INITIAL_BACKOFF
+
+        for attempt in range(MAX_RETRIES + 1):
+            try:
+                return await self._call_llm(messages, **kwargs)
+            except Exception as e:
+                if self._is_rate_limit(e) and attempt < MAX_RETRIES:
+                    last_error = e
+                    logger.info(
+                        "Rate limited (attempt %d/%d), waiting %ds...",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, MAX_BACKOFF)
+                    continue
+                raise
+
+        # Should not reach here, but just in case
+        assert last_error is not None  # noqa: S101
+        raise last_error
+
+    async def _call_llm(
+        self,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> str:
+        """Execute a single LLM call (no retry logic)."""
         if HAS_LITELLM:
             llm_kwargs: dict[str, Any] = {}
             if self.api_base:
