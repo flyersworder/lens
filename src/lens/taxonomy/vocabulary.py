@@ -215,13 +215,14 @@ def process_new_concepts(store: LensStore) -> dict[str, int]:
         entry_id = entry["id"]
         unique_papers = {r[0] for r in refs}
         avg_conf = sum(r[1] for r in refs) / len(refs)
-        store.conn.execute(
-            "UPDATE vocabulary SET paper_count = ?, avg_confidence = ? WHERE id = ?",
+        store.update(
+            "vocabulary",
+            "paper_count = ?, avg_confidence = ?",
+            "id = ?",
             (len(unique_papers), round(avg_conf, 4), entry_id),
         )
         updated += 1
 
-    store.conn.commit()
     return {"new_entries": len(new_rows), "updated_entries": updated}
 
 

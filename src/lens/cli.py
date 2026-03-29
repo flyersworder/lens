@@ -265,18 +265,11 @@ def monitor(
     store.init_tables()
 
     if trending:
-        from lens.taxonomy.versioning import get_latest_version
-
-        version = get_latest_version(store)
-        if version is None:
-            rprint("[yellow]No taxonomy yet.[/yellow]")
-            raise typer.Exit(code=0)
-
-        gaps = store.query("ideation_gaps", "taxonomy_version = ?", (version,))
+        gaps = store.query("ideation_gaps")
         if not gaps:
             rprint("[yellow]No ideation gaps found.[/yellow]")
         else:
-            rprint(f"\n[bold]Ideation Gaps (v{version}):[/bold]")
+            rprint("\n[bold]Ideation Gaps:[/bold]")
             gaps.sort(key=lambda x: x.get("score", 0), reverse=True)
             for row in gaps:
                 hyp = ""
@@ -629,16 +622,10 @@ def parameters() -> None:
     store.init_tables()
 
     from lens.serve.explorer import list_parameters
-    from lens.taxonomy.versioning import get_latest_version
-
-    version = get_latest_version(store)
-    if version is None:
-        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
-        raise typer.Exit(code=1)
 
     params = list_parameters(store)
     if not params:
-        rprint("[yellow]No parameters found.[/yellow]")
+        rprint("[yellow]No parameters found. Run 'lens vocab init' first.[/yellow]")
         return
     for p in params:
         rprint(f"[bold]{p['id']}[/bold] {p['name']} — {p['description']}")
@@ -653,16 +640,10 @@ def principles() -> None:
     store.init_tables()
 
     from lens.serve.explorer import list_principles
-    from lens.taxonomy.versioning import get_latest_version
-
-    version = get_latest_version(store)
-    if version is None:
-        rprint("[red]No taxonomy. Run 'lens build taxonomy' first.[/red]")
-        raise typer.Exit(code=1)
 
     princs = list_principles(store)
     if not princs:
-        rprint("[yellow]No principles found.[/yellow]")
+        rprint("[yellow]No principles found. Run 'lens vocab init' first.[/yellow]")
         return
     for p in princs:
         rprint(f"[bold]{p['id']}[/bold] {p['name']} — {p['description']}")
@@ -847,21 +828,10 @@ def ideas(
     store = LensStore(str(_get_data_dir(config) / "lens.db"))
     store.init_tables()
 
-    from lens.taxonomy.versioning import get_latest_version
-
-    version = get_latest_version(store)
-    if version is None:
-        rprint("[yellow]No taxonomy yet.[/yellow]")
-        raise typer.Exit(code=0)
-
     if type_:
-        gaps = store.query(
-            "ideation_gaps",
-            "taxonomy_version = ? AND gap_type = ?",
-            (version, type_),
-        )
+        gaps = store.query("ideation_gaps", "gap_type = ?", (type_,))
     else:
-        gaps = store.query("ideation_gaps", "taxonomy_version = ?", (version,))
+        gaps = store.query("ideation_gaps")
 
     if not gaps:
         rprint("[yellow]No ideation gaps found.[/yellow]")
