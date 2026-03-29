@@ -57,7 +57,8 @@ _TABLE_DDL = [
         technique TEXT NOT NULL,
         context TEXT NOT NULL,
         confidence REAL NOT NULL,
-        evidence_quote TEXT NOT NULL
+        evidence_quote TEXT NOT NULL,
+        new_concept_description TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS architecture_extractions (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,

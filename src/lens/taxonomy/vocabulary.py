@@ -145,6 +145,85 @@ SEED_VOCABULARY: list[dict[str, str]] = [
 ]
 
 
+def process_new_concepts(store: LensStore) -> dict[str, int]:
+    """Scan extractions for NEW: concepts, accept them, and update vocabulary stats.
+
+    Returns dict with keys: new_entries, updated_entries.
+    """
+    extractions = store.query("tradeoff_extractions")
+    if not extractions:
+        return {"new_entries": 0, "updated_entries": 0}
+
+    existing = store.query("vocabulary")
+    existing_by_name: dict[str, dict[str, Any]] = {r["name"]: r for r in existing}
+    existing_ids: set[str] = {r["id"] for r in existing}
+    today = datetime.now(UTC).strftime("%Y-%m-%d")
+
+    # Collect all concept references: name -> list of (paper_id, confidence, kind)
+    references: dict[str, list[tuple[str, float, str]]] = {}
+    new_concepts: dict[str, dict[str, str]] = {}  # name -> {kind, description}
+
+    for ext in extractions:
+        for field, kind in [
+            ("improves", "parameter"),
+            ("worsens", "parameter"),
+            ("technique", "principle"),
+        ]:
+            raw_value = ext[field]
+            if raw_value.startswith("NEW: "):
+                name = raw_value[5:].strip()
+                if name not in new_concepts:
+                    desc = ext.get("new_concept_description") or f"Extracted concept: {name}"
+                    new_concepts[name] = {"kind": kind, "description": desc}
+            else:
+                name = raw_value
+
+            references.setdefault(name, []).append((ext["paper_id"], ext["confidence"], kind))
+
+    # Insert new concepts
+    new_rows: list[dict[str, Any]] = []
+    for name, info in new_concepts.items():
+        entry_id = _slugify(name)
+        if entry_id in existing_ids:
+            continue
+        new_rows.append(
+            {
+                "id": entry_id,
+                "name": name,
+                "kind": info["kind"],
+                "description": info["description"],
+                "source": "extracted",
+                "first_seen": today,
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+            }
+        )
+        existing_ids.add(entry_id)
+        existing_by_name[name] = new_rows[-1]
+
+    if new_rows:
+        store.add_rows("vocabulary", new_rows)
+        logger.info("Accepted %d new vocabulary entries", len(new_rows))
+
+    # Update paper_count and avg_confidence for all referenced concepts
+    updated = 0
+    for name, refs in references.items():
+        if name not in existing_by_name:
+            continue
+        entry = existing_by_name[name]
+        entry_id = entry["id"]
+        unique_papers = {r[0] for r in refs}
+        avg_conf = sum(r[1] for r in refs) / len(refs)
+        store.conn.execute(
+            "UPDATE vocabulary SET paper_count = ?, avg_confidence = ? WHERE id = ?",
+            (len(unique_papers), round(avg_conf, 4), entry_id),
+        )
+        updated += 1
+
+    store.conn.commit()
+    return {"new_entries": len(new_rows), "updated_entries": updated}
+
+
 def load_seed_vocabulary(store: LensStore) -> int:
     """Load seed vocabulary into the database. Idempotent — skips existing entries.
 

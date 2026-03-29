@@ -67,6 +67,7 @@ class TradeoffExtraction(BaseModel):
     context: str
     confidence: float
     evidence_quote: str
+    new_concept_description: str | None = None
 
 
 class ArchitectureExtraction(BaseModel):
