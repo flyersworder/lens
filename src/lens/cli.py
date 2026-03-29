@@ -449,54 +449,12 @@ def taxonomy() -> None:
     store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
 
-    from lens.llm.client import LLMClient
-    from lens.taxonomy import (
-        build_agentic_taxonomy,
-        build_architecture_taxonomy,
-        get_next_version,
-        record_version,
-    )
-    from lens.taxonomy.vocabulary import build_tradeoff_taxonomy
-
-    llm_model = config["llm"]["label_model"]
-    client = LLMClient(model=llm_model, **_llm_kwargs(config))
-    tax_cfg = config.get("taxonomy", {})
-    emb_config = config.get("embeddings", {})
-    emb_kwargs = dict(
-        embedding_provider=emb_config.get("provider", "local"),
-        embedding_model=emb_config.get("model"),
-        embedding_api_base=emb_config.get("api_base"),
-        embedding_api_key=emb_config.get("api_key"),
-    )
+    from lens.taxonomy import get_next_version, record_version
+    from lens.taxonomy.vocabulary import build_vocabulary
 
     version_id = get_next_version(store)
 
-    # Tradeoff taxonomy (vocabulary-based, synchronous)
-    build_tradeoff_taxonomy(store, **emb_kwargs)
-
-    # Architecture + agentic (clustering-based, async)
-    arch_result = asyncio.run(
-        build_architecture_taxonomy(
-            store,
-            client,
-            version_id=version_id,
-            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
-            target_arch_variants=tax_cfg.get("target_arch_variants", 20),
-            **emb_kwargs,
-        )
-    )
-    slot_entries = arch_result["slot_entries"]
-    variant_entries = arch_result["variant_entries"]
-    pattern_entries = asyncio.run(
-        build_agentic_taxonomy(
-            store,
-            client,
-            version_id=version_id,
-            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
-            target_agentic_patterns=tax_cfg.get("target_agentic_patterns", 15),
-            **emb_kwargs,
-        )
-    )
+    stats = build_vocabulary(store)
 
     # Record version
     paper_count = len(store.query("papers"))
@@ -507,11 +465,14 @@ def taxonomy() -> None:
         paper_count=paper_count,
         param_count=len([v for v in vocab if v["kind"] == "parameter"]),
         principle_count=len([v for v in vocab if v["kind"] == "principle"]),
-        slot_count=len(slot_entries),
-        variant_count=len(variant_entries),
-        pattern_count=len(pattern_entries),
+        slot_count=len([v for v in vocab if v["kind"] == "arch_slot"]),
+        variant_count=0,
+        pattern_count=len([v for v in vocab if v["kind"] == "agentic_category"]),
     )
-    rprint(f"[green]Taxonomy v{version_id} built.[/green]")
+    rprint(
+        f"[green]Taxonomy v{version_id} built.[/green] "
+        f"new={stats['new_entries']} updated={stats['updated_entries']}"
+    )
 
 
 @build_app.command(name="matrix")
@@ -542,54 +503,12 @@ def build_all() -> None:
     store.init_tables()
 
     from lens.knowledge.matrix import build_matrix
-    from lens.llm.client import LLMClient
-    from lens.taxonomy import (
-        build_agentic_taxonomy,
-        build_architecture_taxonomy,
-        get_next_version,
-        record_version,
-    )
-    from lens.taxonomy.vocabulary import build_tradeoff_taxonomy
-
-    llm_model = config["llm"]["label_model"]
-    client = LLMClient(model=llm_model, **_llm_kwargs(config))
-    tax_cfg = config.get("taxonomy", {})
-    emb_config = config.get("embeddings", {})
-    emb_kwargs = dict(
-        embedding_provider=emb_config.get("provider", "local"),
-        embedding_model=emb_config.get("model"),
-        embedding_api_base=emb_config.get("api_base"),
-        embedding_api_key=emb_config.get("api_key"),
-    )
+    from lens.taxonomy import get_next_version, record_version
+    from lens.taxonomy.vocabulary import build_vocabulary
 
     version_id = get_next_version(store)
 
-    # Tradeoff taxonomy (vocabulary-based, synchronous)
-    build_tradeoff_taxonomy(store, **emb_kwargs)
-
-    # Architecture + agentic (clustering-based, async)
-    arch_result = asyncio.run(
-        build_architecture_taxonomy(
-            store,
-            client,
-            version_id=version_id,
-            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
-            target_arch_variants=tax_cfg.get("target_arch_variants", 20),
-            **emb_kwargs,
-        )
-    )
-    slot_entries = arch_result["slot_entries"]
-    variant_entries = arch_result["variant_entries"]
-    pattern_entries = asyncio.run(
-        build_agentic_taxonomy(
-            store,
-            client,
-            version_id=version_id,
-            min_cluster_size=tax_cfg.get("min_cluster_size", 3),
-            target_agentic_patterns=tax_cfg.get("target_agentic_patterns", 15),
-            **emb_kwargs,
-        )
-    )
+    stats = build_vocabulary(store)
 
     # Record version
     paper_count = len(store.query("papers"))
@@ -600,12 +519,15 @@ def build_all() -> None:
         paper_count=paper_count,
         param_count=len([v for v in vocab if v["kind"] == "parameter"]),
         principle_count=len([v for v in vocab if v["kind"] == "principle"]),
-        slot_count=len(slot_entries),
-        variant_count=len(variant_entries),
-        pattern_count=len(pattern_entries),
+        slot_count=len([v for v in vocab if v["kind"] == "arch_slot"]),
+        variant_count=0,
+        pattern_count=len([v for v in vocab if v["kind"] == "agentic_category"]),
     )
     build_matrix(store)
-    rprint(f"[green]Built taxonomy v{version_id} + matrix.[/green]")
+    rprint(
+        f"[green]Built taxonomy v{version_id} + matrix.[/green] "
+        f"new={stats['new_entries']} updated={stats['updated_entries']}"
+    )
 
 
 # ---------------------------------------------------------------------------
