@@ -138,8 +138,7 @@ def analyze(
     if type_ == "architecture":
         from lens.serve.analyzer import analyze_architecture
 
-        emb_kw = _embedding_kwargs(config)
-        result = asyncio.run(analyze_architecture(query, store, client, embedding_kwargs=emb_kw))
+        result = asyncio.run(analyze_architecture(query, store, client))
         rprint(f"\n[bold]Query:[/bold] {result['query']}")
         rprint(f"[bold]Slot:[/bold] {result.get('slot')}")
         if result["variants"]:
@@ -153,8 +152,7 @@ def analyze(
     elif type_ == "agentic":
         from lens.serve.analyzer import analyze_agentic
 
-        emb_kw = _embedding_kwargs(config)
-        result = asyncio.run(analyze_agentic(query, store, client, embedding_kwargs=emb_kw))
+        result = asyncio.run(analyze_agentic(query, store, client))
         rprint(f"\n[bold]Query:[/bold] {result['query']}")
         if result["patterns"]:
             rprint("\n[bold]Matching agentic patterns:[/bold]")
@@ -448,7 +446,7 @@ def taxonomy() -> None:
 
     version_id = get_next_version(store)
 
-    stats = build_vocabulary(store)
+    stats = build_vocabulary(store, **_embedding_kwargs(config))
 
     # Record version
     paper_count = len(store.query("papers"))
@@ -502,7 +500,7 @@ def build_all() -> None:
 
     version_id = get_next_version(store)
 
-    stats = build_vocabulary(store)
+    stats = build_vocabulary(store, **_embedding_kwargs(config))
 
     # Record version
     paper_count = len(store.query("papers"))

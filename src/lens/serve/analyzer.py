@@ -153,7 +153,6 @@ async def analyze_architecture(
     query: str,
     store: LensStore,
     llm_client: LLMClient,
-    embedding_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Analyze a query about transformer architecture and return matching variants."""
     slots = store.query("vocabulary", "kind = ?", ("arch_slot",))
@@ -197,7 +196,6 @@ async def analyze_agentic(
     query: str,
     store: LensStore,
     llm_client: LLMClient,
-    embedding_kwargs: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Analyze a query about agentic design patterns and return matching patterns."""
     categories = store.query("vocabulary", "kind = ?", ("agentic_category",))

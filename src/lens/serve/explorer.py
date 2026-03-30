@@ -7,6 +7,11 @@ from typing import Any
 from lens.store.store import LensStore
 
 
+def _matches_canonical(value: str, canonical_name: str) -> bool:
+    """Check if a value matches a canonical name, with or without NEW: prefix."""
+    return value == canonical_name or value == f"NEW: {canonical_name}"
+
+
 def list_parameters(store: LensStore) -> list[dict[str, Any]]:
     """List all vocabulary entries of kind 'parameter'."""
     rows = store.query("vocabulary", "kind = ?", ("parameter",))
@@ -63,7 +68,11 @@ def list_architecture_slots(store: LensStore) -> list[dict[str, Any]]:
     for r in rows:
         r.pop("embedding", None)
         r["variant_count"] = len(
-            set(e["variant_name"] for e in extractions if e["component_slot"] == r["name"])
+            set(
+                e["variant_name"]
+                for e in extractions
+                if _matches_canonical(e["component_slot"], r["name"])
+            )
         )
     return rows
 
@@ -71,7 +80,7 @@ def list_architecture_slots(store: LensStore) -> list[dict[str, Any]]:
 def list_architecture_variants(store: LensStore, slot_name: str) -> list[dict[str, Any]]:
     """List architecture variants for a given slot name."""
     extractions = store.query("architecture_extractions")
-    matching = [e for e in extractions if e["component_slot"] == slot_name]
+    matching = [e for e in extractions if _matches_canonical(e["component_slot"], slot_name)]
     by_name: dict[str, dict[str, Any]] = {}
     for v in matching:
         name = v["variant_name"]
@@ -92,7 +101,9 @@ def list_agentic_patterns(store: LensStore, category: str | None = None) -> list
     """List agentic patterns from extractions, optionally filtered by category."""
     extractions = store.query("agentic_extractions")
     if category:
-        extractions = [e for e in extractions if e.get("category") == category]
+        extractions = [
+            e for e in extractions if _matches_canonical(e.get("category", ""), category)
+        ]
     by_name: dict[str, dict[str, Any]] = {}
     for e in extractions:
         name = e["pattern_name"]

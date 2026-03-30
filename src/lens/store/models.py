@@ -105,7 +105,7 @@ class VocabularyEntry(BaseModel):
 
     id: str
     name: str
-    kind: str  # "parameter" or "principle"
+    kind: str  # "parameter", "principle", "arch_slot", or "agentic_category"
     description: str
     source: str  # "seed" or "extracted"
     first_seen: str
