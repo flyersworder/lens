@@ -16,6 +16,8 @@
 - Embeddings: local (sentence-transformers) or cloud (openai/litellm), via `embeddings.provider` config
 - **Vocabulary** — canonical `vocabulary` table stores parameters, principles, arch slots, and agentic categories with text IDs (slugs). Seed vocabulary in `taxonomy/vocabulary.py`. Extraction prompt injects vocabulary for guided extraction; `NEW:` prefix for novel concepts.
 - **Taxonomy** — single `build_vocabulary()` processes all extraction types. No clustering.
+- **Hybrid search** — FTS5 keyword + sqlite-vec vector search combined via Reciprocal Rank Fusion (RRF). Used by `explain` for concept resolution.
+- **Schema migrations** — `_COLUMN_MIGRATIONS` in `store.py` handles upgrades from older schemas via `ALTER TABLE` in `init_tables()`.
 - CLI via Typer in `src/lens/cli.py`
 - Config at `~/.lens/config.yaml`
 

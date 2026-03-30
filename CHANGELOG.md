@@ -21,8 +21,19 @@
   Tool Use, etc.) as `kind="agentic_category"` in vocabulary.
 - **`category` field** on `agentic_extractions` — LLM assigns category
   during extraction using guided vocabulary.
-- **`new_concept_description` field** on `architecture_extractions` and
-  `agentic_extractions` for `NEW:` concept proposals.
+- **`new_concepts` field** (JSON dict) on all extraction tables — maps each
+  `NEW:` concept name to a one-line description. Replaces the old shared
+  `new_concept_description` string field.
+- **Hybrid search** — FTS5 keyword + sqlite-vec vector search combined via
+  Reciprocal Rank Fusion (RRF) for concept resolution in `explain`.
+- **LLM candidate selection** — `explain` presents top 3 hybrid search
+  candidates to the LLM, which picks the best match for the user's query.
+- **Kind-specific explain** — `explain` produces context-appropriate
+  explanations for all 4 vocabulary kinds (tradeoff graph for parameters/
+  principles, variant listing for arch slots, pattern listing for categories).
+- **Schema migrations** — `_COLUMN_MIGRATIONS` in `store.py` adds missing
+  columns to existing tables on upgrade via `ALTER TABLE`.
+- **`json_repair`** dependency for robust parsing of malformed LLM JSON.
 
 ### Changed
 - **`build_taxonomy` simplified** — single `build_vocabulary()` call replaces
