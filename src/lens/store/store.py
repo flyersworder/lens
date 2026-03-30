@@ -22,10 +22,12 @@ VEC_TABLES: dict[str, tuple[str, str]] = {
     "vocabulary": ("id", "TEXT"),
 }
 
-# Maps table_name -> set of columns that are JSON-serialized lists.
+# Maps table_name -> set of columns that are JSON-serialized (lists or dicts).
 JSON_FIELDS: dict[str, set[str]] = {
     "papers": {"authors"},
-    "agentic_extractions": {"components"},
+    "tradeoff_extractions": {"new_concepts"},
+    "architecture_extractions": {"new_concepts"},
+    "agentic_extractions": {"components", "new_concepts"},
     "matrix_cells": {"paper_ids"},
     "ideation_gaps": {"related_params", "related_principles", "related_slots"},
 }
@@ -53,7 +55,7 @@ _TABLE_DDL = [
         context TEXT NOT NULL,
         confidence REAL NOT NULL,
         evidence_quote TEXT NOT NULL,
-        new_concept_description TEXT
+        new_concepts TEXT NOT NULL DEFAULT '{}'
     )""",
     """CREATE TABLE IF NOT EXISTS architecture_extractions (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,7 +65,7 @@ _TABLE_DDL = [
         replaces TEXT,
         key_properties TEXT NOT NULL,
         confidence REAL NOT NULL,
-        new_concept_description TEXT
+        new_concepts TEXT NOT NULL DEFAULT '{}'
     )""",
     """CREATE TABLE IF NOT EXISTS agentic_extractions (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -74,7 +76,7 @@ _TABLE_DDL = [
         use_case TEXT NOT NULL,
         components TEXT NOT NULL,
         confidence REAL NOT NULL,
-        new_concept_description TEXT
+        new_concepts TEXT NOT NULL DEFAULT '{}'
     )""",
     """CREATE TABLE IF NOT EXISTS vocabulary (
         id TEXT PRIMARY KEY,
@@ -131,10 +133,10 @@ _TABLE_DDL = [
 # Schema migrations: (table, column, column_type_with_default).
 # Applied idempotently by init_tables() to handle upgrades from older schemas.
 _COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
-    ("tradeoff_extractions", "new_concept_description", "TEXT"),
-    ("architecture_extractions", "new_concept_description", "TEXT"),
+    ("tradeoff_extractions", "new_concepts", "TEXT NOT NULL DEFAULT '{}'"),
+    ("architecture_extractions", "new_concepts", "TEXT NOT NULL DEFAULT '{}'"),
     ("agentic_extractions", "category", "TEXT NOT NULL DEFAULT ''"),
-    ("agentic_extractions", "new_concept_description", "TEXT"),
+    ("agentic_extractions", "new_concepts", "TEXT NOT NULL DEFAULT '{}'"),
 ]
 
 
@@ -217,7 +219,7 @@ class LensStore:
                 if key == "embedding":
                     embedding = value
                     continue
-                if key in json_cols and isinstance(value, list):
+                if key in json_cols and isinstance(value, (list, dict)):
                     processed[key] = json.dumps(value)
                 elif isinstance(value, datetime):
                     processed[key] = value.isoformat()

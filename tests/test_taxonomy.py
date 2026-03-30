@@ -47,7 +47,7 @@ def test_build_tradeoff_taxonomy(tmp_path):
                 "context": "test",
                 "confidence": 0.85,
                 "evidence_quote": "quote",
-                "new_concept_description": "Removing unnecessary model weights",
+                "new_concepts": {"Pruning": "Removing unnecessary model weights"},
             },
         ],
     )
@@ -78,7 +78,7 @@ def test_build_vocabulary(tmp_path):
                 "context": "test",
                 "confidence": 0.85,
                 "evidence_quote": "quote",
-                "new_concept_description": "Removing unnecessary weights",
+                "new_concepts": {"Pruning": "Removing unnecessary weights"},
             },
         ],
     )
@@ -92,7 +92,7 @@ def test_build_vocabulary(tmp_path):
                 "replaces": None,
                 "key_properties": "fewer KV heads",
                 "confidence": 0.9,
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )
@@ -107,7 +107,7 @@ def test_build_vocabulary(tmp_path):
                 "use_case": "QA",
                 "components": ["LLM"],
                 "confidence": 0.8,
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )

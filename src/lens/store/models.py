@@ -67,7 +67,7 @@ class TradeoffExtraction(BaseModel):
     context: str
     confidence: float
     evidence_quote: str
-    new_concept_description: str | None = None
+    new_concepts: dict[str, str] = {}
 
 
 class ArchitectureExtraction(BaseModel):
@@ -79,7 +79,7 @@ class ArchitectureExtraction(BaseModel):
     replaces: str | None = None
     key_properties: str
     confidence: float
-    new_concept_description: str | None = None
+    new_concepts: dict[str, str] = {}
 
 
 class AgenticExtraction(BaseModel):
@@ -92,7 +92,7 @@ class AgenticExtraction(BaseModel):
     use_case: str
     components: list[str]
     confidence: float
-    new_concept_description: str | None = None
+    new_concepts: dict[str, str] = {}
 
 
 # ---------------------------------------------------------------------------

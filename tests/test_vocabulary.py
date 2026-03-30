@@ -121,7 +121,9 @@ def test_process_new_concepts_accepts_new_entries(tmp_path):
                 "context": "test",
                 "confidence": 0.8,
                 "evidence_quote": "test quote",
-                "new_concept_description": "Power consumption relative to compute throughput",
+                "new_concepts": {
+                    "Energy Efficiency": "Power consumption relative to compute throughput"
+                },
             },
         ],
     )
@@ -152,7 +154,7 @@ def test_process_new_concepts_updates_paper_count(tmp_path):
                 "context": "test",
                 "confidence": 0.9,
                 "evidence_quote": "quote1",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
             {
                 "paper_id": "paper2",
@@ -162,7 +164,7 @@ def test_process_new_concepts_updates_paper_count(tmp_path):
                 "context": "test",
                 "confidence": 0.7,
                 "evidence_quote": "quote2",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )
@@ -191,7 +193,7 @@ def test_process_new_concepts_handles_architecture(tmp_path):
                 "replaces": None,
                 "key_properties": "better parallelism",
                 "confidence": 0.9,
-                "new_concept_description": None,
+                "new_concepts": {},
             },
             {
                 "paper_id": "p2",
@@ -200,7 +202,7 @@ def test_process_new_concepts_handles_architecture(tmp_path):
                 "replaces": None,
                 "key_properties": "relative position",
                 "confidence": 0.85,
-                "new_concept_description": "Token embedding and projection layer",
+                "new_concepts": {"Embedding Layer": "Token embedding and projection layer"},
             },
         ],
     )
@@ -228,7 +230,7 @@ def test_process_new_concepts_handles_agentic(tmp_path):
                 "use_case": "multi-step QA",
                 "components": ["LLM", "tools"],
                 "confidence": 0.9,
-                "new_concept_description": None,
+                "new_concepts": {},
             },
             {
                 "paper_id": "p2",
@@ -238,7 +240,9 @@ def test_process_new_concepts_handles_agentic(tmp_path):
                 "use_case": "complex reasoning",
                 "components": ["LLM", "MCTS"],
                 "confidence": 0.8,
-                "new_concept_description": "Patterns using systematic search over solution spaces",
+                "new_concepts": {
+                    "Search": "Patterns using systematic search over solution spaces"
+                },
             },
         ],
     )
@@ -271,7 +275,7 @@ def test_end_to_end_all_extraction_types(tmp_path):
                 "context": "4-bit on 7B models",
                 "confidence": 0.9,
                 "evidence_quote": "2x speedup with 4-bit.",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )
@@ -287,7 +291,7 @@ def test_end_to_end_all_extraction_types(tmp_path):
                 "replaces": "FlashAttention",
                 "key_properties": "better parallelism",
                 "confidence": 0.9,
-                "new_concept_description": None,
+                "new_concepts": {},
             },
             {
                 "paper_id": "p2",
@@ -296,7 +300,9 @@ def test_end_to_end_all_extraction_types(tmp_path):
                 "replaces": None,
                 "key_properties": "regularization via subword sampling",
                 "confidence": 0.8,
-                "new_concept_description": "Text tokenization and subword segmentation methods",
+                "new_concepts": {
+                    "Tokenizer": "Text tokenization and subword segmentation methods"
+                },
             },
         ],
     )
@@ -313,7 +319,7 @@ def test_end_to_end_all_extraction_types(tmp_path):
                 "use_case": "multi-step QA",
                 "components": ["LLM", "tools"],
                 "confidence": 0.85,
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )

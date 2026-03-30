@@ -25,7 +25,7 @@ def test_build_matrix_basic(tmp_path):
                 "context": "test",
                 "confidence": 0.9,
                 "evidence_quote": "quote",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
             {
                 "paper_id": "p2",
@@ -35,7 +35,7 @@ def test_build_matrix_basic(tmp_path):
                 "context": "test2",
                 "confidence": 0.7,
                 "evidence_quote": "quote2",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )
@@ -64,7 +64,7 @@ def test_build_matrix_filters_low_confidence(tmp_path):
                 "context": "test",
                 "confidence": 0.3,  # Below 0.5 threshold
                 "evidence_quote": "quote",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )
@@ -113,7 +113,7 @@ def test_build_matrix_strips_new_prefix(tmp_path):
                 "context": "test",
                 "confidence": 0.8,
                 "evidence_quote": "quote",
-                "new_concept_description": "Power consumption",
+                "new_concepts": {"Energy Efficiency": "Power consumption"},
             },
         ],
     )
@@ -138,7 +138,7 @@ def test_get_ranked_matrix(tmp_path):
                 "context": "test",
                 "confidence": 0.9,
                 "evidence_quote": "quote",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
             {
                 "paper_id": "p2",
@@ -148,7 +148,7 @@ def test_get_ranked_matrix(tmp_path):
                 "context": "test2",
                 "confidence": 0.7,
                 "evidence_quote": "quote2",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )

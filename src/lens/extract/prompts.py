@@ -15,7 +15,7 @@ EXTRACTION_RESPONSE_SCHEMA = """{
       "context": "conditions or constraints mentioned",
       "confidence": 0.85,
       "evidence_quote": "relevant sentence from the paper",
-      "new_concept_description": null
+      "new_concepts": {}
     }
   ],
   "architecture": [
@@ -25,7 +25,7 @@ EXTRACTION_RESPONSE_SCHEMA = """{
       "replaces": "what it replaces or generalizes (null if novel)",
       "key_properties": "key properties or advantages",
       "confidence": 0.9,
-      "new_concept_description": null
+      "new_concepts": {}
     }
   ],
   "agentic": [
@@ -36,7 +36,7 @@ EXTRACTION_RESPONSE_SCHEMA = """{
       "use_case": "primary use case",
       "components": ["list", "of", "components"],
       "confidence": 0.8,
-      "new_concept_description": null
+      "new_concepts": {}
     }
   ]
 }"""
@@ -70,8 +70,8 @@ def _build_tradeoffs_section(
             + "\n\nPrinciples:\n"
             + "\n".join(f"- {p}" for p in principles)
             + "\n\nIf a concept genuinely does not match any entry above, prefix it "
-            'with NEW: (e.g., "NEW: Energy Efficiency") and set '
-            "new_concept_description to a one-line definition.\n"
+            'with NEW: (e.g., "NEW: Energy Efficiency") and add an entry to '
+            "new_concepts mapping the concept name to a one-line definition.\n"
         )
 
     base += (
@@ -81,8 +81,10 @@ def _build_tradeoffs_section(
         '- "context": conditions, benchmarks, or constraints mentioned\n'
         '- "confidence": your confidence score (see scale below)\n'
         '- "evidence_quote": a relevant sentence from the paper\n'
-        '- "new_concept_description": one-line definition if using NEW: prefix, '
-        "else null"
+        '- "new_concepts": dict mapping each NEW: concept name (without the '
+        '"NEW: " prefix) to a one-line definition, e.g. '
+        '{"Energy Efficiency": "Power consumption relative to throughput"}. '
+        "Empty {} if no NEW: concepts used"
     )
     return base
 
@@ -103,8 +105,7 @@ def _build_architecture_section(vocabulary=None):
             base += "\n".join(f"- {s}" for s in slots)
             base += (
                 "\n\nIf a slot genuinely does not match any entry above,"
-                " prefix with NEW: and set new_concept_description to a"
-                " one-line definition.\n"
+                " prefix with NEW: and add an entry to new_concepts.\n"
             )
     base += (
         '\n- "component_slot": the category (use an Architecture Slot name)\n'
@@ -112,8 +113,8 @@ def _build_architecture_section(vocabulary=None):
         '- "replaces": what it replaces/generalizes (null if entirely novel)\n'
         '- "key_properties": key properties or advantages\n'
         '- "confidence": your confidence score\n'
-        '- "new_concept_description": one-line definition if using NEW: prefix,'
-        " else null"
+        '- "new_concepts": dict mapping each NEW: concept name to a one-line '
+        "definition. Empty {} if no NEW: concepts used"
     )
     return base
 
@@ -131,8 +132,7 @@ def _build_agentic_section(vocabulary=None):
             base += "\n".join(f"- {c}" for c in categories)
             base += (
                 "\n\nIf a category genuinely does not match any entry above,"
-                " prefix with NEW: and set new_concept_description to a"
-                " one-line definition.\n"
+                " prefix with NEW: and add an entry to new_concepts.\n"
             )
     base += (
         '\n- "pattern_name": name of the pattern (free text)\n'
@@ -141,8 +141,8 @@ def _build_agentic_section(vocabulary=None):
         '- "use_case": primary use case or application\n'
         '- "components": list of key components\n'
         '- "confidence": your confidence score\n'
-        '- "new_concept_description": one-line definition if using NEW: prefix,'
-        " else null"
+        '- "new_concepts": dict mapping each NEW: concept name to a one-line '
+        "definition. Empty {} if no NEW: concepts used"
     )
     return base
 

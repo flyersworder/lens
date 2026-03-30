@@ -43,7 +43,7 @@ def ideation_store(tmp_path):
                 "context": "test",
                 "confidence": 0.9,
                 "evidence_quote": "test quote",
-                "new_concept_description": None,
+                "new_concepts": {},
             },
         ],
     )

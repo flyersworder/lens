@@ -242,7 +242,9 @@ def _collect_concept_ref(
     if raw_value.startswith("NEW: "):
         name = raw_value[5:].strip()
         if name not in new_concepts:
-            desc = ext.get("new_concept_description") or f"Extracted concept: {name}"
+            # Look up description from the new_concepts dict on the extraction
+            concepts_dict = ext.get("new_concepts") or {}
+            desc = concepts_dict.get(name, f"Extracted concept: {name}")
             new_concepts[name] = {"kind": kind, "description": desc}
     else:
         name = raw_value
