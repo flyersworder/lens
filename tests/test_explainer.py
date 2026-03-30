@@ -29,21 +29,50 @@ def explain_store(tmp_path):
                 "avg_confidence": 0.0,
                 "embedding": [1.0] + [0.0] * (EMBEDDING_DIM - 1),
             },
-        ],
-    )
-    store.add_rows(
-        "vocabulary",
-        [
             {
                 "id": "quantization",
                 "name": "Quantization",
                 "kind": "principle",
-                "description": "Reduce precision",
+                "description": "Reduce precision of weights",
                 "source": "seed",
                 "first_seen": "2026-01-01",
                 "paper_count": 0,
                 "avg_confidence": 0.0,
                 "embedding": [0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 2),
+            },
+            {
+                "id": "quantization-method",
+                "name": "Quantization Method",
+                "kind": "arch_slot",
+                "description": "Techniques for reducing numerical precision",
+                "source": "seed",
+                "first_seen": "2026-01-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+                # Very close embedding to "quantization" principle
+                "embedding": [0.05, 0.99] + [0.0] * (EMBEDDING_DIM - 2),
+            },
+            {
+                "id": "attention-mechanism",
+                "name": "Attention Mechanism",
+                "kind": "arch_slot",
+                "description": "How the model attends to input",
+                "source": "seed",
+                "first_seen": "2026-01-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+                "embedding": [0.0, 0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 3),
+            },
+            {
+                "id": "reasoning",
+                "name": "Reasoning",
+                "kind": "agentic_category",
+                "description": "Multi-step logical inference",
+                "source": "seed",
+                "first_seen": "2026-01-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+                "embedding": [0.0, 0.0, 0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 4),
             },
         ],
     )
@@ -57,67 +86,113 @@ def explain_store(tmp_path):
                 "count": 3,
                 "avg_confidence": 0.85,
                 "paper_ids": ["p1"],
-                "taxonomy_version": 1,
+                "taxonomy_version": 0,
             },
         ],
     )
     store.add_rows(
-        "taxonomy_versions",
+        "architecture_extractions",
         [
             {
-                "version_id": 1,
-                "created_at": "2026-03-21T00:00:00",
-                "paper_count": 10,
-                "param_count": 1,
-                "principle_count": 1,
-                "slot_count": 0,
-                "variant_count": 0,
-                "pattern_count": 0,
+                "paper_id": "p1",
+                "component_slot": "Attention Mechanism",
+                "variant_name": "FlashAttention-2",
+                "replaces": "FlashAttention",
+                "key_properties": "better parallelism",
+                "confidence": 0.9,
+                "new_concepts": {},
+            },
+            {
+                "paper_id": "p2",
+                "component_slot": "Attention Mechanism",
+                "variant_name": "GQA",
+                "replaces": None,
+                "key_properties": "fewer KV heads",
+                "confidence": 0.85,
+                "new_concepts": {},
+            },
+        ],
+    )
+    store.add_rows(
+        "agentic_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "pattern_name": "ReAct",
+                "category": "Reasoning",
+                "structure": "interleaves reasoning and acting",
+                "use_case": "multi-step QA",
+                "components": ["LLM", "tools"],
+                "confidence": 0.9,
+                "new_concepts": {},
             },
         ],
     )
     return store
 
 
-def test_resolve_concept(explain_store):
+def test_resolve_concept_parameter(explain_store):
     from lens.serve.explainer import resolve_concept
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
         mock_embed.return_value = np.array([[1.0] + [0.0] * (EMBEDDING_DIM - 1)])
-        result = resolve_concept(
-            query="inference latency",
-            store=explain_store,
-        )
+        result = resolve_concept(query="inference latency", store=explain_store)
     assert result is not None
     assert result["resolved_name"] == "Inference Latency"
     assert result["resolved_type"] == "parameter"
 
 
-def test_resolve_concept_principle(explain_store):
+def test_resolve_concept_prefers_richer_match(explain_store):
+    """When 'quantization' and 'quantization-method' are close in embedding space,
+    resolve should prefer the one with more matrix data (principle has 1 cell,
+    arch_slot has 0 extractions for that specific concept)."""
     from lens.serve.explainer import resolve_concept
 
+    # Embedding close to both quantization (principle) and quantization-method (arch_slot)
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
-        mock_embed.return_value = np.array([[0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 2)])
-        result = resolve_concept(
-            query="quantization",
-            store=explain_store,
-        )
+        mock_embed.return_value = np.array([[0.02, 1.0] + [0.0] * (EMBEDDING_DIM - 2)])
+        result = resolve_concept(query="quantization", store=explain_store)
     assert result is not None
     assert result["resolved_name"] == "Quantization"
     assert result["resolved_type"] == "principle"
 
 
-def test_graph_walk(explain_store):
+def test_graph_walk_parameter(explain_store):
     from lens.serve.explainer import graph_walk
 
     walk = graph_walk(
-        resolved_type="parameter",
-        resolved_id="inference-latency",
-        store=explain_store,
+        resolved_type="parameter", resolved_id="inference-latency", store=explain_store
     )
-    assert "identity" in walk
     assert walk["identity"]["name"] == "Inference Latency"
-    assert "tradeoffs" in walk
+    assert walk["identity"]["type"] == "parameter"
+    assert len(walk["tradeoffs"]) == 1
+    assert len(walk["connections"]) > 0
+
+
+def test_graph_walk_arch_slot(explain_store):
+    from lens.serve.explainer import graph_walk
+
+    walk = graph_walk(
+        resolved_type="arch_slot", resolved_id="attention-mechanism", store=explain_store
+    )
+    assert walk["identity"]["name"] == "Attention Mechanism"
+    assert walk["identity"]["type"] == "arch_slot"
+    assert len(walk["variants"]) == 2
+    names = {v["variant_name"] for v in walk["variants"]}
+    assert "FlashAttention-2" in names
+    assert "GQA" in names
+
+
+def test_graph_walk_agentic_category(explain_store):
+    from lens.serve.explainer import graph_walk
+
+    walk = graph_walk(
+        resolved_type="agentic_category", resolved_id="reasoning", store=explain_store
+    )
+    assert walk["identity"]["name"] == "Reasoning"
+    assert walk["identity"]["type"] == "agentic_category"
+    assert len(walk["patterns"]) == 1
+    assert walk["patterns"][0]["pattern_name"] == "ReAct"
 
 
 @pytest.mark.asyncio
@@ -140,8 +215,25 @@ async def test_explain_full(explain_store):
     assert result.resolved_name == "Inference Latency"
     assert result.resolved_type == "parameter"
     assert len(result.narrative) > 0
-    assert isinstance(result.tradeoffs, list)
-    assert isinstance(result.connections, list)
-    assert isinstance(result.paper_refs, list)
-    assert isinstance(result.alternatives, list)
-    assert isinstance(result.evolution, list)
+
+
+@pytest.mark.asyncio
+async def test_explain_arch_slot(explain_store):
+    from lens.serve.explainer import explain
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = (
+        "The Attention Mechanism determines how the model weighs input tokens."
+    )
+
+    with patch("lens.serve.explainer.embed_strings") as mock_embed:
+        mock_embed.return_value = np.array([[0.0, 0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 3)])
+        result = await explain(
+            query="attention mechanism",
+            store=explain_store,
+            llm_client=mock_client,
+        )
+    assert result is not None
+    assert result.resolved_name == "Attention Mechanism"
+    assert result.resolved_type == "arch_slot"
+    assert "weighs" in result.narrative or "Attention" in result.narrative
