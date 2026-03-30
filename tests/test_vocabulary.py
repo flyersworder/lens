@@ -251,81 +251,84 @@ def test_process_new_concepts_handles_agentic(tmp_path):
     assert reasoning[0]["paper_count"] == 1
 
 
-def test_end_to_end_guided_extraction_pipeline(tmp_path):
-    """Integration test: seed vocab -> extract -> process -> matrix."""
+def test_end_to_end_all_extraction_types(tmp_path):
+    """Integration: seed vocab -> extract all types -> process -> matrix."""
     from lens.knowledge.matrix import build_matrix
 
     store = LensStore(str(tmp_path / "test.db"))
-
-    # 1. Seed vocabulary
     count = load_seed_vocabulary(store)
     assert count == 40
 
-    # 2. Simulate guided extraction results
+    # Tradeoff extraction
     store.add_rows(
         "tradeoff_extractions",
         [
             {
-                "paper_id": "paper-a",
+                "paper_id": "p1",
                 "improves": "Inference Latency",
                 "worsens": "Model Accuracy",
                 "technique": "Quantization",
-                "context": "4-bit quantization on 7B models",
+                "context": "4-bit on 7B models",
                 "confidence": 0.9,
-                "evidence_quote": "We observe 2x speedup with 4-bit.",
+                "evidence_quote": "2x speedup with 4-bit.",
                 "new_concept_description": None,
-            },
-            {
-                "paper_id": "paper-b",
-                "improves": "Inference Latency",
-                "worsens": "Model Accuracy",
-                "technique": "Knowledge Distillation",
-                "context": "GPT-4 to 1B student",
-                "confidence": 0.85,
-                "evidence_quote": "Student achieves 95% of teacher.",
-                "new_concept_description": None,
-            },
-            {
-                "paper_id": "paper-c",
-                "improves": "NEW: Energy Efficiency",
-                "worsens": "Training Cost",
-                "technique": "Quantization",
-                "context": "inference on edge devices",
-                "confidence": 0.75,
-                "evidence_quote": "40% less power at 4-bit.",
-                "new_concept_description": "Power consumption relative to compute throughput",
             },
         ],
     )
 
-    # 3. Process new concepts
+    # Architecture extraction
+    store.add_rows(
+        "architecture_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "component_slot": "Attention Mechanism",
+                "variant_name": "FlashAttention-2",
+                "replaces": "FlashAttention",
+                "key_properties": "better parallelism",
+                "confidence": 0.9,
+                "new_concept_description": None,
+            },
+            {
+                "paper_id": "p2",
+                "component_slot": "NEW: Tokenizer",
+                "variant_name": "BPE-dropout",
+                "replaces": None,
+                "key_properties": "regularization via subword sampling",
+                "confidence": 0.8,
+                "new_concept_description": "Text tokenization and subword segmentation methods",
+            },
+        ],
+    )
+
+    # Agentic extraction
+    store.add_rows(
+        "agentic_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "pattern_name": "ReAct",
+                "category": "Reasoning",
+                "structure": "interleaves reasoning and acting",
+                "use_case": "multi-step QA",
+                "components": ["LLM", "tools"],
+                "confidence": 0.85,
+                "new_concept_description": None,
+            },
+        ],
+    )
+
+    # Process all
     stats = process_new_concepts(store)
-    assert stats["new_entries"] == 1
+    assert stats["new_entries"] == 1  # Tokenizer
 
-    energy = store.query("vocabulary", "id = ?", ("energy-efficiency",))
-    assert len(energy) == 1
-    assert energy[0]["source"] == "extracted"
+    vocab = store.query("vocabulary")
+    assert any(v["id"] == "tokenizer" and v["kind"] == "arch_slot" for v in vocab)
+    assert any(v["id"] == "attention-mechanism" and v["paper_count"] == 1 for v in vocab)
+    assert any(v["id"] == "reasoning" and v["paper_count"] == 1 for v in vocab)
 
-    # 4. Build matrix
+    # Matrix (tradeoffs only)
     build_matrix(store)
-
     cells = store.query("matrix_cells")
-    assert len(cells) >= 2
-
-    # 5. Verify matrix cell content
-    il_ma = [
-        c
-        for c in cells
-        if c["improving_param_id"] == "inference-latency"
-        and c["worsening_param_id"] == "model-accuracy"
-    ]
-    assert len(il_ma) == 2  # Quantization and Knowledge Distillation
-
-    ee_tc = [
-        c
-        for c in cells
-        if c["improving_param_id"] == "energy-efficiency"
-        and c["worsening_param_id"] == "training-cost"
-    ]
-    assert len(ee_tc) == 1
-    assert ee_tc[0]["principle_id"] == "quantization"
+    assert len(cells) == 1
+    assert cells[0]["improving_param_id"] == "inference-latency"

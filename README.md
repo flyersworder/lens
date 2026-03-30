@@ -134,8 +134,7 @@ uv run lens config set embeddings.model text-embedding-3-small
 - **SQLite + sqlite-vec** — embedded database with vector search (cosine distance)
 - **openai SDK** — LLM and embedding client (works with any OpenAI-compatible endpoint)
 - **litellm** (optional) — multi-provider routing for direct API access
-- **Guided extraction** — canonical vocabulary for tradeoff parameters/principles
-- **HDBSCAN + KMeans** — density-based clustering for architecture/agentic taxonomy
+- **Guided extraction** — canonical vocabulary for all extraction types (tradeoffs, architecture, agentic)
 - **sentence-transformers** or **cloud embeddings** — configurable provider
 - **Typer** — CLI framework
 
@@ -146,7 +145,7 @@ Layer 0: Papers (arxiv, PDF, OpenAlex enrichment)
     ↓
 Layer 1: Raw Extractions (LLM-extracted tradeoffs, architecture, agentic patterns)
     ↓
-Layer 2: Taxonomy (vocabulary, architecture slots/variants, agentic patterns)
+Layer 2: Taxonomy (unified vocabulary: parameters, principles, arch slots, agentic categories)
     ↓
 Layer 3: Knowledge Structures (contradiction matrix, ideation gaps)
 ```

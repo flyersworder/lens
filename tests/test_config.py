@@ -10,9 +10,7 @@ def test_default_config():
     assert cfg["llm"]["default_model"] == "openrouter/anthropic/claude-sonnet-4-6"
     assert cfg["llm"]["extract_model"] == "openrouter/google/gemini-2.5-flash"
     assert cfg["storage"]["data_dir"] == "~/.lens/data"
-    assert cfg["taxonomy"]["target_arch_variants"] == 20
-    assert "target_parameters" not in cfg["taxonomy"]
-    assert "target_principles" not in cfg["taxonomy"]
+    assert "taxonomy" not in cfg
     assert cfg["monitor"]["ideate"] is True
 
 
@@ -56,9 +54,6 @@ def test_config_set_coerces_types():
     from lens.config import default_config, set_config_value
 
     cfg = default_config()
-    set_config_value(cfg, "taxonomy.target_arch_variants", "30")
-    assert cfg["taxonomy"]["target_arch_variants"] == 30
-    assert isinstance(cfg["taxonomy"]["target_arch_variants"], int)
     set_config_value(cfg, "monitor.ideate", "false")
     assert cfg["monitor"]["ideate"] is False
     set_config_value(cfg, "monitor.ideate_min_gap_score", "0.75")
