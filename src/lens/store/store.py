@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import struct
 from datetime import datetime
@@ -11,6 +12,8 @@ from typing import Any
 import sqlite_vec
 
 from lens.store.models import EMBEDDING_DIM
+
+logger = logging.getLogger(__name__)
 
 # Tables that have a companion vec0 virtual table.
 # Maps table_name -> primary key column name and type.
@@ -125,6 +128,15 @@ _TABLE_DDL = [
     )""",
 ]
 
+# Schema migrations: (table, column, column_type_with_default).
+# Applied idempotently by init_tables() to handle upgrades from older schemas.
+_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("tradeoff_extractions", "new_concept_description", "TEXT"),
+    ("architecture_extractions", "new_concept_description", "TEXT"),
+    ("agentic_extractions", "category", "TEXT NOT NULL DEFAULT ''"),
+    ("agentic_extractions", "new_concept_description", "TEXT"),
+]
+
 
 def _pack_embedding(emb: list[float]) -> bytes:
     """Pack a float list into bytes for sqlite-vec."""
@@ -161,6 +173,10 @@ class LensStore:
         for ddl in _TABLE_DDL:
             self.conn.execute(ddl)
 
+        # Migrate existing tables: add columns that may be missing from older schemas.
+        for table, column, col_type in _COLUMN_MIGRATIONS:
+            self._add_column_if_missing(table, column, col_type)
+
         for table_name, (id_col, id_type) in VEC_TABLES.items():
             vec_ddl = (
                 f"CREATE VIRTUAL TABLE IF NOT EXISTS {table_name}_vec "
@@ -172,6 +188,14 @@ class LensStore:
             self.conn.execute(vec_ddl)
 
         self.conn.commit()
+
+    def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
+        """Add a column to an existing table if it doesn't already exist."""
+        cursor = self.conn.execute(f"PRAGMA table_info({table})")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if column not in existing_cols:
+            self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            logger.debug("Added column %s.%s", table, column)
 
     # ------------------------------------------------------------------
     # Data helpers

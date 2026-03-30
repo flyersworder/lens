@@ -173,23 +173,19 @@ async def analyze_architecture(
     if identified_slot:
         extractions = [e for e in extractions if e["component_slot"] == identified_slot]
 
-    variants = []
-    seen: set[str] = set()
+    by_name: dict[str, dict[str, Any]] = {}
     for row in extractions:
         name = row["variant_name"]
-        if name in seen:
-            continue
-        seen.add(name)
-        variants.append(
-            {
+        if name not in by_name:
+            by_name[name] = {
                 "variant_name": name,
                 "slot": row["component_slot"],
                 "properties": row.get("key_properties", ""),
-                "paper_ids": [row["paper_id"]],
+                "paper_ids": [],
             }
-        )
+        by_name[name]["paper_ids"].append(row["paper_id"])
 
-    return {"query": query, "slot": identified_slot, "variants": variants}
+    return {"query": query, "slot": identified_slot, "variants": list(by_name.values())}
 
 
 async def analyze_agentic(
@@ -216,22 +212,18 @@ async def analyze_agentic(
     if identified_category:
         extractions = [e for e in extractions if e.get("category") == identified_category]
 
-    patterns = []
-    seen: set[str] = set()
+    by_name: dict[str, dict[str, Any]] = {}
     for row in extractions:
         name = row["pattern_name"]
-        if name in seen:
-            continue
-        seen.add(name)
-        patterns.append(
-            {
+        if name not in by_name:
+            by_name[name] = {
                 "pattern_name": name,
                 "category": row.get("category", ""),
                 "structure": row.get("structure", ""),
                 "use_case": row.get("use_case", ""),
                 "components": row.get("components", []),
-                "paper_ids": [row["paper_id"]],
+                "paper_ids": [],
             }
-        )
+        by_name[name]["paper_ids"].append(row["paper_id"])
 
-    return {"query": query, "patterns": patterns}
+    return {"query": query, "patterns": list(by_name.values())}
