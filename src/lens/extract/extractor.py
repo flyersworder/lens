@@ -33,8 +33,8 @@ def _validate_tradeoff(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | N
     try:
         merged = {**raw, "paper_id": paper_id}
         return TradeoffExtraction.model_validate(merged).model_dump()
-    except (ValidationError, TypeError):
-        logger.warning("Invalid tradeoff for %s", paper_id)
+    except (ValidationError, TypeError) as e:
+        logger.warning("Invalid tradeoff for %s: %s", paper_id, e)
         return None
 
 
@@ -64,7 +64,15 @@ def parse_extraction_response(
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
-        return None
+        # Attempt repair of malformed JSON (trailing commas, unquoted keys, etc.)
+        from json_repair import repair_json
+
+        try:
+            data = repair_json(text, return_objects=True)
+            logger.info("Repaired malformed JSON for %s", paper_id)
+        except Exception:
+            logger.warning("Unrepairable JSON for %s", paper_id)
+            return None
     if not isinstance(data, dict):
         return None
 

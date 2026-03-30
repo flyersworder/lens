@@ -16,6 +16,7 @@ dependencies = [
     "sqlite-vec>=0.1.7",
     "arxiv>=2.4.1",
     "python-dotenv>=1.2.2",
+    "json-repair>=0.58.7",
 ]
 
 [project.optional-dependencies]
