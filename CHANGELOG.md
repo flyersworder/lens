@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.5.0 (2026-03-29)
+
+### Breaking Changes
+- **Unified vocabulary replaces all taxonomy tables** — `architecture_slots`,
+  `architecture_variants`, `architecture_variants_vec`, `agentic_patterns`,
+  `agentic_patterns_vec` tables removed. Architecture data stays in
+  `architecture_extractions` with canonical slot names. Agentic data stays
+  in `agentic_extractions` with a `category` field.
+- **HDBSCAN/KMeans removed** — No more clustering. All taxonomy building
+  uses vocabulary-based guided extraction.
+- **`hdbscan` dependency removed** from pyproject.toml.
+- **`taxonomy` config section removed** — `target_arch_variants`,
+  `target_agentic_patterns`, `min_cluster_size` no longer exist.
+
+### Added
+- **Architecture slot vocabulary** — 10 seed slots (Attention Mechanism,
+  FFN, Positional Encoding, etc.) as `kind="arch_slot"` in vocabulary.
+- **Agentic category vocabulary** — 6 seed categories (Reasoning, Planning,
+  Tool Use, etc.) as `kind="agentic_category"` in vocabulary.
+- **`category` field** on `agentic_extractions` — LLM assigns category
+  during extraction using guided vocabulary.
+- **`new_concept_description` field** on `architecture_extractions` and
+  `agentic_extractions` for `NEW:` concept proposals.
+
+### Changed
+- **`build_taxonomy` simplified** — single `build_vocabulary()` call replaces
+  three separate builders (tradeoff + architecture + agentic).
+- **Serve layer** — architecture/agentic queries use extraction tables directly
+  instead of taxonomy tables. LLM-based slot/category identification replaces
+  vector search.
+
+### Removed
+- `taxonomy/clusterer.py` (HDBSCAN/KMeans clustering)
+- `taxonomy/labeler.py` (LLM cluster labeling)
+- `ArchitectureSlot`, `ArchitectureVariant`, `AgenticPattern` models
+- `hdbscan` dependency
+
 ## 0.4.0 (2026-03-29)
 
 ### Breaking Changes

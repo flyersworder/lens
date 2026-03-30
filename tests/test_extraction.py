@@ -29,3 +29,23 @@ def test_prompt_without_vocabulary_still_works():
     )
     assert "Test Paper" in prompt
     assert "tradeoffs" in prompt.lower()
+
+
+def test_prompt_includes_architecture_vocabulary():
+    vocabulary = [
+        {"name": "Inference Latency", "kind": "parameter"},
+        {"name": "Quantization", "kind": "principle"},
+        {"name": "Attention Mechanism", "kind": "arch_slot"},
+        {"name": "FFN", "kind": "arch_slot"},
+        {"name": "Reasoning", "kind": "agentic_category"},
+    ]
+    prompt = build_extraction_prompt(
+        title="Test Paper",
+        abstract="Test abstract",
+        vocabulary=vocabulary,
+    )
+    assert "Architecture Slots:" in prompt
+    assert "Attention Mechanism" in prompt
+    assert "FFN" in prompt
+    assert "Agentic Categories:" in prompt
+    assert "Reasoning" in prompt

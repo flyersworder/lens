@@ -16,9 +16,6 @@ def test_init_creates_regular_tables(store):
         "architecture_extractions",
         "agentic_extractions",
         "vocabulary",
-        "architecture_slots",
-        "architecture_variants",
-        "agentic_patterns",
         "matrix_cells",
         "taxonomy_versions",
         "ideation_reports",
@@ -33,8 +30,6 @@ def test_init_creates_vec_tables(store):
     for vec_table in [
         "papers_vec",
         "vocabulary_vec",
-        "architecture_variants_vec",
-        "agentic_patterns_vec",
     ]:
         assert vec_table in tables, f"Missing vec table: {vec_table}"
 

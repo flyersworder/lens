@@ -1,8 +1,7 @@
 """Tests for the analyze functionality."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock
 
-import numpy as np
 import pytest
 
 from lens.taxonomy.vocabulary import load_seed_vocabulary
@@ -137,90 +136,52 @@ def arch_agentic_store(tmp_path):
     store = LensStore(str(tmp_path / "test2.db"))
     store.init_tables()
 
-    store.add_rows(
-        "taxonomy_versions",
-        [
-            {
-                "version_id": 1,
-                "created_at": "2026-03-21T00:00:00",
-                "paper_count": 5,
-                "param_count": 0,
-                "principle_count": 0,
-                "slot_count": 2,
-                "variant_count": 2,
-                "pattern_count": 2,
-            }
-        ],
-    )
+    load_seed_vocabulary(store)
 
+    # Insert architecture extractions with canonical slot names
     store.add_rows(
-        "architecture_slots",
+        "architecture_extractions",
         [
             {
-                "id": 1,
-                "name": "Attention Mechanism",
-                "description": "How tokens attend to each other",
-                "taxonomy_version": 1,
+                "paper_id": "p1",
+                "component_slot": "Attention Mechanism",
+                "variant_name": "Multi-Head Attention",
+                "replaces": None,
+                "key_properties": "Standard scaled dot-product attention with multiple heads",
+                "confidence": 0.9,
             },
             {
-                "id": 2,
-                "name": "Feed-Forward Network",
-                "description": "MLP layers in the transformer block",
-                "taxonomy_version": 1,
+                "paper_id": "p2",
+                "component_slot": "FFN",
+                "variant_name": "Mixture of Experts",
+                "replaces": None,
+                "key_properties": "Sparse gating for conditional computation",
+                "confidence": 0.85,
             },
         ],
     )
 
+    # Insert agentic extractions with canonical category names
     store.add_rows(
-        "architecture_variants",
+        "agentic_extractions",
         [
             {
-                "id": 101,
-                "slot_id": 1,
-                "name": "Multi-Head Attention",
-                "replaces": [],
-                "properties": "Standard scaled dot-product attention with multiple heads",
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.1] * 768,
-            },
-            {
-                "id": 102,
-                "slot_id": 2,
-                "name": "Mixture of Experts",
-                "replaces": [],
-                "properties": "Sparse gating for conditional computation",
-                "paper_ids": ["p2"],
-                "taxonomy_version": 1,
-                "embedding": [0.2] * 768,
-            },
-        ],
-    )
-
-    store.add_rows(
-        "agentic_patterns",
-        [
-            {
-                "id": 201,
-                "name": "ReAct",
-                "category": "reasoning",
-                "description": "Reason and act in interleaved steps",
+                "paper_id": "p3",
+                "pattern_name": "ReAct",
+                "category": "Reasoning",
+                "structure": "interleaved reasoning and acting",
+                "use_case": "tool use, question answering",
                 "components": ["reasoner", "actor", "memory"],
-                "use_cases": ["tool use", "question answering"],
-                "paper_ids": ["p3"],
-                "taxonomy_version": 1,
-                "embedding": [0.3] * 768,
+                "confidence": 0.9,
             },
             {
-                "id": 202,
-                "name": "Chain of Thought",
-                "category": "reasoning",
-                "description": "Step-by-step reasoning before answering",
+                "paper_id": "p4",
+                "pattern_name": "Chain of Thought",
+                "category": "Reasoning",
+                "structure": "step-by-step reasoning chain",
+                "use_case": "math, logic",
                 "components": ["reasoning chain"],
-                "use_cases": ["math", "logic"],
-                "paper_ids": ["p4"],
-                "taxonomy_version": 1,
-                "embedding": [0.4] * 768,
+                "confidence": 0.85,
             },
         ],
     )
@@ -235,23 +196,20 @@ async def test_analyze_architecture(arch_agentic_store):
     mock_client = AsyncMock()
     mock_client.complete.return_value = '{"slot": "Attention Mechanism"}'
 
-    fake_embedding = np.array([[0.1] * 768])
-    with patch("lens.serve.analyzer.embed_strings", return_value=fake_embedding):
-        result = await analyze_architecture(
-            query="How does attention work in transformers?",
-            store=arch_agentic_store,
-            llm_client=mock_client,
-            taxonomy_version=1,
-        )
+    result = await analyze_architecture(
+        query="How does attention work in transformers?",
+        store=arch_agentic_store,
+        llm_client=mock_client,
+    )
 
     assert result is not None
     assert result["query"] == "How does attention work in transformers?"
-    assert "slot" in result
+    assert result["slot"] == "Attention Mechanism"
     assert "variants" in result
     assert isinstance(result["variants"], list)
-    assert len(result["variants"]) >= 1
+    assert len(result["variants"]) == 1
     first = result["variants"][0]
-    assert "name" in first
+    assert first["variant_name"] == "Multi-Head Attention"
     assert "properties" in first
 
 
@@ -263,18 +221,17 @@ async def test_analyze_architecture_llm_failure(arch_agentic_store):
     mock_client = AsyncMock()
     mock_client.complete.side_effect = Exception("LLM error")
 
-    fake_embedding = np.array([[0.1] * 768])
-    with patch("lens.serve.analyzer.embed_strings", return_value=fake_embedding):
-        result = await analyze_architecture(
-            query="transformer architecture overview",
-            store=arch_agentic_store,
-            llm_client=mock_client,
-            taxonomy_version=1,
-        )
+    result = await analyze_architecture(
+        query="transformer architecture overview",
+        store=arch_agentic_store,
+        llm_client=mock_client,
+    )
 
     assert result is not None
     assert result["slot"] is None
     assert isinstance(result["variants"], list)
+    # All extractions returned when no slot identified
+    assert len(result["variants"]) == 2
 
 
 @pytest.mark.asyncio
@@ -282,22 +239,22 @@ async def test_analyze_agentic(arch_agentic_store):
     from lens.serve.analyzer import analyze_agentic
 
     mock_client = AsyncMock()
+    mock_client.complete.return_value = '{"category": "Reasoning"}'
 
-    fake_embedding = np.array([[0.3] * 768])
-    with patch("lens.serve.analyzer.embed_strings", return_value=fake_embedding):
-        result = await analyze_agentic(
-            query="step-by-step reasoning for complex tasks",
-            store=arch_agentic_store,
-            llm_client=mock_client,
-            taxonomy_version=1,
-        )
+    result = await analyze_agentic(
+        query="step-by-step reasoning for complex tasks",
+        store=arch_agentic_store,
+        llm_client=mock_client,
+    )
 
     assert result is not None
     assert result["query"] == "step-by-step reasoning for complex tasks"
     assert "patterns" in result
     assert isinstance(result["patterns"], list)
-    assert len(result["patterns"]) >= 1
+    assert len(result["patterns"]) == 2
+    names = {p["pattern_name"] for p in result["patterns"]}
+    assert "ReAct" in names
+    assert "Chain of Thought" in names
     first = result["patterns"][0]
-    assert "name" in first
     assert "components" in first
-    assert "use_cases" in first
+    assert "use_case" in first

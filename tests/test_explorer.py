@@ -151,85 +151,65 @@ def arch_store(tmp_path):
 
     store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
+
+    load_seed_vocabulary(store)
+
+    # Insert architecture extractions using canonical slot names from vocabulary
     store.add_rows(
-        "architecture_slots",
+        "architecture_extractions",
         [
             {
-                "id": 1,
-                "name": "Attention",
-                "description": "Attention mechanism",
-                "taxonomy_version": 1,
+                "paper_id": "p1",
+                "component_slot": "Attention Mechanism",
+                "variant_name": "Multi-Head Attention",
+                "replaces": None,
+                "key_properties": "parallel heads",
+                "confidence": 0.9,
             },
             {
-                "id": 2,
-                "name": "Positional Encoding",
-                "description": "Position info",
-                "taxonomy_version": 1,
+                "paper_id": "p2",
+                "component_slot": "Attention Mechanism",
+                "variant_name": "Grouped-Query Attention",
+                "replaces": "Multi-Head Attention",
+                "key_properties": "shared KV cache",
+                "confidence": 0.85,
+            },
+            {
+                "paper_id": "p3",
+                "component_slot": "Positional Encoding",
+                "variant_name": "RoPE",
+                "replaces": None,
+                "key_properties": "relative position",
+                "confidence": 0.9,
             },
         ],
     )
+
+    # Insert agentic extractions using canonical category names from vocabulary
     store.add_rows(
-        "architecture_variants",
+        "agentic_extractions",
         [
             {
-                "id": 10,
-                "slot_id": 1,
-                "name": "Multi-Head Attention",
-                "replaces": [],
-                "properties": "parallel heads",
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-            {
-                "id": 11,
-                "slot_id": 1,
-                "name": "Grouped-Query Attention",
-                "replaces": [10],
-                "properties": "shared KV cache",
-                "paper_ids": ["p2"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-            {
-                "id": 12,
-                "slot_id": 2,
-                "name": "RoPE",
-                "replaces": [],
-                "properties": "relative position",
-                "paper_ids": ["p3"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
-            },
-        ],
-    )
-    store.add_rows(
-        "agentic_patterns",
-        [
-            {
-                "id": 20,
-                "name": "ReAct",
+                "paper_id": "p1",
+                "pattern_name": "ReAct",
                 "category": "Reasoning",
-                "description": "Reasoning and acting",
+                "structure": "interleaved reasoning and acting",
+                "use_case": "tool use",
                 "components": ["LLM", "tools"],
-                "use_cases": ["tool use"],
-                "paper_ids": ["p1"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
+                "confidence": 0.9,
             },
             {
-                "id": 21,
-                "name": "Reflexion",
-                "category": "Reflection",
-                "description": "Self-critique loop",
+                "paper_id": "p2",
+                "pattern_name": "Reflexion",
+                "category": "Self-Reflection",
+                "structure": "self-critique loop",
+                "use_case": "code generation",
                 "components": ["actor", "evaluator"],
-                "use_cases": ["code generation"],
-                "paper_ids": ["p2"],
-                "taxonomy_version": 1,
-                "embedding": [0.0] * EMBEDDING_DIM,
+                "confidence": 0.85,
             },
         ],
     )
+
     store.add_rows(
         "papers",
         [
@@ -271,39 +251,27 @@ def arch_store(tmp_path):
             },
         ],
     )
-    store.add_rows(
-        "taxonomy_versions",
-        [
-            {
-                "version_id": 1,
-                "created_at": "2026-03-21T00:00:00",
-                "paper_count": 3,
-                "param_count": 0,
-                "principle_count": 0,
-                "slot_count": 2,
-                "variant_count": 3,
-                "pattern_count": 2,
-            },
-        ],
-    )
     return store
 
 
 def test_list_architecture_slots(arch_store):
     from lens.serve.explorer import list_architecture_slots
 
-    slots = list_architecture_slots(arch_store, taxonomy_version=1)
-    assert len(slots) == 2
-    attn = next(s for s in slots if s["name"] == "Attention")
+    slots = list_architecture_slots(arch_store)
+    # Should have all arch_slot entries from seed vocabulary
+    assert len(slots) >= 2
+    attn = next(s for s in slots if s["name"] == "Attention Mechanism")
     assert attn["variant_count"] == 2
+    pos = next(s for s in slots if s["name"] == "Positional Encoding")
+    assert pos["variant_count"] == 1
 
 
 def test_list_architecture_variants(arch_store):
     from lens.serve.explorer import list_architecture_variants
 
-    variants = list_architecture_variants(arch_store, slot_name="Attention", taxonomy_version=1)
+    variants = list_architecture_variants(arch_store, slot_name="Attention Mechanism")
     assert len(variants) == 2
-    names = {v["name"] for v in variants}
+    names = {v["variant_name"] for v in variants}
     assert "Multi-Head Attention" in names
     assert "Grouped-Query Attention" in names
 
@@ -311,24 +279,24 @@ def test_list_architecture_variants(arch_store):
 def test_list_agentic_patterns(arch_store):
     from lens.serve.explorer import list_agentic_patterns
 
-    patterns = list_agentic_patterns(arch_store, taxonomy_version=1)
+    patterns = list_agentic_patterns(arch_store)
     assert len(patterns) == 2
 
 
 def test_list_agentic_patterns_by_category(arch_store):
     from lens.serve.explorer import list_agentic_patterns
 
-    patterns = list_agentic_patterns(arch_store, taxonomy_version=1, category="Reasoning")
+    patterns = list_agentic_patterns(arch_store, category="Reasoning")
     assert len(patterns) == 1
-    assert patterns[0]["name"] == "ReAct"
+    assert patterns[0]["pattern_name"] == "ReAct"
 
 
 def test_get_architecture_timeline(arch_store):
     from lens.serve.explorer import get_architecture_timeline
 
-    timeline = get_architecture_timeline(arch_store, slot_name="Attention", taxonomy_version=1)
+    timeline = get_architecture_timeline(arch_store, slot_name="Attention Mechanism")
     assert len(timeline) == 2
     # p1 (2017) should come before p2 (2023)
-    assert timeline[0]["name"] == "Multi-Head Attention"
-    assert timeline[1]["name"] == "Grouped-Query Attention"
+    assert timeline[0]["variant_name"] == "Multi-Head Attention"
+    assert timeline[1]["variant_name"] == "Grouped-Query Attention"
     assert "earliest_date" in timeline[0]

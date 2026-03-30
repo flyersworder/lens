@@ -79,6 +79,7 @@ class ArchitectureExtraction(BaseModel):
     replaces: str | None = None
     key_properties: str
     confidence: float
+    new_concept_description: str | None = None
 
 
 class AgenticExtraction(BaseModel):
@@ -86,10 +87,12 @@ class AgenticExtraction(BaseModel):
 
     paper_id: str
     pattern_name: str
+    category: str = ""
     structure: str
     use_case: str
     components: list[str]
     confidence: float
+    new_concept_description: str | None = None
 
 
 # ---------------------------------------------------------------------------
@@ -102,7 +105,7 @@ class VocabularyEntry(BaseModel):
 
     id: str
     name: str
-    kind: str  # "parameter" or "principle"
+    kind: str  # "parameter", "principle", "arch_slot", or "agentic_category"
     description: str
     source: str  # "seed" or "extracted"
     first_seen: str
@@ -113,8 +116,9 @@ class VocabularyEntry(BaseModel):
     @field_validator("kind")
     @classmethod
     def _check_kind(cls, v: str) -> str:
-        if v not in ("parameter", "principle"):
-            raise ValueError(f"kind must be 'parameter' or 'principle', got '{v}'")
+        valid = ("parameter", "principle", "arch_slot", "agentic_category")
+        if v not in valid:
+            raise ValueError(f"kind must be one of {valid}, got '{v}'")
         return v
 
     @field_validator("source")
@@ -123,42 +127,6 @@ class VocabularyEntry(BaseModel):
         if v not in ("seed", "extracted"):
             raise ValueError(f"source must be 'seed' or 'extracted', got '{v}'")
         return v
-
-
-class ArchitectureSlot(BaseModel):
-    """A named slot in the transformer architecture taxonomy."""
-
-    id: int
-    name: str
-    description: str
-    taxonomy_version: int
-
-
-class ArchitectureVariant(BaseModel):
-    """A concrete variant that fills an ArchitectureSlot."""
-
-    id: int
-    slot_id: int
-    name: str
-    replaces: list[int]
-    properties: str
-    paper_ids: list[str]
-    taxonomy_version: int
-    embedding: list[float] = []
-
-
-class AgenticPattern(BaseModel):
-    """A named agentic design pattern in the taxonomy."""
-
-    id: int
-    name: str
-    category: str
-    description: str
-    components: list[str]
-    use_cases: list[str]
-    paper_ids: list[str]
-    taxonomy_version: int
-    embedding: list[float] = []
 
 
 # ---------------------------------------------------------------------------

@@ -94,57 +94,14 @@ def test_agentic_extraction_model():
     ext = AgenticExtraction(
         paper_id="2401.12345",
         pattern_name="reflexion",
+        category="single-agent",
         structure="single agent with self-critique loop and memory",
         use_case="code generation with iterative debugging",
         components=["actor", "evaluator", "memory"],
         confidence=0.8,
     )
     assert ext.components == ["actor", "evaluator", "memory"]
-
-
-def test_architecture_slot_model():
-    from lens.store.models import ArchitectureSlot
-
-    slot = ArchitectureSlot(
-        id=1,
-        name="Attention Mechanism",
-        description="Core attention computation in transformer blocks",
-        taxonomy_version=1,
-    )
-    assert slot.name == "Attention Mechanism"
-
-
-def test_architecture_variant_model():
-    from lens.store.models import ArchitectureVariant
-
-    variant = ArchitectureVariant(
-        id=1,
-        slot_id=1,
-        name="Grouped-Query Attention",
-        replaces=[2, 3],
-        properties="reduces KV cache by sharing keys/values across query groups",
-        paper_ids=["2305.13245"],
-        taxonomy_version=1,
-        embedding=[0.1] * 768,
-    )
-    assert variant.replaces == [2, 3]
-
-
-def test_agentic_pattern_model():
-    from lens.store.models import AgenticPattern
-
-    pattern = AgenticPattern(
-        id=1,
-        name="Reflexion",
-        category="single-agent",
-        description="Single agent with self-critique loop and memory",
-        components=["actor", "evaluator", "memory"],
-        use_cases=["code generation", "reasoning tasks"],
-        paper_ids=["2303.11366"],
-        taxonomy_version=1,
-        embedding=[0.1] * 768,
-    )
-    assert pattern.category == "single-agent"
+    assert ext.category == "single-agent"
 
 
 def test_matrix_cell_model():

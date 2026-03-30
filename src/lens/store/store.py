@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import sqlite3
 import struct
 from datetime import datetime
@@ -12,26 +13,24 @@ import sqlite_vec
 
 from lens.store.models import EMBEDDING_DIM
 
+logger = logging.getLogger(__name__)
+
 # Tables that have a companion vec0 virtual table.
 # Maps table_name -> primary key column name and type.
 VEC_TABLES: dict[str, tuple[str, str]] = {
     "papers": ("paper_id", "TEXT"),
     "vocabulary": ("id", "TEXT"),
-    "architecture_variants": ("id", "INTEGER"),
-    "agentic_patterns": ("id", "INTEGER"),
 }
 
 # Maps table_name -> set of columns that are JSON-serialized lists.
 JSON_FIELDS: dict[str, set[str]] = {
     "papers": {"authors"},
     "agentic_extractions": {"components"},
-    "architecture_variants": {"replaces", "paper_ids"},
-    "agentic_patterns": {"components", "use_cases", "paper_ids"},
     "matrix_cells": {"paper_ids"},
     "ideation_gaps": {"related_params", "related_principles", "related_slots"},
 }
 
-# SQL CREATE TABLE statements for all 13 regular tables.
+# SQL CREATE TABLE statements for all 9 regular tables.
 _TABLE_DDL = [
     """CREATE TABLE IF NOT EXISTS papers (
         paper_id TEXT PRIMARY KEY,
@@ -63,41 +62,19 @@ _TABLE_DDL = [
         variant_name TEXT NOT NULL,
         replaces TEXT,
         key_properties TEXT NOT NULL,
-        confidence REAL NOT NULL
+        confidence REAL NOT NULL,
+        new_concept_description TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS agentic_extractions (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
         paper_id TEXT NOT NULL,
         pattern_name TEXT NOT NULL,
+        category TEXT NOT NULL DEFAULT '',
         structure TEXT NOT NULL,
         use_case TEXT NOT NULL,
         components TEXT NOT NULL,
-        confidence REAL NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS architecture_slots (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        description TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS architecture_variants (
-        id INTEGER PRIMARY KEY,
-        slot_id INTEGER NOT NULL,
-        name TEXT NOT NULL,
-        replaces TEXT NOT NULL,
-        properties TEXT NOT NULL,
-        paper_ids TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
-    )""",
-    """CREATE TABLE IF NOT EXISTS agentic_patterns (
-        id INTEGER PRIMARY KEY,
-        name TEXT NOT NULL,
-        category TEXT NOT NULL,
-        description TEXT NOT NULL,
-        components TEXT NOT NULL,
-        use_cases TEXT NOT NULL,
-        paper_ids TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL
+        confidence REAL NOT NULL,
+        new_concept_description TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS vocabulary (
         id TEXT PRIMARY KEY,
@@ -151,6 +128,15 @@ _TABLE_DDL = [
     )""",
 ]
 
+# Schema migrations: (table, column, column_type_with_default).
+# Applied idempotently by init_tables() to handle upgrades from older schemas.
+_COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
+    ("tradeoff_extractions", "new_concept_description", "TEXT"),
+    ("architecture_extractions", "new_concept_description", "TEXT"),
+    ("agentic_extractions", "category", "TEXT NOT NULL DEFAULT ''"),
+    ("agentic_extractions", "new_concept_description", "TEXT"),
+]
+
 
 def _pack_embedding(emb: list[float]) -> bytes:
     """Pack a float list into bytes for sqlite-vec."""
@@ -187,6 +173,10 @@ class LensStore:
         for ddl in _TABLE_DDL:
             self.conn.execute(ddl)
 
+        # Migrate existing tables: add columns that may be missing from older schemas.
+        for table, column, col_type in _COLUMN_MIGRATIONS:
+            self._add_column_if_missing(table, column, col_type)
+
         for table_name, (id_col, id_type) in VEC_TABLES.items():
             vec_ddl = (
                 f"CREATE VIRTUAL TABLE IF NOT EXISTS {table_name}_vec "
@@ -198,6 +188,14 @@ class LensStore:
             self.conn.execute(vec_ddl)
 
         self.conn.commit()
+
+    def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
+        """Add a column to an existing table if it doesn't already exist."""
+        cursor = self.conn.execute(f"PRAGMA table_info({table})")
+        existing_cols = {row[1] for row in cursor.fetchall()}
+        if column not in existing_cols:
+            self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {col_type}")
+            logger.debug("Added column %s.%s", table, column)
 
     # ------------------------------------------------------------------
     # Data helpers
@@ -311,14 +309,22 @@ class LensStore:
         self.conn.commit()
 
     def upsert_embedding(self, table: str, row_id: str | int, embedding: list[float]) -> None:
-        """Insert or replace the embedding for a row in the companion vec table."""
+        """Insert or replace the embedding for a row in the companion vec table.
+
+        sqlite-vec virtual tables do not support INSERT OR REPLACE,
+        so we delete-then-insert instead.
+        """
         vec_info = VEC_TABLES.get(table)
         if not vec_info:
             raise ValueError(f"Table '{table}' does not have a companion vec table")
         id_col, _ = vec_info
         emb_bytes = _pack_embedding(embedding)
         self.conn.execute(
-            f"INSERT OR REPLACE INTO {table}_vec ({id_col}, embedding) VALUES (?, ?)",
+            f"DELETE FROM {table}_vec WHERE {id_col} = ?",
+            (row_id,),
+        )
+        self.conn.execute(
+            f"INSERT INTO {table}_vec ({id_col}, embedding) VALUES (?, ?)",
             (row_id, emb_bytes),
         )
         self.conn.commit()
