@@ -446,7 +446,14 @@ def taxonomy() -> None:
 
     version_id = get_next_version(store)
 
-    stats = build_vocabulary(store, **_embedding_kwargs(config))
+    emb_cfg = config.get("embeddings", {})
+    stats = build_vocabulary(
+        store,
+        embedding_provider=emb_cfg.get("provider", "local"),
+        embedding_model=emb_cfg.get("model"),
+        embedding_api_base=emb_cfg.get("api_base"),
+        embedding_api_key=emb_cfg.get("api_key"),
+    )
 
     # Record version
     paper_count = len(store.query("papers"))
@@ -500,7 +507,14 @@ def build_all() -> None:
 
     version_id = get_next_version(store)
 
-    stats = build_vocabulary(store, **_embedding_kwargs(config))
+    emb_cfg = config.get("embeddings", {})
+    stats = build_vocabulary(
+        store,
+        embedding_provider=emb_cfg.get("provider", "local"),
+        embedding_model=emb_cfg.get("model"),
+        embedding_api_base=emb_cfg.get("api_base"),
+        embedding_api_key=emb_cfg.get("api_key"),
+    )
 
     # Record version
     paper_count = len(store.query("papers"))
