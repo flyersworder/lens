@@ -349,6 +349,9 @@ def build_vocabulary(
         for row, emb in zip(to_embed, embeddings, strict=True):
             store.upsert_embedding("vocabulary", row["id"], emb.tolist())
 
+    # Rebuild FTS index for hybrid search
+    store.rebuild_vocabulary_fts()
+
     logger.info(
         "Vocabulary: %d new, %d updated, %d embedded",
         stats["new_entries"],
@@ -393,6 +396,7 @@ def load_seed_vocabulary(store: LensStore) -> int:
 
     if new_rows:
         store.add_rows("vocabulary", new_rows)
+        store.rebuild_vocabulary_fts()
         logger.info("Loaded %d seed vocabulary entries", len(new_rows))
 
     return len(new_rows)

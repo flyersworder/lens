@@ -189,6 +189,12 @@ class LensStore:
             )
             self.conn.execute(vec_ddl)
 
+        # FTS5 table for vocabulary hybrid search (keyword + vector)
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS vocabulary_fts "
+            "USING fts5(name, description, kind, content=vocabulary, content_rowid=rowid)"
+        )
+
         self.conn.commit()
 
     def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
@@ -330,6 +336,92 @@ class LensStore:
             (row_id, emb_bytes),
         )
         self.conn.commit()
+
+    def rebuild_vocabulary_fts(self) -> None:
+        """Rebuild the vocabulary FTS5 index from current vocabulary data."""
+        self.conn.execute("INSERT INTO vocabulary_fts(vocabulary_fts) VALUES('rebuild')")
+        self.conn.commit()
+
+    def hybrid_search(
+        self,
+        query: str,
+        embedding: list[float],
+        limit: int = 5,
+        rrf_k: int = 60,
+    ) -> list[dict]:
+        """Hybrid search on vocabulary: FTS5 keyword + vector semantic with RRF.
+
+        Combines full-text keyword matches and vector similarity results
+        using Reciprocal Rank Fusion scoring.
+        """
+        emb_bytes = _pack_embedding(embedding)
+        json_cols = JSON_FIELDS.get("vocabulary", set())
+
+        sql = """
+        WITH fts_matches AS (
+            SELECT
+                rowid,
+                row_number() OVER (ORDER BY rank) AS rank_number
+            FROM vocabulary_fts
+            WHERE vocabulary_fts MATCH ?
+            LIMIT ?
+        ),
+        vec_matches AS (
+            SELECT
+                id,
+                row_number() OVER (ORDER BY distance) AS rank_number,
+                distance
+            FROM vocabulary_vec
+            WHERE embedding MATCH ? AND k = ?
+        ),
+        combined AS (
+            SELECT
+                v.id,
+                coalesce(1.0 / (? + f.rank_number), 0.0) AS fts_score,
+                coalesce(1.0 / (? + vm.rank_number), 0.0) AS vec_score,
+                vm.distance AS vec_distance
+            FROM vocabulary v
+            LEFT JOIN fts_matches f ON v.rowid = f.rowid
+            LEFT JOIN vec_matches vm ON v.id = vm.id
+            WHERE f.rowid IS NOT NULL OR vm.id IS NOT NULL
+        )
+        SELECT
+            t.*,
+            c.fts_score + c.vec_score AS _rrf_score,
+            c.vec_distance AS _distance
+        FROM combined c
+        JOIN vocabulary t ON t.id = c.id
+        ORDER BY _rrf_score DESC
+        LIMIT ?
+        """
+
+        # Escape FTS5 query: wrap each token in double quotes to treat as literal
+        fts_query = " OR ".join(f'"{token}"' for token in query.strip().split())
+
+        params = (
+            fts_query,
+            limit * 3,
+            emb_bytes,
+            limit * 3,
+            rrf_k,
+            rrf_k,
+            limit,
+        )
+
+        cursor = self.conn.execute(sql, params)
+        columns = [desc[0] for desc in cursor.description]
+
+        results = []
+        for row in cursor.fetchall():
+            d: dict[str, Any] = {}
+            for i, col in enumerate(columns):
+                val = row[i]
+                if col in json_cols and isinstance(val, str):
+                    d[col] = json.loads(val)
+                else:
+                    d[col] = val
+            results.append(d)
+        return results
 
     def vector_search(
         self,

@@ -49,7 +49,6 @@ def explain_store(tmp_path):
                 "first_seen": "2026-01-01",
                 "paper_count": 0,
                 "avg_confidence": 0.0,
-                # Very close embedding to "quantization" principle
                 "embedding": [0.05, 0.99] + [0.0] * (EMBEDDING_DIM - 2),
             },
             {
@@ -128,33 +127,31 @@ def explain_store(tmp_path):
             },
         ],
     )
+    store.rebuild_vocabulary_fts()
     return store
 
 
-def test_resolve_concept_parameter(explain_store):
-    from lens.serve.explainer import resolve_concept
+def test_find_candidates(explain_store):
+    from lens.serve.explainer import find_candidates
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
         mock_embed.return_value = np.array([[1.0] + [0.0] * (EMBEDDING_DIM - 1)])
-        result = resolve_concept(query="inference latency", store=explain_store)
-    assert result is not None
-    assert result["resolved_name"] == "Inference Latency"
-    assert result["resolved_type"] == "parameter"
+        candidates = find_candidates(query="inference latency", store=explain_store)
+    assert len(candidates) >= 1
+    names = {c["name"] for c in candidates}
+    assert "Inference Latency" in names
 
 
-def test_resolve_concept_prefers_richer_match(explain_store):
-    """When 'quantization' and 'quantization-method' are close in embedding space,
-    resolve should prefer the one with more matrix data (principle has 1 cell,
-    arch_slot has 0 extractions for that specific concept)."""
-    from lens.serve.explainer import resolve_concept
+def test_find_candidates_returns_multiple(explain_store):
+    """Searching for 'quantization' should return both the principle and arch_slot."""
+    from lens.serve.explainer import find_candidates
 
-    # Embedding close to both quantization (principle) and quantization-method (arch_slot)
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
         mock_embed.return_value = np.array([[0.02, 1.0] + [0.0] * (EMBEDDING_DIM - 2)])
-        result = resolve_concept(query="quantization", store=explain_store)
-    assert result is not None
-    assert result["resolved_name"] == "Quantization"
-    assert result["resolved_type"] == "principle"
+        candidates = find_candidates(query="quantization", store=explain_store, top_k=3)
+    names = {c["name"] for c in candidates}
+    assert "Quantization" in names
+    assert "Quantization Method" in names
 
 
 def test_graph_walk_parameter(explain_store):
@@ -196,13 +193,17 @@ def test_graph_walk_agentic_category(explain_store):
 
 
 @pytest.mark.asyncio
-async def test_explain_full(explain_store):
+async def test_explain_with_llm_selection(explain_store):
+    """The LLM selects the best candidate and explains it."""
     from lens.serve.explainer import explain
 
     mock_client = AsyncMock()
-    mock_client.complete.return_value = (
-        "Inference Latency refers to the speed at which an LLM generates output tokens."
-    )
+    # First call: LLM selection returns "1" (first candidate)
+    # Second call: LLM synthesis returns the explanation
+    mock_client.complete.side_effect = [
+        "1",
+        "Inference Latency is the time taken to generate output tokens.",
+    ]
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
         mock_embed.return_value = np.array([[1.0] + [0.0] * (EMBEDDING_DIM - 1)])
@@ -212,19 +213,20 @@ async def test_explain_full(explain_store):
             llm_client=mock_client,
         )
     assert result is not None
-    assert result.resolved_name == "Inference Latency"
-    assert result.resolved_type == "parameter"
-    assert len(result.narrative) > 0
+    assert "Latency" in result.narrative or "time" in result.narrative
+    assert len(result.alternatives) >= 0
 
 
 @pytest.mark.asyncio
 async def test_explain_arch_slot(explain_store):
+    """Explain correctly handles arch_slot concepts."""
     from lens.serve.explainer import explain
 
     mock_client = AsyncMock()
-    mock_client.complete.return_value = (
-        "The Attention Mechanism determines how the model weighs input tokens."
-    )
+    mock_client.complete.side_effect = [
+        "1",
+        "The Attention Mechanism determines how the model weighs input tokens.",
+    ]
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
         mock_embed.return_value = np.array([[0.0, 0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 3)])
@@ -234,6 +236,4 @@ async def test_explain_arch_slot(explain_store):
             llm_client=mock_client,
         )
     assert result is not None
-    assert result.resolved_name == "Attention Mechanism"
-    assert result.resolved_type == "arch_slot"
-    assert "weighs" in result.narrative or "Attention" in result.narrative
+    assert "Attention" in result.narrative

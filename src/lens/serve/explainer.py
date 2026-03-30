@@ -2,6 +2,8 @@
 
 Handles all four vocabulary kinds (parameter, principle, arch_slot,
 agentic_category) with kind-specific graph walks and synthesis prompts.
+Uses hybrid search (FTS5 + vector) to find candidates, then lets the
+LLM pick the best interpretation given the user's query.
 """
 
 from __future__ import annotations
@@ -21,96 +23,60 @@ from lens.taxonomy.embedder import embed_strings
 logger = logging.getLogger(__name__)
 
 
-def _compute_richness(entry_id: str, kind: str, store: LensStore) -> int:
-    """Score how much data is available for explaining this concept.
-
-    Higher = more informative explanation possible.
-    """
-    if kind == "parameter":
-        cells = store.query("matrix_cells")
-        return sum(
-            1
-            for c in cells
-            if c["improving_param_id"] == entry_id or c["worsening_param_id"] == entry_id
-        )
-    elif kind == "principle":
-        cells = store.query("matrix_cells")
-        return sum(1 for c in cells if c["principle_id"] == entry_id)
-    elif kind == "arch_slot":
-        vocab = store.query("vocabulary", "id = ?", (entry_id,))
-        if not vocab:
-            return 0
-        name = vocab[0]["name"]
-        extractions = store.query("architecture_extractions")
-        return sum(1 for e in extractions if _matches_canonical(e["component_slot"], name))
-    elif kind == "agentic_category":
-        vocab = store.query("vocabulary", "id = ?", (entry_id,))
-        if not vocab:
-            return 0
-        name = vocab[0]["name"]
-        extractions = store.query("agentic_extractions")
-        return sum(1 for e in extractions if _matches_canonical(e.get("category", ""), name))
-    return 0
-
-
-def resolve_concept(
+def find_candidates(
     query: str,
     store: LensStore,
     top_k: int = 3,
     embedding_kwargs: dict[str, Any] | None = None,
-) -> dict[str, Any] | None:
-    """Resolve a query to the best matching vocabulary entry.
+) -> list[dict[str, Any]]:
+    """Find top vocabulary candidates for a query using hybrid search.
 
-    Uses vector search for semantic matching, then re-ranks by data richness
-    so the concept with the most useful explanation wins.
+    Returns up to top_k deduplicated candidates ranked by RRF score
+    (combined FTS5 keyword + vector semantic relevance).
     """
     query_embedding = embed_strings([query], **(embedding_kwargs or {}))[0].tolist()
 
     candidates: list[dict[str, Any]] = []
     try:
-        results = store.vector_search(
-            "vocabulary",
-            query_embedding,
-            limit=top_k * 3,
+        results = store.hybrid_search(
+            query=query,
+            embedding=query_embedding,
+            limit=top_k * 2,
         )
         for row in results:
-            dist = row.get("_distance", float("inf"))
             candidates.append(
                 {
-                    "resolved_type": row.get("kind", "unknown"),
-                    "resolved_id": row["id"],
-                    "resolved_name": row["name"],
-                    "distance": float(dist),
+                    "kind": row.get("kind", "unknown"),
+                    "id": row["id"],
+                    "name": row["name"],
+                    "description": row.get("description", ""),
                 }
             )
     except Exception:
-        logger.warning("Vector search failed on vocabulary")
+        logger.warning("Hybrid search failed, falling back to vector search")
+        try:
+            results = store.vector_search("vocabulary", query_embedding, limit=top_k * 2)
+            for row in results:
+                candidates.append(
+                    {
+                        "kind": row.get("kind", "unknown"),
+                        "id": row["id"],
+                        "name": row["name"],
+                        "description": row.get("description", ""),
+                    }
+                )
+        except Exception:
+            logger.warning("Vector search also failed")
 
-    if not candidates:
-        return None
+    # Deduplicate
+    seen: set[str] = set()
+    unique: list[dict[str, Any]] = []
+    for c in candidates:
+        if c["id"] not in seen:
+            seen.add(c["id"])
+            unique.append(c)
 
-    # Re-rank: among the top semantic matches, pick the one with most data.
-    # Only consider candidates within 2x the best distance (semantically close).
-    best_dist = candidates[0]["distance"]
-    close_candidates = [c for c in candidates if c["distance"] <= best_dist * 2]
-
-    query_lower = query.lower().strip()
-    for c in close_candidates:
-        c["richness"] = _compute_richness(c["resolved_id"], c["resolved_type"], store)
-        # Bonus for exact name match — strong signal the user means this concept
-        if c["resolved_name"].lower() == query_lower:
-            c["richness"] += 100
-
-    # Sort by richness descending, then distance ascending as tiebreaker
-    close_candidates.sort(key=lambda x: (-x["richness"], x["distance"]))
-    best_match = close_candidates[0]
-
-    # Build alternatives from all candidates (excluding the best)
-    alternatives = [c for c in candidates if c["resolved_id"] != best_match["resolved_id"]]
-    alternatives.sort(key=lambda x: x["distance"])
-    best_match["alternatives"] = alternatives[: top_k - 1]
-
-    return best_match
+    return unique[:top_k]
 
 
 def graph_walk(
@@ -191,7 +157,6 @@ def _walk_architecture(resolved_id: str, store: LensStore) -> dict[str, Any]:
     variants = list_architecture_variants(store, slot_name)
     walk["variants"] = variants
 
-    # Build paper timeline
     papers = store.query("papers")
     paper_map = {p["paper_id"]: p for p in papers}
     for v in variants:
@@ -220,7 +185,6 @@ def _walk_agentic(resolved_id: str, store: LensStore) -> dict[str, Any]:
 
     extractions = store.query("agentic_extractions")
     patterns = [e for e in extractions if _matches_canonical(e.get("category", ""), cat_name)]
-    # Deduplicate by pattern name
     by_name: dict[str, dict[str, Any]] = {}
     for p in patterns:
         name = p["pattern_name"]
@@ -234,6 +198,45 @@ def _walk_agentic(resolved_id: str, store: LensStore) -> dict[str, Any]:
     walk["patterns"] = list(by_name.values())
 
     return walk
+
+
+def _summarize_walk(walk: dict[str, Any]) -> str:
+    """Create a brief summary of a graph walk for LLM candidate selection."""
+    identity = walk.get("identity", {})
+    name = identity.get("name", "Unknown")
+    desc = identity.get("description", "")
+    kind = identity.get("type", "unknown")
+
+    summary = f"{name} ({kind}): {desc}"
+
+    if kind in ("parameter", "principle"):
+        n_tradeoffs = len(walk.get("tradeoffs", []))
+        n_connections = len(walk.get("connections", []))
+        summary += f" [{n_tradeoffs} tradeoffs, {n_connections} connections]"
+    elif kind == "arch_slot":
+        n_variants = len(walk.get("variants", []))
+        summary += f" [{n_variants} variants]"
+    elif kind == "agentic_category":
+        n_patterns = len(walk.get("patterns", []))
+        summary += f" [{n_patterns} patterns]"
+
+    return summary
+
+
+def _build_selection_prompt(
+    query: str,
+    candidate_summaries: list[str],
+) -> str:
+    """Ask the LLM to pick the best candidate for the user's query."""
+    options = "\n".join(f"{i + 1}. {s}" for i, s in enumerate(candidate_summaries))
+    return (
+        "A user wants to learn about a concept in LLM engineering. "
+        "Multiple matching concepts were found in our knowledge base.\n\n"
+        f'User query: "{query}"\n\n'
+        f"Candidates:\n{options}\n\n"
+        "Which candidate best matches the user's intent? "
+        "Respond with ONLY the number (e.g., 1)."
+    )
 
 
 def _build_synthesis_prompt(
@@ -378,17 +381,38 @@ async def explain(
     focus: str | None = None,
     embedding_kwargs: dict[str, Any] | None = None,
 ) -> ExplanationResult | None:
-    """Explain a concept: resolve -> graph walk -> synthesize."""
-    resolved = resolve_concept(query, store, embedding_kwargs=embedding_kwargs)
-    if resolved is None:
+    """Explain a concept: find candidates -> LLM selects -> graph walk -> synthesize."""
+    candidates = find_candidates(query, store, top_k=3, embedding_kwargs=embedding_kwargs)
+    if not candidates:
         return None
 
-    walk = graph_walk(
-        resolved_type=resolved["resolved_type"],
-        resolved_id=resolved["resolved_id"],
-        store=store,
-    )
+    # Graph walk each candidate to gather context
+    walks: list[dict[str, Any]] = []
+    for c in candidates:
+        walk = graph_walk(resolved_type=c["kind"], resolved_id=c["id"], store=store)
+        walks.append(walk)
 
+    # If only one candidate or one clearly has all the data, skip LLM selection
+    if len(candidates) == 1:
+        selected_idx = 0
+    else:
+        # Let the LLM pick the best match
+        summaries = [_summarize_walk(w) for w in walks]
+        selection_prompt = _build_selection_prompt(query, summaries)
+        try:
+            response = await llm_client.complete([{"role": "user", "content": selection_prompt}])
+            choice = response.strip().strip(".")
+            selected_idx = int(choice) - 1
+            if selected_idx < 0 or selected_idx >= len(candidates):
+                selected_idx = 0
+        except Exception:
+            logger.warning("LLM selection failed, using first candidate")
+            selected_idx = 0
+
+    selected = candidates[selected_idx]
+    walk = walks[selected_idx]
+
+    # Synthesize explanation
     prompt = _build_synthesis_prompt(walk, focus=focus)
     try:
         narrative = await llm_client.complete([{"role": "user", "content": prompt}])
@@ -396,14 +420,24 @@ async def explain(
         logger.warning("LLM synthesis failed for %s", query)
         narrative = walk["identity"].get("description", "")
 
+    alternatives = [
+        {
+            "resolved_type": c["kind"],
+            "resolved_id": c["id"],
+            "resolved_name": c["name"],
+        }
+        for c in candidates
+        if c["id"] != selected["id"]
+    ]
+
     return ExplanationResult(
-        resolved_type=resolved["resolved_type"],
-        resolved_id=resolved["resolved_id"],
-        resolved_name=resolved["resolved_name"],
+        resolved_type=selected["kind"],
+        resolved_id=selected["id"],
+        resolved_name=selected["name"],
         narrative=narrative,
         evolution=[],
         tradeoffs=walk.get("tradeoffs", []),
         connections=walk.get("connections", []),
         paper_refs=[],
-        alternatives=resolved.get("alternatives", []),
+        alternatives=alternatives,
     )
