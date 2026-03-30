@@ -2,30 +2,34 @@
 
 Design spec for a system that automatically discovers recurring solution patterns, contradiction resolutions, architecture innovations, and agentic design patterns from LLM research papers (arxiv), inspired by TRIZ methodology.
 
-**Status**: Partially Implemented (v0.3.0)
-**Date**: 2026-03-21 (original), 2026-03-28 (last updated)
+**Status**: Core Complete (v0.5.0)
+**Date**: 2026-03-21 (original), 2026-03-30 (last updated)
 
-> **Migration note**: This design spec was written when LENS used LanceDB + Polars. The implementation has since migrated to **SQLite + sqlite-vec + plain Python**. The tech stack table below is current; references to LanceDB, Polars, Arrow, and LanceModel elsewhere in this document are historical. See CLAUDE.md and README.md for the current architecture.
+> **Migration note**: This design spec was written when LENS used LanceDB + Polars + HDBSCAN clustering. The implementation has since migrated to **SQLite + sqlite-vec + vocabulary-based guided extraction**. The tech stack and approach have changed significantly — see CLAUDE.md and README.md for the current architecture. References to LanceDB, Polars, HDBSCAN, and clustering elsewhere in this document are historical.
 
 ---
 
 ## Implementation Status
 
-### Implemented (v0.3.0)
+### Implemented (v0.5.0)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
-| **Contradiction Matrix** | Done | Full pipeline: acquire → extract → taxonomy → matrix → serve |
-| **Architecture Catalog** | Done | Property-based comparison (changed from evolution trees in original design) |
-| **Agentic Pattern Catalog** | Done | Emergent categories (changed from fixed enum in original design) |
+| **Contradiction Matrix** | Done | Full pipeline: acquire → extract → vocabulary → matrix → serve |
+| **Architecture Catalog** | Done | Canonical slot vocabulary + free-text variants from extractions |
+| **Agentic Pattern Catalog** | Done | Canonical category vocabulary + free-text patterns from extractions |
 | **Monitor / Ideation** | Done | Sparse cells + cross-pollination gap detection, optional LLM enrichment |
-| **CLI** | Done | All commands wired and functional |
+| **CLI** | Done | All commands wired; `vocab`, `explore`, `analyze`, `explain`, `build`, `monitor` |
 | **Acquire pipeline** | Done | arxiv, OpenAlex, Semantic Scholar, seed papers, PDF ingestion |
-| **Extract pipeline** | Done | LLM extraction of tradeoffs, architecture, agentic patterns |
-| **Taxonomy pipeline** | Done | HDBSCAN clustering, LLM labeling, auto-increment versioning |
+| **Extract pipeline** | Done | LLM-guided extraction using canonical vocabulary for all 3 types |
+| **Vocabulary pipeline** | Done | Replaced HDBSCAN clustering. Single `build_vocabulary()` for all types |
+| **Hybrid search** | Done | FTS5 keyword + sqlite-vec vector search with Reciprocal Rank Fusion |
+| **LLM concept resolution** | Done | `explain` presents top candidates to LLM for disambiguation |
+| **Kind-specific explain** | Done | Tradeoff graph, variant listing, pattern listing per vocabulary kind |
 | **Cloud embeddings** | Done | Local (sentence-transformers) or cloud (openai/litellm) |
 | **Gateway mode** | Done | openai SDK core, litellm optional, configurable api_base |
 | **SQLite + sqlite-vec** | Done | Replaced LanceDB + Polars. Cosine distance, parameterized queries |
+| **Schema migrations** | Done | `_COLUMN_MIGRATIONS` in store.py for safe database upgrades |
 
 ### Partially Implemented
 
@@ -39,23 +43,25 @@ Design spec for a system that automatically discovers recurring solution pattern
 
 | Feature | Design spec section | Why deferred |
 |---------|-------------------|--------------|
-| **Stalled slot detection** | Monitoring §5.3 | Requires architecture catalog (now done) + date threshold comparison. Can be added as a new ideation gap type. |
+| **Vocabulary relations** | §Scaling | Concept hierarchy and relationships. See Scaling section below. |
+| **Stalled slot detection** | Monitoring §5.3 | Requires date threshold comparison on architecture extractions. Can be added as a new ideation gap type. |
 | **Trend detection (BERTrend)** | Monitoring §4 | Requires streaming topic modeling on extraction timestamps. Significant new dependency and complexity. |
 | **Trend-gap intersections** | Monitoring §5.4 | Depends on trend detection. |
-| **Multimodal / figure extraction** | Phase 2 | Design spec assumed LanceDB blob storage. Revised plan: file-based storage + VLM descriptions + text embeddings. No database changes needed. |
+| **Multimodal / figure extraction** | Phase 2 | File-based storage + VLM descriptions + text embeddings. No database changes needed. |
 | **REST API** | Not in spec | CLI-only for now. Would enable programmatic access and web UI. |
-| **Taxonomy drift detection** | Monitoring §3 | Auto-detect when new extractions don't match existing taxonomy centroids. |
 
 ### Design Changes from Original Spec
 
 | Original design | What was actually built | Why |
 |----------------|------------------------|-----|
 | LanceDB + Polars + Pandas | SQLite + sqlite-vec + plain Python | Lighter deps, battle-tested, parameterized queries, no type checker issues |
-| Architecture evolution trees | Property-based comparison with optional replaces links | Optimized for engineering decision support ("what should I use?") over research history ("what replaced X?") |
-| Fixed agentic categories (single-agent/multi-agent/orchestration) | Emergent categories via LLM | More scalable, discovers categories like Reasoning, Reflection, Tool Integration from data |
-| Offset-based IDs (version * 100000 + offset) | Auto-increment from MAX(id) + 1 | No collision risk, scales without coordination |
+| HDBSCAN/KMeans clustering for taxonomy | Vocabulary-based guided extraction | LLM normalizes concepts directly at extraction time; clustering was solving a string normalization problem with 3 layers of indirection |
+| Separate parameters, principles, architecture_slots, agentic_patterns tables | Unified `vocabulary` table with `kind` field | One table, one pattern, extensible by adding new `kind` values |
+| Vector-only concept resolution | Hybrid search (FTS5 + vector RRF) + LLM candidate selection | Keyword matches handle exact names; LLM disambiguates between close candidates |
+| Architecture evolution trees | Free-text variants in extractions with canonical slot vocabulary | Optimized for engineering decision support over research history |
+| Fixed agentic categories | Canonical category vocabulary with LLM-guided assignment | Discoverable via `NEW:` prefix, no manual categorization |
+| Offset-based IDs | Text slug IDs for vocabulary, auto-increment for others | Human-readable, no collision risk |
 | litellm as core dependency | openai SDK core, litellm optional | Supply chain risk mitigation, lighter installs, gateway-compatible |
-| Multimodal via LanceDB blobs | File-based storage + VLM descriptions (planned) | Simpler, no special DB support needed, preserves originals for re-analysis |
 
 ---
 
@@ -668,6 +674,62 @@ The bootstrap succeeds if:
 - `lens explain "grouped-query attention"` returns a coherent narrative covering what it is, its evolution from MHA, and what tradeoffs it resolves
 - `lens explain "attention"` returns a broad overview with pointers to variants rather than deep-diving a single node
 - Ideation gap analysis on the seed corpus produces at least 5 sparse cells and 3 cross-pollination candidates
+
+## Scaling: Vocabulary Relations
+
+**Trigger**: When vocabulary exceeds ~100 entries or corpus exceeds ~200 papers.
+
+**Problem**: The vocabulary is flat — all concepts are independent entries. In
+reality, concepts have relationships:
+
+- "GPTQ" **is-a** "Quantization" (hierarchy / sub-technique)
+- "QLoRA" **combines** "Quantization" + "LoRA" (composition)
+- "Flash Attention" **optimizes** "Attention Mechanism" (cross-kind link)
+
+At small scale (50 papers, ~60 entries), this is fine — the LLM handles
+relationships implicitly during synthesis. At larger scale, two problems emerge:
+
+1. **Evidence fragmentation**: 20 papers about GPTQ + 15 about AWQ + 10 about
+   NF4, but only 3 mention "Quantization" generically. The matrix shows weak
+   evidence for quantization while the collective evidence is strong.
+2. **Vocabulary explosion**: Every sub-technique becomes its own entry. The
+   extraction prompt grows beyond what the LLM can attend to. `NEW:` proposals
+   increase because the LLM can't match against a bloated list.
+
+**Solution**: A `vocabulary_relations` table.
+
+```sql
+CREATE TABLE vocabulary_relations (
+    source_id TEXT NOT NULL REFERENCES vocabulary(id),
+    target_id TEXT NOT NULL REFERENCES vocabulary(id),
+    relation TEXT NOT NULL,  -- "is-a", "combines", "optimizes", etc.
+    PRIMARY KEY (source_id, target_id, relation)
+);
+```
+
+This enables:
+- **Evidence rollup**: Sum paper_count across a concept and its `is-a` children
+  for matrix scoring.
+- **Explain enrichment**: "Quantization (includes GPTQ, AWQ, NF4)" with data
+  from all sub-techniques.
+- **Prompt compression**: Only show parent concepts in the extraction prompt;
+  sub-techniques are implied.
+- **LLM-populatable**: The extraction prompt can ask for relationships alongside
+  `NEW:` concepts: `"NEW: GPTQ (parent: Quantization)"`.
+
+**Why not a knowledge graph (Neo4j, etc.)**:
+- Every query LENS runs is 0 or 1 hop — no multi-hop traversal needed
+- A relations table is just pairwise relationships, which is exactly relational
+- SQLite's `WITH RECURSIVE` handles tree traversal if ever needed
+- No new infrastructure, no data sync, no second query language
+- Keeps LENS as a single-binary CLI tool with an embedded database
+
+**Implementation** (estimated half-day when triggered):
+1. Add `vocabulary_relations` table to `_TABLE_DDL`
+2. Extend extraction prompt to allow `NEW: GPTQ (parent: Quantization)` syntax
+3. Update `process_new_concepts` to parse parent references and insert relations
+4. Add evidence rollup query in matrix/explain (JOIN with relations + aggregate)
+5. Optionally compress extraction prompt to show only root concepts
 
 ## Phase 2: Multimodal (Future)
 

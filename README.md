@@ -16,7 +16,7 @@ Inspired by [TRIZ](https://en.wikipedia.org/wiki/TRIZ) methodology — but with 
 
 **Core pipeline implemented.** All three knowledge structures are functional: contradiction matrix, architecture catalog (property-based comparison), and agentic pattern catalog (emergent categories). Monitor/ideation pipeline operational.
 
-See [docs/specs/design.md](docs/specs/design.md) for the full design spec.
+See [docs/architecture.md](docs/architecture.md) for the full architecture doc.
 
 ## Quick Start
 
