@@ -106,7 +106,7 @@ uv run lens config set llm.default_model openrouter/anthropic/claude-sonnet-4-6
 
 ## LLM Backend
 
-LENS needs an LLM for extraction, taxonomy labeling, and analysis. Two options:
+LENS needs an LLM for extraction, taxonomy labeling, and analysis. For production deployment, see [docs/deployment.md](docs/deployment.md). Two options:
 
 **Gateway mode (recommended for production)** — Point to any OpenAI-compatible endpoint (litellm gateway, vLLM, Ollama). No litellm dependency needed. Keeps API keys out of application pods.
 

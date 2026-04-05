@@ -19,7 +19,7 @@ Design spec for a system that automatically discovers recurring solution pattern
 | **Architecture Catalog** | Done | Canonical slot vocabulary + free-text variants from extractions |
 | **Agentic Pattern Catalog** | Done | Canonical category vocabulary + free-text patterns from extractions |
 | **Monitor / Ideation** | Done | Sparse cells + cross-pollination gap detection, optional LLM enrichment |
-| **CLI** | Done | All commands wired; `vocab`, `explore`, `analyze`, `explain`, `build`, `monitor`, `lint`, `log` |
+| **CLI** | Done | All commands wired; `vocab`, `explore`, `analyze`, `explain`, `build`, `monitor`, `lint`, `log`, `export`, `import` |
 | **Acquire pipeline** | Done | arxiv, OpenAlex, Semantic Scholar, seed papers, PDF ingestion |
 | **Extract pipeline** | Done | LLM-guided extraction using canonical vocabulary for all 3 types |
 | **Vocabulary pipeline** | Done | Replaced HDBSCAN clustering. Single `build_vocabulary()` for all types |
@@ -32,6 +32,9 @@ Design spec for a system that automatically discovers recurring solution pattern
 | **Schema migrations** | Done | `_COLUMN_MIGRATIONS` in store.py for safe database upgrades |
 | **Event log** | Done | Unified `event_log` table; `log_event()` helper; `lens log` CLI with filters |
 | **Knowledge base linter** | Done | 6 checks (orphans, contradictions, weak evidence, missing embeddings, stale extractions, near-duplicates) with `--fix` mode |
+| **Config validation** | Done | `validate_config()` warns on invalid fields at load time; never crashes |
+| **Backup / restore** | Done | `lens export` (sqlite3 backup API) + `lens import` with SQLite validation and `--force` |
+| **Deployment guide** | Done | `docs/deployment.md` — API keys, gateway mode, data dir, backup, checklist |
 
 ### Partially Implemented
 

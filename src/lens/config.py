@@ -8,6 +8,7 @@ Environment variables from .env are loaded automatically.
 from __future__ import annotations
 
 import copy
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,69 @@ def _deep_merge(base: dict, override: dict) -> dict:
     return result
 
 
+logger = logging.getLogger(__name__)
+
+_VALID_EMBEDDING_PROVIDERS = {"local", "cloud"}
+
+
+def validate_config(config: dict[str, Any]) -> list[str]:
+    """Validate config values and return list of warnings. Also logs each warning."""
+    warnings: list[str] = []
+
+    def _warn(msg: str) -> None:
+        warnings.append(msg)
+        logger.warning(msg)
+
+    # LLM model names
+    llm = config.get("llm", {})
+    if not llm.get("default_model"):
+        _warn("llm.default_model is empty — LLM calls will fail")
+    if not llm.get("extract_model"):
+        _warn("llm.extract_model is empty — extraction will fail")
+
+    # Embedding provider
+    emb = config.get("embeddings", {})
+    provider = emb.get("provider", "")
+    if provider not in _VALID_EMBEDDING_PROVIDERS:
+        _warn(
+            f"embeddings.provider '{provider}' is not recognized"
+            f" (expected one of: {', '.join(sorted(_VALID_EMBEDDING_PROVIDERS))})"
+        )
+
+    # Embedding dimensions
+    dims = emb.get("dimensions", 0)
+    if not isinstance(dims, int) or dims <= 0:
+        _warn("embeddings.dimensions must be a positive integer")
+
+    # Storage data dir
+    storage = config.get("storage", {})
+    data_dir = storage.get("data_dir", "")
+    if data_dir:
+        try:
+            Path(data_dir).expanduser()
+        except RuntimeError:
+            _warn(f"storage.data_dir '{data_dir}' is not a valid path")
+    else:
+        _warn("storage.data_dir is empty")
+
+    # Arxiv categories
+    categories = config.get("acquire", {}).get("arxiv_categories", [])
+    if not isinstance(categories, list) or len(categories) == 0:
+        _warn("acquire.arxiv_categories must be a non-empty list")
+
+    # Monitor settings
+    mon = config.get("monitor", {})
+    top_n = mon.get("ideate_top_n", 0)
+    if not isinstance(top_n, int) or top_n <= 0:
+        _warn("monitor.ideate_top_n must be a positive integer")
+
+    gap_score = mon.get("ideate_min_gap_score", 0.0)
+    if not isinstance(gap_score, (int, float)) or gap_score < 0.0 or gap_score > 1.0:
+        _warn("monitor.ideate_min_gap_score must be between 0.0 and 1.0")
+
+    return warnings
+
+
 def load_config(config_path: Path | None = None) -> dict[str, Any]:
     path = config_path or DEFAULT_CONFIG_PATH
     cfg = default_config()
@@ -76,6 +140,7 @@ def load_config(config_path: Path | None = None) -> dict[str, Any]:
         with open(path) as f:
             user_cfg = yaml.safe_load(f) or {}
         cfg = _deep_merge(cfg, user_cfg)
+    validate_config(cfg)
     return cfg
 
 

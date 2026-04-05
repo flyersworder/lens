@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+import shutil
+from datetime import UTC
 from pathlib import Path
 from uuid import uuid4
 
@@ -52,6 +54,59 @@ def _get_config_path() -> Path | None:
     if env_override:
         return Path(env_override)
     return None
+
+
+def _export_db(source: Path, destination: Path) -> None:
+    """Back up the SQLite database using the sqlite3 backup API.
+
+    Uses Connection.backup() for WAL-safe, consistent snapshots rather
+    than raw file copy (which would miss WAL/SHM sidecar files).
+    """
+    import sqlite3
+
+    if not source.exists():
+        raise FileNotFoundError(f"Database not found: {source}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    src_conn = sqlite3.connect(str(source))
+    try:
+        dst_conn = sqlite3.connect(str(destination))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
+
+
+def _import_db(source: Path, destination: Path, force: bool = False) -> None:
+    """Restore a backup database to the destination path."""
+    import sqlite3
+
+    if not source.exists():
+        raise FileNotFoundError(f"Backup file not found: {source}")
+    # Verify source is a valid SQLite database before overwriting anything
+    try:
+        conn = sqlite3.connect(str(source))
+        try:
+            result = conn.execute("PRAGMA integrity_check").fetchone()
+            if result[0] != "ok":
+                raise ValueError(f"Source database is corrupt: {source}")
+        finally:
+            conn.close()
+    except sqlite3.DatabaseError as e:
+        raise ValueError(f"Source file is not a valid SQLite database: {source}") from e
+    if destination.exists() and not force:
+        raise FileExistsError(
+            f"Database already exists at {destination}. Use --force to overwrite."
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    # Remove stale WAL/SHM sidecar files before restoring — if left behind,
+    # SQLite would apply the old WAL to the newly-restored database.
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(destination) + suffix)
+        if sidecar.exists():
+            sidecar.unlink()
+    shutil.copy2(source, destination)
 
 
 def _get_store() -> LensStore:
@@ -418,6 +473,60 @@ def show_log(
             detail_str = f"  ({', '.join(parts[:3])})"
 
         typer.echo(f"{ts}  {k:<8} {action:<28} {target}{detail_str}")
+
+
+@app.command()
+def export(
+    output: str | None = typer.Option(None, "--output", help="Destination path for backup file."),
+) -> None:
+    """Back up the LENS database to a file."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    db_path = data_dir / "lens.db"
+
+    if not db_path.exists():
+        rprint("[red]No database found. Run 'lens init' first.[/red]")
+        raise typer.Exit(code=1)
+
+    if output:
+        dest = Path(output)
+    else:
+        from datetime import datetime
+
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
+        dest = Path(f"lens-backup-{ts}.db")
+
+    _export_db(source=db_path, destination=dest)
+    size_mb = dest.stat().st_size / (1024 * 1024)
+    rprint(f"[green]Exported database to {dest} ({size_mb:.1f} MB)[/green]")
+
+
+@app.command(name="import")
+def import_db(
+    path: Path = typer.Argument(..., help="Path to backup database file."),  # noqa: B008
+    force: bool = typer.Option(False, "--force", help="Overwrite existing database."),
+) -> None:
+    """Restore the LENS database from a backup file."""
+    if not path.exists():
+        rprint(f"[red]Backup file not found: {path}[/red]")
+        raise typer.Exit(code=1)
+
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    target_db = data_dir / "lens.db"
+
+    if target_db.exists() and not force:
+        rprint(f"[red]Database already exists at {target_db}. Use --force to overwrite.[/red]")
+        raise typer.Exit(code=1)
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    _import_db(source=path, destination=target_db, force=force)
+
+    # Run migrations on imported database
+    store = LensStore(str(target_db))
+    store.init_tables()
+
+    rprint(f"[green]Restored database from {path} to {target_db}[/green]")
 
 
 # ---------------------------------------------------------------------------
