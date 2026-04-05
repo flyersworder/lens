@@ -64,6 +64,18 @@ def _export_db(source: Path, destination: Path) -> None:
     shutil.copy2(source, destination)
 
 
+def _import_db(source: Path, destination: Path, force: bool = False) -> None:
+    """Copy a backup database to the destination path."""
+    if not source.exists():
+        raise FileNotFoundError(f"Backup file not found: {source}")
+    if destination.exists() and not force:
+        raise FileExistsError(
+            f"Database already exists at {destination}. Use --force to overwrite."
+        )
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
+
+
 def _get_store() -> LensStore:
     """Return an initialised LensStore using the current config."""
     config = load_config(_get_config_path())
@@ -454,6 +466,34 @@ def export(
     _export_db(source=db_path, destination=dest)
     size_mb = dest.stat().st_size / (1024 * 1024)
     rprint(f"[green]Exported database to {dest} ({size_mb:.1f} MB)[/green]")
+
+
+@app.command(name="import")
+def import_db(
+    path: Path = typer.Argument(..., help="Path to backup database file."),  # noqa: B008
+    force: bool = typer.Option(False, "--force", help="Overwrite existing database."),
+) -> None:
+    """Restore the LENS database from a backup file."""
+    if not path.exists():
+        rprint(f"[red]Backup file not found: {path}[/red]")
+        raise typer.Exit(code=1)
+
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    target_db = data_dir / "lens.db"
+
+    if target_db.exists() and not force:
+        rprint(f"[red]Database already exists at {target_db}. Use --force to overwrite.[/red]")
+        raise typer.Exit(code=1)
+
+    data_dir.mkdir(parents=True, exist_ok=True)
+    _import_db(source=path, destination=target_db, force=force)
+
+    # Run migrations on imported database
+    store = LensStore(str(target_db))
+    store.init_tables()
+
+    rprint(f"[green]Restored database from {path} to {target_db}[/green]")
 
 
 # ---------------------------------------------------------------------------

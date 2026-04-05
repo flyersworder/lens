@@ -120,3 +120,57 @@ def test_export_missing_db(tmp_path):
 
     with pytest.raises(FileNotFoundError):
         _export_db(source=tmp_path / "nonexistent.db", destination=tmp_path / "out.db")
+
+
+def test_import_restores_db(tmp_path):
+    """lens import should copy backup to data dir."""
+    backup_path = tmp_path / "backup.db"
+    store = LensStore(str(backup_path))
+    store.init_tables()
+    store.conn.close()
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    target_db = data_dir / "lens.db"
+
+    from lens.cli import _import_db
+
+    _import_db(source=backup_path, destination=target_db, force=False)
+
+    assert target_db.exists()
+    assert target_db.stat().st_size > 0
+
+
+def test_import_refuses_overwrite(tmp_path):
+    """lens import should refuse to overwrite without --force."""
+    backup_path = tmp_path / "backup.db"
+    store = LensStore(str(backup_path))
+    store.init_tables()
+    store.conn.close()
+
+    target_db = tmp_path / "data" / "lens.db"
+    target_db.parent.mkdir()
+    target_db.write_text("existing")
+
+    from lens.cli import _import_db
+
+    with pytest.raises(FileExistsError):
+        _import_db(source=backup_path, destination=target_db, force=False)
+
+
+def test_import_with_force(tmp_path):
+    """lens import --force should overwrite existing DB."""
+    backup_path = tmp_path / "backup.db"
+    store = LensStore(str(backup_path))
+    store.init_tables()
+    store.conn.close()
+
+    target_db = tmp_path / "data" / "lens.db"
+    target_db.parent.mkdir()
+    target_db.write_text("existing")
+
+    from lens.cli import _import_db
+
+    _import_db(source=backup_path, destination=target_db, force=True)
+
+    assert target_db.stat().st_size > len("existing")
