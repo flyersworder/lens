@@ -30,11 +30,14 @@ def fix_orphans(store: LensStore) -> list[str]:
 
 
 def check_weak_evidence(store: LensStore, confidence_threshold: float = 0.5) -> list[dict]:
-    """Find vocabulary entries with thin evidence (1 paper or low confidence)."""
+    """Find vocabulary entries with thin evidence (1 paper or low confidence).
+
+    Seed entries are excluded — they start with paper_count=0 by design.
+    """
     return store.query_sql(
         "SELECT id, name, kind, paper_count, avg_confidence "
         "FROM vocabulary "
-        "WHERE paper_count = 1 OR avg_confidence < ?",
+        "WHERE source != 'seed' AND (paper_count = 1 OR avg_confidence < ?)",
         (confidence_threshold,),
     )
 
@@ -134,9 +137,10 @@ def check_near_duplicates(store: LensStore, similarity_threshold: float = 0.92) 
                     "FROM vocabulary_vec "
                     "WHERE embedding MATCH (SELECT embedding FROM vocabulary_vec WHERE id = ?) "
                     "AND k = ? AND id != ?",
-                    (entry["id"], len(entries), entry["id"]),
+                    (entry["id"], min(len(entries), 20), entry["id"]),
                 )
             except Exception:
+                logger.debug("Near-duplicate search failed for %s", entry["id"], exc_info=True)
                 continue
 
             for neighbor in neighbors:

@@ -410,15 +410,9 @@ def show_log(
 
         detail_str = ""
         detail = event.get("detail")
-        if detail:
-            if isinstance(detail, str):
-                import json
-
-                detail = json.loads(detail)
-            if isinstance(detail, dict):
-                parts = [f"{v}" for v in detail.values()]
-                if parts:
-                    detail_str = f"  ({', '.join(parts[:3])})"
+        if isinstance(detail, dict) and detail:
+            parts = [f"{v}" for v in detail.values()]
+            detail_str = f"  ({', '.join(parts[:3])})"
 
         typer.echo(f"{ts}  {k:<8} {action:<28} {target}{detail_str}")
 

@@ -28,7 +28,7 @@ def log_event(
                 "action": action,
                 "target_type": target_type,
                 "target_id": target_id,
-                "detail": detail or {},
+                "detail": detail,
                 "session_id": session_id,
             }
         ],
@@ -42,7 +42,11 @@ def query_events(
     limit: int = 20,
     session_id: str | None = None,
 ) -> list[dict]:
-    """Query event_log with optional filters. Returns newest-first."""
+    """Query event_log with optional filters. Returns newest-first.
+
+    Uses query_sql (not query) for ORDER BY/LIMIT support.
+    Manually deserializes the detail JSON since query_sql skips that.
+    """
     clauses: list[str] = []
     params: list[str | int] = []
 
