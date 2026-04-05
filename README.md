@@ -1,5 +1,10 @@
 # LENS — LLM Engineering Navigation System
 
+[![PyPI version](https://img.shields.io/pypi/v/lens-research)](https://pypi.org/project/lens-research/)
+[![Python](https://img.shields.io/pypi/pyversions/lens-research)](https://pypi.org/project/lens-research/)
+[![CI](https://github.com/flyersworder/lens/actions/workflows/ci-and-publish.yml/badge.svg)](https://github.com/flyersworder/lens/actions/workflows/ci-and-publish.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
+
 Automatically discovers recurring solution patterns, contradiction resolutions, architecture innovations, and agentic design patterns from LLM research papers (arxiv).
 
 Inspired by [TRIZ](https://en.wikipedia.org/wiki/TRIZ) methodology — but with richer knowledge structures, fully automated discovery, and continuous learning from the evolving LLM research landscape.
