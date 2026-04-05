@@ -1,6 +1,18 @@
 """Tests for the LENS knowledge base linter."""
 
-from lens.knowledge.linter import check_contradictions, check_orphan_vocabulary, fix_orphans
+import numpy as np
+
+from lens.knowledge.linter import (
+    check_contradictions,
+    check_missing_embeddings,
+    check_near_duplicates,
+    check_orphan_vocabulary,
+    check_stale_extractions,
+    check_weak_evidence,
+    fix_orphans,
+    fix_stale_extractions,
+)
+from lens.store.models import EMBEDDING_DIM
 from lens.store.store import LensStore
 from lens.taxonomy.vocabulary import load_seed_vocabulary
 
@@ -141,3 +153,279 @@ def test_lint_contradictions_ignores_weak(tmp_path):
 
     contradictions = check_contradictions(store)
     assert len(contradictions) == 0
+
+
+def test_lint_weak_evidence(tmp_path):
+    """Entries with paper_count=1 or low confidence should be flagged."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "strong-concept",
+                "name": "Strong Concept",
+                "kind": "parameter",
+                "description": "Well-supported",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 5,
+                "avg_confidence": 0.8,
+            },
+            {
+                "id": "weak-one-paper",
+                "name": "Weak One Paper",
+                "kind": "parameter",
+                "description": "Only one paper",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 1,
+                "avg_confidence": 0.9,
+            },
+            {
+                "id": "weak-low-conf",
+                "name": "Weak Low Conf",
+                "kind": "principle",
+                "description": "Low confidence",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 3,
+                "avg_confidence": 0.3,
+            },
+        ],
+    )
+
+    findings = check_weak_evidence(store, confidence_threshold=0.5)
+    ids = {f["id"] for f in findings}
+    assert "weak-one-paper" in ids
+    assert "weak-low-conf" in ids
+    assert "strong-concept" not in ids
+
+
+def test_lint_missing_embeddings(tmp_path):
+    """Vocabulary entries without a vec row should be flagged."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "no-vec",
+                "name": "No Vec Entry",
+                "kind": "parameter",
+                "description": "Missing embedding",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 2,
+                "avg_confidence": 0.8,
+            }
+        ],
+    )
+
+    findings = check_missing_embeddings(store)
+    assert len(findings) == 1
+    assert findings[0]["id"] == "no-vec"
+
+
+def test_lint_missing_embeddings_none_when_present(tmp_path):
+    """Vocabulary entries WITH a vec row should not be flagged."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "has-vec",
+                "name": "Has Vec Entry",
+                "kind": "parameter",
+                "description": "Has embedding",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 2,
+                "avg_confidence": 0.8,
+                "embedding": [0.1] * 768,
+            }
+        ],
+    )
+
+    findings = check_missing_embeddings(store)
+    assert len(findings) == 0
+
+
+def test_lint_stale_extractions(tmp_path):
+    """Papers with non-complete status should be flagged."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "papers",
+        [
+            {
+                "paper_id": "complete-paper",
+                "title": "Good Paper",
+                "abstract": "All done",
+                "authors": ["A"],
+                "date": "2026-01-01",
+                "arxiv_id": "2601.00001",
+                "extraction_status": "complete",
+                "embedding": [0.0] * EMBEDDING_DIM,
+            },
+            {
+                "paper_id": "failed-paper",
+                "title": "Bad Paper",
+                "abstract": "Failed",
+                "authors": ["B"],
+                "date": "2026-01-01",
+                "arxiv_id": "2601.00002",
+                "extraction_status": "failed",
+                "embedding": [0.0] * EMBEDDING_DIM,
+            },
+            {
+                "paper_id": "pending-paper",
+                "title": "Waiting Paper",
+                "abstract": "Pending",
+                "authors": ["C"],
+                "date": "2026-01-01",
+                "arxiv_id": "2601.00003",
+                "extraction_status": "pending",
+                "embedding": [0.0] * EMBEDDING_DIM,
+            },
+        ],
+    )
+
+    findings = check_stale_extractions(store)
+    ids = {f["paper_id"] for f in findings}
+    assert "failed-paper" in ids
+    assert "pending-paper" in ids
+    assert "complete-paper" not in ids
+
+
+def test_lint_fix_stale_requeues(tmp_path):
+    """fix_stale_extractions() should reset status to pending."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "papers",
+        [
+            {
+                "paper_id": "failed-paper",
+                "title": "Bad Paper",
+                "abstract": "Failed",
+                "authors": ["B"],
+                "date": "2026-01-01",
+                "arxiv_id": "2601.00002",
+                "extraction_status": "failed",
+                "embedding": [0.0] * EMBEDDING_DIM,
+            }
+        ],
+    )
+
+    requeued = fix_stale_extractions(store)
+    assert requeued == ["failed-paper"]
+
+    paper = store.query("papers", "paper_id = ?", ("failed-paper",))
+    assert paper[0]["extraction_status"] == "pending"
+
+
+def test_lint_near_duplicates(tmp_path):
+    """Vocabulary entries with very similar embeddings should be paired."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    # Create two nearly identical embeddings
+    base_emb = np.random.RandomState(42).randn(EMBEDDING_DIM).astype(np.float32)
+    base_emb = base_emb / np.linalg.norm(base_emb)
+    similar_emb = (
+        base_emb + np.random.RandomState(43).randn(EMBEDDING_DIM).astype(np.float32) * 0.01
+    )
+    similar_emb = similar_emb / np.linalg.norm(similar_emb)
+    different_emb = np.random.RandomState(99).randn(EMBEDDING_DIM).astype(np.float32)
+    different_emb = different_emb / np.linalg.norm(different_emb)
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "concept-a",
+                "name": "Concept A",
+                "kind": "parameter",
+                "description": "First concept",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 3,
+                "avg_confidence": 0.8,
+                "embedding": base_emb.tolist(),
+            },
+            {
+                "id": "concept-a-variant",
+                "name": "Concept A Variant",
+                "kind": "parameter",
+                "description": "Nearly identical to first",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 1,
+                "avg_confidence": 0.7,
+                "embedding": similar_emb.tolist(),
+            },
+            {
+                "id": "concept-b",
+                "name": "Concept B",
+                "kind": "parameter",
+                "description": "Completely different",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 2,
+                "avg_confidence": 0.9,
+                "embedding": different_emb.tolist(),
+            },
+        ],
+    )
+
+    pairs = check_near_duplicates(store, similarity_threshold=0.92)
+    assert len(pairs) == 1
+    pair_ids = {pairs[0]["id_a"], pairs[0]["id_b"]}
+    assert pair_ids == {"concept-a", "concept-a-variant"}
+
+
+def test_lint_near_duplicates_different_kinds(tmp_path):
+    """Near-duplicates across different kinds should NOT be paired."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    base_emb = np.random.RandomState(42).randn(EMBEDDING_DIM).astype(np.float32)
+    base_emb = base_emb / np.linalg.norm(base_emb)
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "param-x",
+                "name": "Param X",
+                "kind": "parameter",
+                "description": "A parameter",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 2,
+                "avg_confidence": 0.8,
+                "embedding": base_emb.tolist(),
+            },
+            {
+                "id": "principle-x",
+                "name": "Principle X",
+                "kind": "principle",
+                "description": "A principle",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 2,
+                "avg_confidence": 0.8,
+                "embedding": base_emb.tolist(),
+            },
+        ],
+    )
+
+    pairs = check_near_duplicates(store, similarity_threshold=0.92)
+    assert len(pairs) == 0
