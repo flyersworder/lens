@@ -168,6 +168,105 @@ def check_near_duplicates(store: LensStore, similarity_threshold: float = 0.92) 
     return pairs
 
 
+def fix_duplicates(store: LensStore, pairs: list[dict]) -> list[dict]:
+    """Merge near-duplicate vocabulary pairs.
+
+    The lower paper_count entry is merged into the higher one.
+
+    For each pair:
+    1. Rewrite extraction references from duplicate name to keeper name
+    2. Sum paper_count, recalculate avg_confidence
+    3. Delete the duplicate entry + embedding
+    Returns list of merge info dicts.
+    """
+    if not pairs:
+        return []
+
+    # Load current vocabulary for stats lookup
+    vocab = {r["id"]: r for r in store.query("vocabulary")}
+    merges = []
+
+    for pair in pairs:
+        id_a, id_b = pair["id_a"], pair["id_b"]
+        entry_a = vocab.get(id_a)
+        entry_b = vocab.get(id_b)
+        if not entry_a or not entry_b:
+            continue
+
+        # Keeper has higher paper_count; on tie, keep alphabetically first
+        if entry_a["paper_count"] > entry_b["paper_count"] or (
+            entry_a["paper_count"] == entry_b["paper_count"] and id_a <= id_b
+        ):
+            keeper, duplicate = entry_a, entry_b
+        else:
+            keeper, duplicate = entry_b, entry_a
+
+        dup_name = duplicate["name"]
+        keeper_name = keeper["name"]
+
+        # Rewrite tradeoff_extractions
+        store.conn.execute(
+            "UPDATE tradeoff_extractions SET improves = ? WHERE improves = ?",
+            (keeper_name, dup_name),
+        )
+        store.conn.execute(
+            "UPDATE tradeoff_extractions SET worsens = ? WHERE worsens = ?",
+            (keeper_name, dup_name),
+        )
+        store.conn.execute(
+            "UPDATE tradeoff_extractions SET technique = ? WHERE technique = ?",
+            (keeper_name, dup_name),
+        )
+
+        # Rewrite architecture_extractions
+        store.conn.execute(
+            "UPDATE architecture_extractions SET component_slot = ? WHERE component_slot = ?",
+            (keeper_name, dup_name),
+        )
+
+        # Rewrite agentic_extractions
+        store.conn.execute(
+            "UPDATE agentic_extractions SET category = ? WHERE category = ?",
+            (keeper_name, dup_name),
+        )
+
+        store.conn.commit()
+
+        # Merge stats: sum paper_count, weighted avg confidence
+        total_papers = keeper["paper_count"] + duplicate["paper_count"]
+        if total_papers > 0:
+            weighted_conf = (
+                keeper["avg_confidence"] * keeper["paper_count"]
+                + duplicate["avg_confidence"] * duplicate["paper_count"]
+            ) / total_papers
+        else:
+            weighted_conf = 0.0
+
+        store.update(
+            "vocabulary",
+            "paper_count = ?, avg_confidence = ?",
+            "id = ?",
+            (total_papers, round(weighted_conf, 4), keeper["id"]),
+        )
+
+        # Delete the duplicate
+        store.delete("vocabulary", "id = ?", (duplicate["id"],))
+
+        # Remove from our local cache so we don't try to merge it again
+        vocab.pop(duplicate["id"], None)
+
+        merges.append(
+            {
+                "keeper_id": keeper["id"],
+                "duplicate_id": duplicate["id"],
+                "keeper_name": keeper_name,
+                "duplicate_name": dup_name,
+            }
+        )
+
+    return merges
+
+
 def lint(
     store: LensStore,
     fix: bool = False,
@@ -331,6 +430,29 @@ def lint(
                     "extraction.requeued",
                     target_type="paper",
                     target_id=pid,
+                    session_id=session_id,
+                )
+
+        if "near_duplicates" in active_checks and report.near_duplicates:
+            merged = fix_duplicates(store, report.near_duplicates)
+            for m in merged:
+                report.fixes_applied.append(
+                    {
+                        "action": "duplicate.merged",
+                        "target_id": m["duplicate_id"],
+                        "keeper_id": m["keeper_id"],
+                    }
+                )
+                log_event(
+                    store,
+                    "fix",
+                    "duplicate.merged",
+                    target_type="vocabulary",
+                    target_id=m["duplicate_id"],
+                    detail={
+                        "keeper_id": m["keeper_id"],
+                        "duplicate_name": m["duplicate_name"],
+                    },
                     session_id=session_id,
                 )
 

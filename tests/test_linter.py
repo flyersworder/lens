@@ -9,6 +9,7 @@ from lens.knowledge.linter import (
     check_orphan_vocabulary,
     check_stale_extractions,
     check_weak_evidence,
+    fix_duplicates,
     fix_orphans,
     fix_stale_extractions,
     lint,
@@ -534,3 +535,81 @@ def test_lint_check_filter(tmp_path):
     report = lint(store, checks=["orphans"])
     assert len(report.orphans) == 1
     assert report.stale_extractions == []
+
+
+def test_lint_fix_merge_duplicates(tmp_path):
+    """fix_duplicates() should merge lower-count entry into higher-count."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    base_emb = np.random.RandomState(42).randn(EMBEDDING_DIM).astype(np.float32)
+    base_emb = base_emb / np.linalg.norm(base_emb)
+    similar_emb = (
+        base_emb + np.random.RandomState(43).randn(EMBEDDING_DIM).astype(np.float32) * 0.01
+    )
+    similar_emb = similar_emb / np.linalg.norm(similar_emb)
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "keeper-concept",
+                "name": "Keeper Concept",
+                "kind": "parameter",
+                "description": "Has more papers",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 5,
+                "avg_confidence": 0.8,
+                "embedding": base_emb.tolist(),
+            },
+            {
+                "id": "duplicate-concept",
+                "name": "Duplicate Concept",
+                "kind": "parameter",
+                "description": "Has fewer papers",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 2,
+                "avg_confidence": 0.7,
+                "embedding": similar_emb.tolist(),
+            },
+        ],
+    )
+
+    # Add a tradeoff extraction referencing the duplicate
+    store.add_rows(
+        "tradeoff_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "improves": "Duplicate Concept",
+                "worsens": "Model Accuracy",
+                "technique": "Quantization",
+                "context": "test",
+                "confidence": 0.9,
+                "evidence_quote": "quote",
+                "new_concepts": {},
+            }
+        ],
+    )
+
+    pairs = check_near_duplicates(store, similarity_threshold=0.92)
+    assert len(pairs) == 1
+
+    merges = fix_duplicates(store, pairs)
+    assert len(merges) == 1
+    assert merges[0]["keeper_id"] == "keeper-concept"
+    assert merges[0]["duplicate_id"] == "duplicate-concept"
+
+    # Duplicate should be gone
+    remaining = store.query("vocabulary", "id = ?", ("duplicate-concept",))
+    assert len(remaining) == 0
+
+    # Keeper should have merged stats
+    keeper = store.query("vocabulary", "id = ?", ("keeper-concept",))
+    assert keeper[0]["paper_count"] == 7  # 5 + 2
+
+    # Extraction should reference keeper now
+    extractions = store.query("tradeoff_extractions")
+    assert extractions[0]["improves"] == "Keeper Concept"
