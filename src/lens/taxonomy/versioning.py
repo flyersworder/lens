@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
+from lens.knowledge.events import log_event
 from lens.store.store import LensStore
 
 
@@ -31,6 +32,7 @@ def record_version(
     slot_count: int = 0,
     variant_count: int = 0,
     pattern_count: int = 0,
+    session_id: str | None = None,
 ) -> None:
     """Record a taxonomy version in the store."""
     store.add_rows(
@@ -47,4 +49,17 @@ def record_version(
                 "pattern_count": pattern_count,
             }
         ],
+    )
+    log_event(
+        store,
+        "build",
+        "version.recorded",
+        target_type="taxonomy_version",
+        target_id=str(version_id),
+        detail={
+            "paper_count": paper_count,
+            "param_count": param_count,
+            "principle_count": principle_count,
+        },
+        session_id=session_id,
     )
