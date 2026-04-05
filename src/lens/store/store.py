@@ -30,6 +30,7 @@ JSON_FIELDS: dict[str, set[str]] = {
     "agentic_extractions": {"components", "new_concepts"},
     "matrix_cells": {"paper_ids"},
     "ideation_gaps": {"related_params", "related_principles", "related_slots"},
+    "event_log": {"detail"},
 }
 
 # SQL CREATE TABLE statements for all 9 regular tables.
@@ -127,6 +128,16 @@ _TABLE_DDL = [
         llm_hypothesis TEXT,
         created_at TEXT NOT NULL,
         taxonomy_version INTEGER NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS event_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT NOT NULL,
+        kind TEXT NOT NULL,
+        action TEXT NOT NULL,
+        target_type TEXT,
+        target_id TEXT,
+        detail TEXT,
+        session_id TEXT
     )""",
 ]
 
