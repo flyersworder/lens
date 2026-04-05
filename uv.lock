@@ -710,7 +710,7 @@ wheels = [
 ]
 
 [[package]]
-name = "lens"
+name = "lens-research"
 version = "0.6.0"
 source = { editable = "." }
 dependencies = [

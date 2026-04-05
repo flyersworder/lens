@@ -1,9 +1,22 @@
 [project]
-name = "lens"
+name = "lens-research"
 version = "0.6.0"
 description = "LLM Engineering Navigation System — discovers recurring solution patterns from LLM research papers"
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [{ name = "Qing", email = "qingye779@gmail.com" }]
+license = { text = "MIT" }
+keywords = ["llm", "research", "tradeoffs", "triz", "knowledge-base", "arxiv", "ai"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
 dependencies = [
     "pydantic>=2.0",
     "typer>=0.12",
@@ -25,9 +38,18 @@ litellm = ["litellm>=1.40"]
 [project.scripts]
 lens = "lens.cli:app"
 
+[project.urls]
+Homepage = "https://github.com/flyersworder/lens"
+Repository = "https://github.com/flyersworder/lens"
+Issues = "https://github.com/flyersworder/lens/issues"
+Changelog = "https://github.com/flyersworder/lens/releases"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/lens"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

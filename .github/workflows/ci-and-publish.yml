@@ -1,0 +1,42 @@
+name: Python CI and Publish to PyPI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  release:
+    types: [created]
+  workflow_dispatch:
+    inputs:
+      run_publish:
+        description: 'Set to true to run the publish job'
+        required: false
+        default: 'false'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+      - run: uv python install 3.12
+      - run: uv sync --all-extras --dev
+      - run: uv run pytest
+
+  publish:
+    needs: test
+    if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_publish == 'true')
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v3
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv build --no-sources
+      - uses: pypa/gh-action-pypi-publish@release/v1
