@@ -2,6 +2,8 @@
 
 import yaml
 
+from lens.config import validate_config
+
 
 def test_default_config():
     from lens.config import default_config
@@ -67,3 +69,63 @@ def test_resolved_data_dir():
     resolved = resolve_data_dir(cfg)
     assert "~" not in resolved
     assert resolved.endswith(".lens/data")
+
+
+def test_validate_config_valid():
+    """Default config should produce no warnings."""
+    from lens.config import default_config
+
+    warnings = validate_config(default_config())
+    assert warnings == []
+
+
+def test_validate_config_empty_model():
+    """Empty model strings should produce warnings."""
+    from lens.config import default_config
+
+    cfg = default_config()
+    cfg["llm"]["default_model"] = ""
+    cfg["llm"]["extract_model"] = ""
+    warnings = validate_config(cfg)
+    assert any("llm.default_model" in w for w in warnings)
+    assert any("llm.extract_model" in w for w in warnings)
+
+
+def test_validate_config_invalid_provider():
+    """Unknown embedding provider should produce a warning."""
+    from lens.config import default_config
+
+    cfg = default_config()
+    cfg["embeddings"]["provider"] = "invalid"
+    warnings = validate_config(cfg)
+    assert any("embeddings.provider" in w for w in warnings)
+
+
+def test_validate_config_bad_dimensions():
+    """Non-positive dimensions should produce a warning."""
+    from lens.config import default_config
+
+    cfg = default_config()
+    cfg["embeddings"]["dimensions"] = -1
+    warnings = validate_config(cfg)
+    assert any("embeddings.dimensions" in w for w in warnings)
+
+
+def test_validate_config_invalid_categories():
+    """Empty arxiv_categories should produce a warning."""
+    from lens.config import default_config
+
+    cfg = default_config()
+    cfg["acquire"]["arxiv_categories"] = []
+    warnings = validate_config(cfg)
+    assert any("arxiv_categories" in w for w in warnings)
+
+
+def test_validate_config_gap_score_range():
+    """Out-of-range gap score should produce a warning."""
+    from lens.config import default_config
+
+    cfg = default_config()
+    cfg["monitor"]["ideate_min_gap_score"] = 1.5
+    warnings = validate_config(cfg)
+    assert any("ideate_min_gap_score" in w for w in warnings)
