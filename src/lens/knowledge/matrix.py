@@ -7,6 +7,7 @@ import logging
 from collections import defaultdict
 from typing import Any
 
+from lens.knowledge.events import log_event
 from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
@@ -18,7 +19,7 @@ def _build_vocab_name_map(store: LensStore) -> dict[str, str]:
     return {r["name"]: r["id"] for r in rows}
 
 
-def build_matrix(store: LensStore) -> None:
+def build_matrix(store: LensStore, session_id: str | None = None) -> None:
     """Build the contradiction matrix from extractions + vocabulary.
 
     Full rebuild — deletes all existing cells first.
@@ -82,6 +83,9 @@ def build_matrix(store: LensStore) -> None:
     if cell_rows:
         store.add_rows("matrix_cells", cell_rows)
         logger.info("Built matrix with %d cells", len(cell_rows))
+        log_event(
+            store, "build", "matrix.built", detail={"cells": len(cell_rows)}, session_id=session_id
+        )
 
 
 def get_ranked_matrix(

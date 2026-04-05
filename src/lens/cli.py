@@ -3,12 +3,14 @@
 import asyncio
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import typer
 import yaml
 from rich import print as rprint
 
 from lens.config import load_config, resolve_data_dir, save_config, set_config_value
+from lens.knowledge.events import log_event
 from lens.store.models import EMBEDDING_DIM
 from lens.store.store import LensStore
 
@@ -241,7 +243,12 @@ def extract(
     from lens.llm.client import LLMClient
 
     client = LLMClient(model=llm_model, **_llm_kwargs(config))
-    count = asyncio.run(extract_papers(store, client, concurrency=concurrency, paper_id=paper_id))
+    session_id = str(uuid4())[:8]
+    count = asyncio.run(
+        extract_papers(
+            store, client, concurrency=concurrency, paper_id=paper_id, session_id=session_id
+        )
+    )
     rprint(f"[green]Extracted {count} papers[/green]")
 
 
@@ -292,6 +299,127 @@ def monitor(
         rprint(f"  Gaps found: {result['ideation_report']['gap_count']}")
 
 
+@app.command()
+def lint(
+    fix: bool = typer.Option(False, "--fix", help="Apply safe auto-fixes after reporting."),
+    check: str | None = typer.Option(
+        None,
+        "--check",
+        help=(
+            "Comma-separated checks to run: "
+            "orphans,contradictions,weak_evidence,missing_embeddings,stale,near_duplicates"
+        ),
+    ),
+    threshold_confidence: float = typer.Option(
+        0.5, "--threshold-confidence", help="Weak evidence confidence cutoff."
+    ),
+    threshold_similarity: float = typer.Option(
+        0.92, "--threshold-similarity", help="Near-duplicate cosine similarity threshold."
+    ),
+) -> None:
+    """Health-check the knowledge base for issues."""
+    from lens.knowledge.linter import lint as run_lint
+
+    store = _get_store()
+    config = load_config(_get_config_path())
+    session_id = str(uuid4())[:8]
+
+    checks = [c.strip() for c in check.split(",")] if check else None
+
+    emb_cfg = config.get("embeddings", {})
+    report = run_lint(
+        store,
+        fix=fix,
+        session_id=session_id,
+        checks=checks,
+        confidence_threshold=threshold_confidence,
+        similarity_threshold=threshold_similarity,
+        embedding_provider=emb_cfg.get("provider", "local"),
+        embedding_model=emb_cfg.get("model"),
+        embedding_api_base=emb_cfg.get("api_base"),
+        embedding_api_key=emb_cfg.get("api_key"),
+    )
+
+    typer.echo(f"\nLint Report (session {session_id})")
+    typer.echo("─" * 36)
+    typer.echo(f"  Orphan vocabulary:     {len(report.orphans)} found")
+    typer.echo(f"  Contradictions:        {len(report.contradictions)} found")
+    typer.echo(f"  Weak evidence:         {len(report.weak_evidence)} found")
+    typer.echo(f"  Missing embeddings:    {len(report.missing_embeddings)} found")
+    typer.echo(f"  Stale extractions:     {len(report.stale_extractions)} found")
+    typer.echo(f"  Near-duplicates:       {len(report.near_duplicates)} pairs found")
+    typer.echo("─" * 36)
+
+    total = (
+        len(report.orphans)
+        + len(report.contradictions)
+        + len(report.weak_evidence)
+        + len(report.missing_embeddings)
+        + len(report.stale_extractions)
+        + len(report.near_duplicates)
+    )
+    typer.echo(f"  Total issues:          {total}\n")
+
+    if fix and report.fixes_applied:
+        orphan_fixes = sum(1 for f in report.fixes_applied if f["action"] == "orphan.deleted")
+        emb_fixes = sum(1 for f in report.fixes_applied if f["action"] == "embedding.repaired")
+        requeue_fixes = sum(
+            1 for f in report.fixes_applied if f["action"] == "extraction.requeued"
+        )
+        merge_fixes = sum(1 for f in report.fixes_applied if f["action"] == "duplicate.merged")
+        if orphan_fixes:
+            typer.echo(f"  Fixed: deleted {orphan_fixes} orphan vocabulary entries")
+        if emb_fixes:
+            typer.echo(f"  Fixed: embedded {emb_fixes} missing vocabulary entries")
+        if requeue_fixes:
+            typer.echo(f"  Fixed: requeued {requeue_fixes} stale extractions")
+        if merge_fixes:
+            typer.echo(f"  Fixed: merged {merge_fixes} near-duplicate entries")
+        typer.echo()
+    elif not fix and total > 0:
+        typer.echo("Use --fix to apply safe auto-fixes.\n")
+
+
+@app.command(name="log")
+def show_log(
+    kind: str | None = typer.Option(
+        None, "--kind", help="Filter by event kind (ingest, extract, build, lint, fix)."
+    ),
+    since: str | None = typer.Option(
+        None, "--since", help="Show events after this date (YYYY-MM-DD)."
+    ),
+    limit: int = typer.Option(20, "--limit", help="Max events to show."),
+    session: str | None = typer.Option(
+        None, "--session", help="Show events from a specific session."
+    ),
+) -> None:
+    """Show the event log."""
+    from lens.knowledge.events import query_events
+
+    store = _get_store()
+    events = query_events(store, kind=kind, since=since, limit=limit, session_id=session)
+
+    if not events:
+        typer.echo("No events found.")
+        return
+
+    for event in events:
+        ts = event["timestamp"][:16].replace("T", " ")
+        k = event["kind"]
+        action = event["action"]
+        target = ""
+        if event.get("target_type") and event.get("target_id"):
+            target = f"{event['target_type']}:{event['target_id']}"
+
+        detail_str = ""
+        detail = event.get("detail")
+        if isinstance(detail, dict) and detail:
+            parts = [f"{v}" for v in detail.values()]
+            detail_str = f"  ({', '.join(parts[:3])})"
+
+        typer.echo(f"{ts}  {k:<8} {action:<28} {target}{detail_str}")
+
+
 # ---------------------------------------------------------------------------
 # Acquire subcommands
 # ---------------------------------------------------------------------------
@@ -305,6 +433,15 @@ def seed() -> None:
     store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
     count = asyncio.run(_acquire_seed_async(store))
+    session_id = str(uuid4())[:8]
+    if count > 0:
+        log_event(
+            store,
+            "ingest",
+            "paper.added",
+            detail={"source": "seed", "count": count},
+            session_id=session_id,
+        )
     rprint(f"[green]Acquired {count} seed papers[/green]")
 
 
@@ -340,6 +477,17 @@ def arxiv(
             p["embedding"] = [0.0] * EMBEDDING_DIM
 
     store.add_papers(papers)
+    session_id = str(uuid4())[:8]
+    for p in papers:
+        log_event(
+            store,
+            "ingest",
+            "paper.added",
+            target_type="paper",
+            target_id=p["paper_id"],
+            detail={"title": p["title"], "source": "arxiv"},
+            session_id=session_id,
+        )
     rprint(f"[green]Acquired {len(papers)} papers from arxiv[/green]")
 
 
@@ -379,6 +527,16 @@ def file(
         return
 
     store.add_papers([paper])
+    session_id = str(uuid4())[:8]
+    log_event(
+        store,
+        "ingest",
+        "paper.added",
+        target_type="paper",
+        target_id=paper["paper_id"],
+        detail={"title": paper["title"], "source": "file"},
+        session_id=session_id,
+    )
     rprint(f"[green]Ingested {path.name} as paper '{paper['paper_id']}'[/green]")
 
 
@@ -409,6 +567,7 @@ def openalex(
     enriched = asyncio.run(_enrich_openalex_async(papers_for_enrich, mailto=mailto))
 
     # Persist enrichment back to DB
+    session_id = str(uuid4())[:8]
     updated_count = 0
     for paper in enriched:
         pid = paper.get("paper_id", "")
@@ -417,6 +576,14 @@ def openalex(
             "citations = ?, venue = ?",
             "paper_id = ?",
             (paper.get("citations", 0), paper.get("venue"), pid),
+        )
+        log_event(
+            store,
+            "ingest",
+            "paper.enriched",
+            target_type="paper",
+            target_id=pid,
+            session_id=session_id,
         )
         updated_count += 1
     rprint(f"[green]Enriched {updated_count} papers with OpenAlex data[/green]")
@@ -445,6 +612,7 @@ def taxonomy() -> None:
     from lens.taxonomy.vocabulary import build_vocabulary
 
     version_id = get_next_version(store)
+    session_id = str(uuid4())[:8]
 
     emb_cfg = config.get("embeddings", {})
     stats = build_vocabulary(
@@ -453,6 +621,7 @@ def taxonomy() -> None:
         embedding_model=emb_cfg.get("model"),
         embedding_api_base=emb_cfg.get("api_base"),
         embedding_api_key=emb_cfg.get("api_key"),
+        session_id=session_id,
     )
 
     # Record version
@@ -467,6 +636,7 @@ def taxonomy() -> None:
         slot_count=len([v for v in vocab if v["kind"] == "arch_slot"]),
         variant_count=0,
         pattern_count=len([v for v in vocab if v["kind"] == "agentic_category"]),
+        session_id=session_id,
     )
     rprint(
         f"[green]Taxonomy v{version_id} built.[/green] "
@@ -489,7 +659,8 @@ def build_matrix_cmd() -> None:
     if version is None:
         rprint("[red]No taxonomy yet. Run 'lens build taxonomy' first.[/red]")
         raise typer.Exit(code=1)
-    build_matrix(store)
+    session_id = str(uuid4())[:8]
+    build_matrix(store, session_id=session_id)
     rprint(f"[green]Built matrix for taxonomy v{version}[/green]")
 
 
@@ -506,6 +677,7 @@ def build_all() -> None:
     from lens.taxonomy.vocabulary import build_vocabulary
 
     version_id = get_next_version(store)
+    session_id = str(uuid4())[:8]
 
     emb_cfg = config.get("embeddings", {})
     stats = build_vocabulary(
@@ -514,6 +686,7 @@ def build_all() -> None:
         embedding_model=emb_cfg.get("model"),
         embedding_api_base=emb_cfg.get("api_base"),
         embedding_api_key=emb_cfg.get("api_key"),
+        session_id=session_id,
     )
 
     # Record version
@@ -528,8 +701,9 @@ def build_all() -> None:
         slot_count=len([v for v in vocab if v["kind"] == "arch_slot"]),
         variant_count=0,
         pattern_count=len([v for v in vocab if v["kind"] == "agentic_category"]),
+        session_id=session_id,
     )
-    build_matrix(store)
+    build_matrix(store, session_id=session_id)
     rprint(
         f"[green]Built taxonomy v{version_id} + matrix.[/green] "
         f"new={stats['new_entries']} updated={stats['updated_entries']}"

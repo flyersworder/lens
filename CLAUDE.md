@@ -18,6 +18,8 @@
 - **Taxonomy** — single `build_vocabulary()` processes all extraction types. No clustering.
 - **Hybrid search** — FTS5 keyword + sqlite-vec vector search combined via Reciprocal Rank Fusion (RRF). Used by `explain` for concept resolution.
 - **Schema migrations** — `_COLUMN_MIGRATIONS` in `store.py` handles upgrades from older schemas via `ALTER TABLE` in `init_tables()`.
+- **Event log** — `event_log` table records all mutations (ingest, extract, build, lint, fix). `log_event()` helper in `knowledge/events.py`. Each CLI invocation gets a `session_id` for grouping.
+- **Linter** — `knowledge/linter.py` has 6 checks (orphans, contradictions, weak evidence, missing embeddings, stale extractions, near-duplicates) with optional auto-fix. Lint findings and fixes are themselves logged as events.
 - CLI via Typer in `src/lens/cli.py`
 - Config at `~/.lens/config.yaml`
 

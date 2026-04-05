@@ -212,3 +212,33 @@ class ExplanationResult(BaseModel):
     connections: list[str]
     paper_refs: list[str]
     alternatives: list[dict]
+
+
+# ---------------------------------------------------------------------------
+# Event log
+# ---------------------------------------------------------------------------
+
+
+class EventLog(BaseModel):
+    """A single event in the LENS audit log."""
+
+    id: int | None = None
+    timestamp: str
+    kind: str  # ingest | extract | build | lint | fix
+    action: str  # e.g. paper.added, orphan.found
+    target_type: str | None = None  # paper | vocabulary | extraction | matrix
+    target_id: str | None = None
+    detail: dict | None = None
+    session_id: str | None = None
+
+
+class LintReport(BaseModel):
+    """Summary of a lint run."""
+
+    orphans: list[dict] = []
+    contradictions: list[dict] = []
+    weak_evidence: list[dict] = []
+    missing_embeddings: list[dict] = []
+    stale_extractions: list[dict] = []
+    near_duplicates: list[dict] = []
+    fixes_applied: list[dict] = []

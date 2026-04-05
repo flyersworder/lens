@@ -2,8 +2,8 @@
 
 Design spec for a system that automatically discovers recurring solution patterns, contradiction resolutions, architecture innovations, and agentic design patterns from LLM research papers (arxiv), inspired by TRIZ methodology.
 
-**Status**: Core Complete (v0.5.0)
-**Date**: 2026-03-21 (original), 2026-03-30 (last updated)
+**Status**: Core Complete (v0.6.0)
+**Date**: 2026-03-21 (original), 2026-04-05 (last updated)
 
 > **Migration note**: This design spec was written when LENS used LanceDB + Polars + HDBSCAN clustering. The implementation has since migrated to **SQLite + sqlite-vec + vocabulary-based guided extraction**. The tech stack and approach have changed significantly — see CLAUDE.md and README.md for the current architecture. References to LanceDB, Polars, HDBSCAN, and clustering elsewhere in this document are historical.
 
@@ -11,7 +11,7 @@ Design spec for a system that automatically discovers recurring solution pattern
 
 ## Implementation Status
 
-### Implemented (v0.5.0)
+### Implemented (v0.6.0)
 
 | Feature | Status | Notes |
 |---------|--------|-------|
@@ -19,7 +19,7 @@ Design spec for a system that automatically discovers recurring solution pattern
 | **Architecture Catalog** | Done | Canonical slot vocabulary + free-text variants from extractions |
 | **Agentic Pattern Catalog** | Done | Canonical category vocabulary + free-text patterns from extractions |
 | **Monitor / Ideation** | Done | Sparse cells + cross-pollination gap detection, optional LLM enrichment |
-| **CLI** | Done | All commands wired; `vocab`, `explore`, `analyze`, `explain`, `build`, `monitor` |
+| **CLI** | Done | All commands wired; `vocab`, `explore`, `analyze`, `explain`, `build`, `monitor`, `lint`, `log` |
 | **Acquire pipeline** | Done | arxiv, OpenAlex, Semantic Scholar, seed papers, PDF ingestion |
 | **Extract pipeline** | Done | LLM-guided extraction using canonical vocabulary for all 3 types |
 | **Vocabulary pipeline** | Done | Replaced HDBSCAN clustering. Single `build_vocabulary()` for all types |
@@ -30,6 +30,8 @@ Design spec for a system that automatically discovers recurring solution pattern
 | **Gateway mode** | Done | openai SDK core, litellm optional, configurable api_base |
 | **SQLite + sqlite-vec** | Done | Replaced LanceDB + Polars. Cosine distance, parameterized queries |
 | **Schema migrations** | Done | `_COLUMN_MIGRATIONS` in store.py for safe database upgrades |
+| **Event log** | Done | Unified `event_log` table; `log_event()` helper; `lens log` CLI with filters |
+| **Knowledge base linter** | Done | 6 checks (orphans, contradictions, weak evidence, missing embeddings, stale extractions, near-duplicates) with `--fix` mode |
 
 ### Partially Implemented
 

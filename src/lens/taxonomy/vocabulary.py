@@ -7,6 +7,7 @@ import re
 from datetime import UTC, datetime
 from typing import Any
 
+from lens.knowledge.events import log_event
 from lens.store.store import LensStore
 from lens.taxonomy.embedder import embed_strings
 
@@ -251,7 +252,7 @@ def _collect_concept_ref(
     references.setdefault(name, []).append((ext["paper_id"], ext["confidence"], kind))
 
 
-def process_new_concepts(store: LensStore) -> dict[str, int]:
+def process_new_concepts(store: LensStore, session_id: str | None = None) -> dict[str, int]:
     """Scan all extraction tables for NEW: concepts, accept them, update stats."""
     existing = store.query("vocabulary")
     existing_by_name: dict[str, dict[str, Any]] = {r["name"]: r for r in existing}
@@ -302,6 +303,16 @@ def process_new_concepts(store: LensStore) -> dict[str, int]:
     if new_rows:
         store.add_rows("vocabulary", new_rows)
         logger.info("Accepted %d new vocabulary entries", len(new_rows))
+        for row in new_rows:
+            log_event(
+                store,
+                "extract",
+                "vocabulary.created",
+                target_type="vocabulary",
+                target_id=row["id"],
+                detail={"name": row["name"], "kind": row["kind"]},
+                session_id=session_id,
+            )
 
     # Update paper_count and avg_confidence
     updated = 0
@@ -318,6 +329,15 @@ def process_new_concepts(store: LensStore) -> dict[str, int]:
             "id = ?",
             (len(unique_papers), round(avg_conf, 4), entry_id),
         )
+        log_event(
+            store,
+            "extract",
+            "vocabulary.updated",
+            target_type="vocabulary",
+            target_id=entry_id,
+            detail={"paper_count": len(unique_papers), "avg_confidence": round(avg_conf, 4)},
+            session_id=session_id,
+        )
         updated += 1
 
     return {"new_entries": len(new_rows), "updated_entries": updated}
@@ -329,9 +349,10 @@ def build_vocabulary(
     embedding_model: str | None = None,
     embedding_api_base: str | None = None,
     embedding_api_key: str | None = None,
+    session_id: str | None = None,
 ) -> dict[str, int]:
     """Process new concepts from all extraction types, update stats, embed vocabulary."""
-    stats = process_new_concepts(store)
+    stats = process_new_concepts(store, session_id=session_id)
 
     # Embed all vocabulary entries that lack embeddings
     vocab_rows = store.query("vocabulary")
@@ -357,6 +378,17 @@ def build_vocabulary(
         stats["new_entries"],
         stats["updated_entries"],
         len(to_embed),
+    )
+    log_event(
+        store,
+        "build",
+        "taxonomy.built",
+        detail={
+            "new_entries": stats["new_entries"],
+            "updated_entries": stats["updated_entries"],
+            "embedded": len(to_embed),
+        },
+        session_id=session_id,
     )
     return stats
 

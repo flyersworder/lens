@@ -11,6 +11,7 @@ from typing import Any
 from pydantic import ValidationError
 
 from lens.extract.prompts import build_extraction_prompt
+from lens.knowledge.events import log_event
 from lens.llm.client import LLMClient
 from lens.llm.utils import strip_code_fences
 from lens.store.models import (
@@ -159,6 +160,7 @@ async def extract_papers(
     llm_client: LLMClient,
     concurrency: int = 5,
     paper_id: str | None = None,
+    session_id: str | None = None,
 ) -> int:
     """Extract knowledge from all pending papers in the store.
 
@@ -207,6 +209,14 @@ async def extract_papers(
         if result is None:
             _update_paper_status(store, pid, "incomplete")
             logger.warning("Extraction failed for %s", pid)
+            log_event(
+                store,
+                "extract",
+                "extraction.failed",
+                target_type="paper",
+                target_id=pid,
+                session_id=session_id,
+            )
             continue
 
         tradeoffs, architecture, agentic = result
@@ -218,6 +228,19 @@ async def extract_papers(
             store.add_rows("agentic_extractions", agentic)
 
         _update_paper_status(store, pid, "complete")
+        log_event(
+            store,
+            "extract",
+            "extraction.completed",
+            target_type="paper",
+            target_id=pid,
+            detail={
+                "tradeoffs": len(tradeoffs),
+                "architecture": len(architecture),
+                "agentic": len(agentic),
+            },
+            session_id=session_id,
+        )
         logger.info(
             "Extracted %s: %d tradeoffs, %d arch, %d agentic",
             pid,
