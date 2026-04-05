@@ -1,8 +1,10 @@
 """Tests for the LENS CLI skeleton."""
 
+import pytest
 from typer.testing import CliRunner
 
 from lens.cli import app
+from lens.store.store import LensStore
 
 runner = CliRunner()
 
@@ -91,3 +93,30 @@ def test_explore_agents_help():
 def test_explore_evolution_help():
     result = runner.invoke(app, ["explore", "evolution", "--help"])
     assert result.exit_code == 0
+
+
+def test_export_creates_backup(tmp_path):
+    """lens export should create a timestamped backup file."""
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    db_path = data_dir / "lens.db"
+    store = LensStore(str(db_path))
+    store.init_tables()
+    store.conn.close()
+
+    output_path = tmp_path / "backup.db"
+
+    from lens.cli import _export_db
+
+    _export_db(source=db_path, destination=output_path)
+
+    assert output_path.exists()
+    assert output_path.stat().st_size > 0
+
+
+def test_export_missing_db(tmp_path):
+    """lens export should raise if source DB doesn't exist."""
+    from lens.cli import _export_db
+
+    with pytest.raises(FileNotFoundError):
+        _export_db(source=tmp_path / "nonexistent.db", destination=tmp_path / "out.db")

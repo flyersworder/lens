@@ -2,6 +2,8 @@
 
 import asyncio
 import os
+import shutil
+from datetime import UTC
 from pathlib import Path
 from uuid import uuid4
 
@@ -52,6 +54,14 @@ def _get_config_path() -> Path | None:
     if env_override:
         return Path(env_override)
     return None
+
+
+def _export_db(source: Path, destination: Path) -> None:
+    """Copy the SQLite database to the destination path."""
+    if not source.exists():
+        raise FileNotFoundError(f"Database not found: {source}")
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    shutil.copy2(source, destination)
 
 
 def _get_store() -> LensStore:
@@ -418,6 +428,32 @@ def show_log(
             detail_str = f"  ({', '.join(parts[:3])})"
 
         typer.echo(f"{ts}  {k:<8} {action:<28} {target}{detail_str}")
+
+
+@app.command()
+def export(
+    output: str | None = typer.Option(None, "--output", help="Destination path for backup file."),
+) -> None:
+    """Back up the LENS database to a file."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    db_path = data_dir / "lens.db"
+
+    if not db_path.exists():
+        rprint("[red]No database found. Run 'lens init' first.[/red]")
+        raise typer.Exit(code=1)
+
+    if output:
+        dest = Path(output)
+    else:
+        from datetime import datetime
+
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H%M")
+        dest = Path(f"lens-backup-{ts}.db")
+
+    _export_db(source=db_path, destination=dest)
+    size_mb = dest.stat().st_size / (1024 * 1024)
+    rprint(f"[green]Exported database to {dest} ({size_mb:.1f} MB)[/green]")
 
 
 # ---------------------------------------------------------------------------
