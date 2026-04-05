@@ -3,6 +3,7 @@
 import asyncio
 import os
 from pathlib import Path
+from uuid import uuid4
 
 import typer
 import yaml
@@ -290,6 +291,130 @@ def monitor(
     rprint(f"  Papers extracted: {result['papers_extracted']}")
     if result.get("ideation_report"):
         rprint(f"  Gaps found: {result['ideation_report']['gap_count']}")
+
+
+@app.command()
+def lint(
+    fix: bool = typer.Option(False, "--fix", help="Apply safe auto-fixes after reporting."),
+    check: str | None = typer.Option(
+        None,
+        "--check",
+        help=(
+            "Comma-separated checks to run: "
+            "orphans,contradictions,weak_evidence,missing_embeddings,stale,near_duplicates"
+        ),
+    ),
+    threshold_confidence: float = typer.Option(
+        0.5, "--threshold-confidence", help="Weak evidence confidence cutoff."
+    ),
+    threshold_similarity: float = typer.Option(
+        0.92, "--threshold-similarity", help="Near-duplicate cosine similarity threshold."
+    ),
+) -> None:
+    """Health-check the knowledge base for issues."""
+    from lens.knowledge.linter import lint as run_lint
+
+    store = _get_store()
+    config = load_config(_get_config_path())
+    session_id = str(uuid4())[:8]
+
+    checks = [c.strip() for c in check.split(",")] if check else None
+
+    emb_cfg = config.get("embeddings", {})
+    report = run_lint(
+        store,
+        fix=fix,
+        session_id=session_id,
+        checks=checks,
+        confidence_threshold=threshold_confidence,
+        similarity_threshold=threshold_similarity,
+        embedding_provider=emb_cfg.get("provider", "local"),
+        embedding_model=emb_cfg.get("model"),
+        embedding_api_base=emb_cfg.get("api_base"),
+        embedding_api_key=emb_cfg.get("api_key"),
+    )
+
+    typer.echo(f"\nLint Report (session {session_id})")
+    typer.echo("─" * 36)
+    typer.echo(f"  Orphan vocabulary:     {len(report.orphans)} found")
+    typer.echo(f"  Contradictions:        {len(report.contradictions)} found")
+    typer.echo(f"  Weak evidence:         {len(report.weak_evidence)} found")
+    typer.echo(f"  Missing embeddings:    {len(report.missing_embeddings)} found")
+    typer.echo(f"  Stale extractions:     {len(report.stale_extractions)} found")
+    typer.echo(f"  Near-duplicates:       {len(report.near_duplicates)} pairs found")
+    typer.echo("─" * 36)
+
+    total = (
+        len(report.orphans)
+        + len(report.contradictions)
+        + len(report.weak_evidence)
+        + len(report.missing_embeddings)
+        + len(report.stale_extractions)
+        + len(report.near_duplicates)
+    )
+    typer.echo(f"  Total issues:          {total}\n")
+
+    if fix and report.fixes_applied:
+        orphan_fixes = sum(1 for f in report.fixes_applied if f["action"] == "orphan.deleted")
+        emb_fixes = sum(1 for f in report.fixes_applied if f["action"] == "embedding.repaired")
+        requeue_fixes = sum(
+            1 for f in report.fixes_applied if f["action"] == "extraction.requeued"
+        )
+        if orphan_fixes:
+            typer.echo(f"  Fixed: deleted {orphan_fixes} orphan vocabulary entries")
+        if emb_fixes:
+            typer.echo(f"  Fixed: embedded {emb_fixes} missing vocabulary entries")
+        if requeue_fixes:
+            typer.echo(f"  Fixed: requeued {requeue_fixes} stale extractions")
+        typer.echo()
+    elif not fix and total > 0:
+        typer.echo("Use --fix to apply safe auto-fixes.\n")
+
+
+@app.command(name="log")
+def show_log(
+    kind: str | None = typer.Option(
+        None, "--kind", help="Filter by event kind (ingest, extract, build, lint, fix)."
+    ),
+    since: str | None = typer.Option(
+        None, "--since", help="Show events after this date (YYYY-MM-DD)."
+    ),
+    limit: int = typer.Option(20, "--limit", help="Max events to show."),
+    session: str | None = typer.Option(
+        None, "--session", help="Show events from a specific session."
+    ),
+) -> None:
+    """Show the event log."""
+    from lens.knowledge.events import query_events
+
+    store = _get_store()
+    events = query_events(store, kind=kind, since=since, limit=limit, session_id=session)
+
+    if not events:
+        typer.echo("No events found.")
+        return
+
+    for event in events:
+        ts = event["timestamp"][:16].replace("T", " ")
+        k = event["kind"]
+        action = event["action"]
+        target = ""
+        if event.get("target_type") and event.get("target_id"):
+            target = f"{event['target_type']}:{event['target_id']}"
+
+        detail_str = ""
+        detail = event.get("detail")
+        if detail:
+            if isinstance(detail, str):
+                import json
+
+                detail = json.loads(detail)
+            if isinstance(detail, dict):
+                parts = [f"{v}" for v in detail.values()]
+                if parts:
+                    detail_str = f"  ({', '.join(parts[:3])})"
+
+        typer.echo(f"{ts}  {k:<8} {action:<28} {target}{detail_str}")
 
 
 # ---------------------------------------------------------------------------
