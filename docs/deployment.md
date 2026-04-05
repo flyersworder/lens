@@ -62,7 +62,7 @@ docker run -v /host/lens-data:/root/.lens/data lens:latest
 
 **Export** (backup):
 ```bash
-# Default: creates lens-backup-YYYY-MM-DDTHHMM.db in current directory
+# Default: creates lens-backup-YYYY-MM-DDTHHMMSS.db in current directory
 uv run lens export
 
 # Custom destination

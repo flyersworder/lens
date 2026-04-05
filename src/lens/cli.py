@@ -68,10 +68,14 @@ def _export_db(source: Path, destination: Path) -> None:
         raise FileNotFoundError(f"Database not found: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
     src_conn = sqlite3.connect(str(source))
-    dst_conn = sqlite3.connect(str(destination))
-    src_conn.backup(dst_conn)
-    dst_conn.close()
-    src_conn.close()
+    try:
+        dst_conn = sqlite3.connect(str(destination))
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+    finally:
+        src_conn.close()
 
 
 def _import_db(source: Path, destination: Path, force: bool = False) -> None:
@@ -83,8 +87,12 @@ def _import_db(source: Path, destination: Path, force: bool = False) -> None:
     # Verify source is a valid SQLite database before overwriting anything
     try:
         conn = sqlite3.connect(str(source))
-        conn.execute("PRAGMA integrity_check")
-        conn.close()
+        try:
+            result = conn.execute("PRAGMA integrity_check").fetchone()
+            if result[0] != "ok":
+                raise ValueError(f"Source database is corrupt: {source}")
+        finally:
+            conn.close()
     except sqlite3.DatabaseError as e:
         raise ValueError(f"Source file is not a valid SQLite database: {source}") from e
     if destination.exists() and not force:
