@@ -83,12 +83,28 @@ def fix_missing_embeddings(
 
 
 def check_stale_extractions(store: LensStore) -> list[dict]:
-    """Find papers with non-complete extraction status."""
-    return store.query_sql(
+    """Find papers with non-complete extraction status.
+
+    Cross-references event_log to report when each paper was last touched
+    (last event timestamp) and how long it has been stuck.
+    """
+    stale = store.query_sql(
         "SELECT paper_id, title, extraction_status "
         "FROM papers "
         "WHERE extraction_status IN ('pending', 'incomplete', 'failed')"
     )
+    if not stale:
+        return stale
+
+    # Enrich with last event timestamp from event_log
+    for paper in stale:
+        events = store.query_sql(
+            "SELECT timestamp FROM event_log WHERE target_id = ? ORDER BY id DESC LIMIT 1",
+            (paper["paper_id"],),
+        )
+        paper["last_event"] = events[0]["timestamp"] if events else None
+
+    return stale
 
 
 def fix_stale_extractions(store: LensStore) -> list[str]:
@@ -365,7 +381,10 @@ def lint(
                 "stale_extraction.found",
                 target_type="paper",
                 target_id=finding["paper_id"],
-                detail={"status": finding["extraction_status"]},
+                detail={
+                    "status": finding["extraction_status"],
+                    "last_event": finding.get("last_event"),
+                },
                 session_id=session_id,
             )
 

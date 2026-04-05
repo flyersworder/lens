@@ -305,6 +305,64 @@ def test_lint_stale_extractions(tmp_path):
     assert "complete-paper" not in ids
 
 
+def test_lint_stale_extractions_last_event(tmp_path):
+    """Stale findings should include last_event timestamp from event_log."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "papers",
+        [
+            {
+                "paper_id": "stuck-paper",
+                "title": "Stuck",
+                "abstract": "Stuck",
+                "authors": ["A"],
+                "date": "2026-01-01",
+                "arxiv_id": "2601.00010",
+                "extraction_status": "failed",
+                "embedding": [0.0] * EMBEDDING_DIM,
+            },
+        ],
+    )
+
+    # Log an event for this paper
+    from lens.knowledge.events import log_event
+
+    log_event(
+        store,
+        "extract",
+        "extraction.failed",
+        target_type="paper",
+        target_id="stuck-paper",
+    )
+
+    findings = check_stale_extractions(store)
+    assert len(findings) == 1
+    assert findings[0]["last_event"] is not None
+
+    # Paper with no events should have last_event=None
+    store.add_rows(
+        "papers",
+        [
+            {
+                "paper_id": "no-events-paper",
+                "title": "No Events",
+                "abstract": "None",
+                "authors": ["B"],
+                "date": "2026-01-01",
+                "arxiv_id": "2601.00011",
+                "extraction_status": "pending",
+                "embedding": [0.0] * EMBEDDING_DIM,
+            },
+        ],
+    )
+
+    findings = check_stale_extractions(store)
+    no_event_finding = next(f for f in findings if f["paper_id"] == "no-events-paper")
+    assert no_event_finding["last_event"] is None
+
+
 def test_lint_fix_stale_requeues(tmp_path):
     """fix_stale_extractions() should reset status to pending."""
     store = LensStore(str(tmp_path / "test.db"))
