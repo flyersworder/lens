@@ -366,12 +366,15 @@ def lint(
         requeue_fixes = sum(
             1 for f in report.fixes_applied if f["action"] == "extraction.requeued"
         )
+        merge_fixes = sum(1 for f in report.fixes_applied if f["action"] == "duplicate.merged")
         if orphan_fixes:
             typer.echo(f"  Fixed: deleted {orphan_fixes} orphan vocabulary entries")
         if emb_fixes:
             typer.echo(f"  Fixed: embedded {emb_fixes} missing vocabulary entries")
         if requeue_fixes:
             typer.echo(f"  Fixed: requeued {requeue_fixes} stale extractions")
+        if merge_fixes:
+            typer.echo(f"  Fixed: merged {merge_fixes} near-duplicate entries")
         typer.echo()
     elif not fix and total > 0:
         typer.echo("Use --fix to apply safe auto-fixes.\n")
