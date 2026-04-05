@@ -89,6 +89,16 @@ uv run lens monitor --trending              # show ideation gaps
 uv run lens explore ideas
 uv run lens explore ideas --type sparse_cell
 
+# Health-check the knowledge base
+uv run lens lint                               # report issues across 6 categories
+uv run lens lint --fix                         # auto-fix safe issues
+uv run lens lint --check orphans,stale         # run specific checks only
+
+# View the event log (audit trail of all mutations)
+uv run lens log                                # last 20 events
+uv run lens log --kind extract                 # filter by event kind
+uv run lens log --since 2026-04-01 --limit 50  # date range + limit
+
 # Configuration
 uv run lens config show
 uv run lens config set llm.default_model openrouter/anthropic/claude-sonnet-4-6

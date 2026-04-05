@@ -1,5 +1,33 @@
 # Changelog
 
+## 0.6.0 (2026-04-05)
+
+### Added
+- **Event log** — unified `event_log` table records all mutations (ingest,
+  extract, build, lint, fix) with timestamps and session IDs. Query with
+  `lens log` CLI command (filters: `--kind`, `--since`, `--limit`, `--session`).
+- **Knowledge base linter** — `lens lint` health-checks the knowledge base
+  across 6 categories: orphan vocabulary, contradictions, weak evidence,
+  missing embeddings, stale extractions, and near-duplicates.
+- **Auto-fix mode** — `lens lint --fix` applies safe repairs: deletes orphan
+  entries, generates missing embeddings, requeues stale extractions, and
+  merges near-duplicate vocabulary entries (rewrites extraction references).
+- **`EventLog` model** and `LintReport` model in `models.py`.
+- **`log_event()` helper** in `knowledge/events.py` — called explicitly at
+  each instrumentation site (no decorator magic).
+- **Session ID threading** — each CLI invocation generates a session ID that
+  groups all events from that run.
+
+### Changed
+- **Extraction pipeline** now emits `extract.extraction.completed` and
+  `extract.extraction.failed` events.
+- **Vocabulary pipeline** now emits `extract.vocabulary.created`,
+  `extract.vocabulary.updated`, and `build.taxonomy.built` events.
+- **Matrix builder** now emits `build.matrix.built` events.
+- **Acquire commands** (seed, arxiv, file, openalex) now emit `ingest.*` events.
+- **`extract_papers()`**, **`build_vocabulary()`**, **`build_matrix()`**, and
+  **`record_version()`** accept optional `session_id` parameter.
+
 ## 0.5.0 (2026-03-29)
 
 ### Breaking Changes
