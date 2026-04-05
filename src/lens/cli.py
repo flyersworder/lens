@@ -57,17 +57,36 @@ def _get_config_path() -> Path | None:
 
 
 def _export_db(source: Path, destination: Path) -> None:
-    """Copy the SQLite database to the destination path."""
+    """Back up the SQLite database using the sqlite3 backup API.
+
+    Uses Connection.backup() for WAL-safe, consistent snapshots rather
+    than raw file copy (which would miss WAL/SHM sidecar files).
+    """
+    import sqlite3
+
     if not source.exists():
         raise FileNotFoundError(f"Database not found: {source}")
     destination.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copy2(source, destination)
+    src_conn = sqlite3.connect(str(source))
+    dst_conn = sqlite3.connect(str(destination))
+    src_conn.backup(dst_conn)
+    dst_conn.close()
+    src_conn.close()
 
 
 def _import_db(source: Path, destination: Path, force: bool = False) -> None:
-    """Copy a backup database to the destination path."""
+    """Restore a backup database to the destination path."""
+    import sqlite3
+
     if not source.exists():
         raise FileNotFoundError(f"Backup file not found: {source}")
+    # Verify source is a valid SQLite database before overwriting anything
+    try:
+        conn = sqlite3.connect(str(source))
+        conn.execute("PRAGMA integrity_check")
+        conn.close()
+    except sqlite3.DatabaseError as e:
+        raise ValueError(f"Source file is not a valid SQLite database: {source}") from e
     if destination.exists() and not force:
         raise FileExistsError(
             f"Database already exists at {destination}. Use --force to overwrite."
@@ -460,7 +479,7 @@ def export(
     else:
         from datetime import datetime
 
-        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H%M")
+        ts = datetime.now(UTC).strftime("%Y-%m-%dT%H%M%S")
         dest = Path(f"lens-backup-{ts}.db")
 
     _export_db(source=db_path, destination=dest)

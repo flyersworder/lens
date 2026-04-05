@@ -174,3 +174,16 @@ def test_import_with_force(tmp_path):
     _import_db(source=backup_path, destination=target_db, force=True)
 
     assert target_db.stat().st_size > len("existing")
+
+
+def test_import_rejects_invalid_sqlite(tmp_path):
+    """lens import should reject non-SQLite files."""
+    bad_file = tmp_path / "not-a-db.db"
+    bad_file.write_text("this is not a database")
+
+    target_db = tmp_path / "data" / "lens.db"
+
+    from lens.cli import _import_db
+
+    with pytest.raises(ValueError, match="not a valid SQLite database"):
+        _import_db(source=bad_file, destination=target_db, force=False)
