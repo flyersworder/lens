@@ -187,3 +187,32 @@ def test_import_rejects_invalid_sqlite(tmp_path):
 
     with pytest.raises(ValueError, match="not a valid SQLite database"):
         _import_db(source=bad_file, destination=target_db, force=False)
+
+
+def test_import_force_removes_stale_wal(tmp_path):
+    """lens import --force should remove stale WAL/SHM files from old DB."""
+    # Create a backup
+    backup_path = tmp_path / "backup.db"
+    store = LensStore(str(backup_path))
+    store.init_tables()
+    store.conn.close()
+
+    # Create existing DB with fake WAL/SHM sidecar files
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    target_db = data_dir / "lens.db"
+    target_db.write_text("old db")
+    wal_file = data_dir / "lens.db-wal"
+    shm_file = data_dir / "lens.db-shm"
+    wal_file.write_text("stale wal data")
+    shm_file.write_text("stale shm data")
+
+    from lens.cli import _import_db
+
+    _import_db(source=backup_path, destination=target_db, force=True)
+
+    # DB should be restored
+    assert target_db.exists()
+    # Stale sidecar files should be gone
+    assert not wal_file.exists()
+    assert not shm_file.exists()

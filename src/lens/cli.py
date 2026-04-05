@@ -100,6 +100,12 @@ def _import_db(source: Path, destination: Path, force: bool = False) -> None:
             f"Database already exists at {destination}. Use --force to overwrite."
         )
     destination.parent.mkdir(parents=True, exist_ok=True)
+    # Remove stale WAL/SHM sidecar files before restoring — if left behind,
+    # SQLite would apply the old WAL to the newly-restored database.
+    for suffix in ("-wal", "-shm"):
+        sidecar = Path(str(destination) + suffix)
+        if sidecar.exists():
+            sidecar.unlink()
     shutil.copy2(source, destination)
 
 
