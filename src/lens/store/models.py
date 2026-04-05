@@ -230,3 +230,15 @@ class EventLog(BaseModel):
     target_id: str | None = None
     detail: dict | None = None
     session_id: str | None = None
+
+
+class LintReport(BaseModel):
+    """Summary of a lint run."""
+
+    orphans: list[dict] = []
+    contradictions: list[dict] = []
+    weak_evidence: list[dict] = []
+    missing_embeddings: list[dict] = []
+    stale_extractions: list[dict] = []
+    near_duplicates: list[dict] = []
+    fixes_applied: list[dict] = []

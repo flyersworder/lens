@@ -11,6 +11,7 @@ from lens.knowledge.linter import (
     check_weak_evidence,
     fix_orphans,
     fix_stale_extractions,
+    lint,
 )
 from lens.store.models import EMBEDDING_DIM
 from lens.store.store import LensStore
@@ -429,3 +430,107 @@ def test_lint_near_duplicates_different_kinds(tmp_path):
 
     pairs = check_near_duplicates(store, similarity_threshold=0.92)
     assert len(pairs) == 0
+
+
+def test_lint_orchestrator_runs_all_checks(tmp_path):
+    """lint() should run all checks and return a LintReport."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+    load_seed_vocabulary(store)
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "orphan-test",
+                "name": "Orphan Test",
+                "kind": "parameter",
+                "description": "No papers",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+            }
+        ],
+    )
+
+    report = lint(store)
+    assert len(report.orphans) == 1
+    assert report.orphans[0]["id"] == "orphan-test"
+    assert isinstance(report.contradictions, list)
+    assert isinstance(report.weak_evidence, list)
+    assert isinstance(report.missing_embeddings, list)
+    assert isinstance(report.stale_extractions, list)
+    assert isinstance(report.near_duplicates, list)
+    assert report.fixes_applied == []
+
+
+def test_lint_with_fix(tmp_path):
+    """lint(fix=True) should apply fixes and record them."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "orphan-fix-test",
+                "name": "Orphan Fix Test",
+                "kind": "parameter",
+                "description": "Will be deleted",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+            }
+        ],
+    )
+
+    report = lint(store, fix=True)
+    assert len(report.fixes_applied) >= 1
+    assert any(f["action"] == "orphan.deleted" for f in report.fixes_applied)
+
+    remaining = store.query("vocabulary", "id = ?", ("orphan-fix-test",))
+    assert len(remaining) == 0
+
+
+def test_lint_check_filter(tmp_path):
+    """lint(checks=['orphans']) should only run the orphan check."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "orphan-filter",
+                "name": "Orphan Filter",
+                "kind": "parameter",
+                "description": "No papers",
+                "source": "extracted",
+                "first_seen": "2026-04-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+            }
+        ],
+    )
+
+    store.add_rows(
+        "papers",
+        [
+            {
+                "paper_id": "stale-p",
+                "title": "Stale",
+                "abstract": "Stale",
+                "authors": ["A"],
+                "date": "2026-01-01",
+                "arxiv_id": "2601.00099",
+                "extraction_status": "failed",
+                "embedding": [0.0] * EMBEDDING_DIM,
+            }
+        ],
+    )
+
+    report = lint(store, checks=["orphans"])
+    assert len(report.orphans) == 1
+    assert report.stale_extractions == []

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import logging
 
+from lens.knowledge.events import log_event
+from lens.store.models import LintReport
 from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
@@ -160,6 +162,175 @@ def check_near_duplicates(store: LensStore, similarity_threshold: float = 0.92) 
                     }
                 )
     return pairs
+
+
+def lint(
+    store: LensStore,
+    fix: bool = False,
+    session_id: str | None = None,
+    checks: list[str] | None = None,
+    confidence_threshold: float = 0.5,
+    similarity_threshold: float = 0.92,
+    embedding_provider: str = "local",
+    embedding_model: str | None = None,
+    embedding_api_base: str | None = None,
+    embedding_api_key: str | None = None,
+) -> LintReport:
+    """Run lint checks and optionally apply fixes. Returns a LintReport."""
+    active_checks = (
+        set(checks)
+        if checks
+        else set(
+            [
+                "orphans",
+                "contradictions",
+                "weak_evidence",
+                "missing_embeddings",
+                "stale",
+                "near_duplicates",
+            ]
+        )
+    )
+
+    report = LintReport()
+
+    # 1. Orphans
+    if "orphans" in active_checks:
+        report.orphans = check_orphan_vocabulary(store)
+        for finding in report.orphans:
+            log_event(
+                store,
+                "lint",
+                "orphan.found",
+                target_type="vocabulary",
+                target_id=finding["id"],
+                detail={"name": finding["name"], "kind": finding["kind"]},
+                session_id=session_id,
+            )
+
+    # 2. Contradictions
+    if "contradictions" in active_checks:
+        report.contradictions = check_contradictions(store)
+        for finding in report.contradictions:
+            log_event(
+                store,
+                "lint",
+                "contradiction.found",
+                target_type="matrix",
+                detail={"params": finding["params"], "principle_id": finding["principle_id"]},
+                session_id=session_id,
+            )
+
+    # 3. Weak evidence
+    if "weak_evidence" in active_checks:
+        report.weak_evidence = check_weak_evidence(store, confidence_threshold)
+        for finding in report.weak_evidence:
+            log_event(
+                store,
+                "lint",
+                "weak_evidence.found",
+                target_type="vocabulary",
+                target_id=finding["id"],
+                detail={
+                    "paper_count": finding["paper_count"],
+                    "avg_confidence": finding["avg_confidence"],
+                },
+                session_id=session_id,
+            )
+
+    # 4. Missing embeddings
+    if "missing_embeddings" in active_checks:
+        report.missing_embeddings = check_missing_embeddings(store)
+        for finding in report.missing_embeddings:
+            log_event(
+                store,
+                "lint",
+                "missing_embedding.found",
+                target_type="vocabulary",
+                target_id=finding["id"],
+                detail={"name": finding["name"]},
+                session_id=session_id,
+            )
+
+    # 5. Stale extractions
+    if "stale" in active_checks:
+        report.stale_extractions = check_stale_extractions(store)
+        for finding in report.stale_extractions:
+            log_event(
+                store,
+                "lint",
+                "stale_extraction.found",
+                target_type="paper",
+                target_id=finding["paper_id"],
+                detail={"status": finding["extraction_status"]},
+                session_id=session_id,
+            )
+
+    # 6. Near-duplicates
+    if "near_duplicates" in active_checks:
+        report.near_duplicates = check_near_duplicates(store, similarity_threshold)
+        for finding in report.near_duplicates:
+            log_event(
+                store,
+                "lint",
+                "near_duplicate.found",
+                target_type="vocabulary",
+                detail={
+                    "id_a": finding["id_a"],
+                    "id_b": finding["id_b"],
+                    "kind": finding["kind"],
+                },
+                session_id=session_id,
+            )
+
+    # Apply fixes if requested
+    if fix:
+        if "orphans" in active_checks and report.orphans:
+            deleted = fix_orphans(store)
+            for oid in deleted:
+                report.fixes_applied.append({"action": "orphan.deleted", "target_id": oid})
+                log_event(
+                    store,
+                    "fix",
+                    "orphan.deleted",
+                    target_type="vocabulary",
+                    target_id=oid,
+                    session_id=session_id,
+                )
+
+        if "missing_embeddings" in active_checks and report.missing_embeddings:
+            fixed = fix_missing_embeddings(
+                store,
+                embedding_provider,
+                embedding_model,
+                embedding_api_base,
+                embedding_api_key,
+            )
+            for fid in fixed:
+                report.fixes_applied.append({"action": "embedding.repaired", "target_id": fid})
+                log_event(
+                    store,
+                    "fix",
+                    "embedding.repaired",
+                    target_type="vocabulary",
+                    target_id=fid,
+                    session_id=session_id,
+                )
+
+        if "stale" in active_checks and report.stale_extractions:
+            requeued = fix_stale_extractions(store)
+            for pid in requeued:
+                report.fixes_applied.append({"action": "extraction.requeued", "target_id": pid})
+                log_event(
+                    store,
+                    "fix",
+                    "extraction.requeued",
+                    target_type="paper",
+                    target_id=pid,
+                    session_id=session_id,
+                )
+
+    return report
 
 
 def check_contradictions(store: LensStore, min_count: int = 2) -> list[dict]:
