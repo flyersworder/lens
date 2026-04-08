@@ -33,6 +33,8 @@ class Paper(BaseModel):
     citations: int = 0
     quality_score: float = 0.0
     extraction_status: str = "pending"
+    keywords: list[str] = []
+    github_url: str | None = None
     embedding: list[float] = []
 
     @field_validator("date")

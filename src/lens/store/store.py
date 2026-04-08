@@ -24,7 +24,7 @@ VEC_TABLES: dict[str, tuple[str, str]] = {
 
 # Maps table_name -> set of columns that are JSON-serialized (lists or dicts).
 JSON_FIELDS: dict[str, set[str]] = {
-    "papers": {"authors"},
+    "papers": {"authors", "keywords"},
     "tradeoff_extractions": {"new_concepts"},
     "architecture_extractions": {"new_concepts"},
     "agentic_extractions": {"components", "new_concepts"},
@@ -148,6 +148,8 @@ _COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("architecture_extractions", "new_concepts", "TEXT NOT NULL DEFAULT '{}'"),
     ("agentic_extractions", "category", "TEXT NOT NULL DEFAULT ''"),
     ("agentic_extractions", "new_concepts", "TEXT NOT NULL DEFAULT '{}'"),
+    ("papers", "keywords", "TEXT NOT NULL DEFAULT '[]'"),
+    ("papers", "github_url", "TEXT"),
 ]
 
 
