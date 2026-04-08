@@ -585,7 +585,7 @@ def arxiv(
         if "embedding" not in p:
             p["embedding"] = [0.0] * EMBEDDING_DIM
 
-    store.add_papers(papers)
+    new_count = store.add_papers(papers)
     session_id = str(uuid4())[:8]
     for p in papers:
         log_event(
@@ -597,7 +597,11 @@ def arxiv(
             detail={"title": p["title"], "source": "arxiv"},
             session_id=session_id,
         )
-    rprint(f"[green]Acquired {len(papers)} papers from arxiv[/green]")
+    skipped = len(papers) - new_count
+    msg = f"[green]Acquired {new_count} papers from arxiv[/green]"
+    if skipped:
+        msg += f" [yellow]({skipped} duplicates skipped)[/yellow]"
+    rprint(msg)
 
 
 async def _fetch_arxiv_async(query, categories, since, max_results):
@@ -776,7 +780,7 @@ def deepxiv(
                 if "embedding" not in p:
                     p["embedding"] = [0.0] * EMBEDDING_DIM
 
-            store.add_papers(papers)
+            new_count = store.add_papers(papers)
             for p in papers:
                 log_event(
                     store,
@@ -787,7 +791,11 @@ def deepxiv(
                     detail={"title": p["title"], "source": "deepxiv"},
                     session_id=session_id,
                 )
-            rprint(f"[green]Acquired {len(papers)} papers via DeepXiv[/green]")
+            skipped = len(papers) - new_count
+            msg = f"[green]Acquired {new_count} papers via DeepXiv[/green]"
+            if skipped:
+                msg += f" [yellow]({skipped} duplicates skipped)[/yellow]"
+            rprint(msg)
     except Exception as e:
         rprint(f"[red]DeepXiv API error: {e}[/red]")
         raise typer.Exit(code=1) from None
