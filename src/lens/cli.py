@@ -585,18 +585,28 @@ def arxiv(
         if "embedding" not in p:
             p["embedding"] = [0.0] * EMBEDDING_DIM
 
+    existing_ids = {
+        r["paper_id"]
+        for r in store.query_sql(
+            "SELECT paper_id FROM papers WHERE paper_id IN ({})".format(
+                ",".join("?" for _ in papers)
+            ),
+            tuple(p["paper_id"] for p in papers),
+        )
+    }
     new_count = store.add_papers(papers)
     session_id = str(uuid4())[:8]
     for p in papers:
-        log_event(
-            store,
-            "ingest",
-            "paper.added",
-            target_type="paper",
-            target_id=p["paper_id"],
-            detail={"title": p["title"], "source": "arxiv"},
-            session_id=session_id,
-        )
+        if p["paper_id"] not in existing_ids:
+            log_event(
+                store,
+                "ingest",
+                "paper.added",
+                target_type="paper",
+                target_id=p["paper_id"],
+                detail={"title": p["title"], "source": "arxiv"},
+                session_id=session_id,
+            )
     skipped = len(papers) - new_count
     msg = f"[green]Acquired {new_count} papers from arxiv[/green]"
     if skipped:
@@ -742,24 +752,21 @@ def deepxiv(
             from lens.acquire.deepxiv import fetch_deepxiv_paper
 
             paper_data = fetch_deepxiv_paper(paper)
-
-            existing = store.query("papers", "paper_id = ?", (paper_data["paper_id"],))
-            if existing:
-                rprint(f"[yellow]Paper '{paper}' already exists. Skipping.[/yellow]")
-                return
-
             paper_data["embedding"] = [0.0] * EMBEDDING_DIM
-            store.add_papers([paper_data])
-            log_event(
-                store,
-                "ingest",
-                "paper.added",
-                target_type="paper",
-                target_id=paper_data["paper_id"],
-                detail={"title": paper_data["title"], "source": "deepxiv"},
-                session_id=session_id,
-            )
-            rprint(f"[green]Acquired paper {paper} via DeepXiv[/green]")
+            new_count = store.add_papers([paper_data])
+            if new_count:
+                log_event(
+                    store,
+                    "ingest",
+                    "paper.added",
+                    target_type="paper",
+                    target_id=paper_data["paper_id"],
+                    detail={"title": paper_data["title"], "source": "deepxiv"},
+                    session_id=session_id,
+                )
+                rprint(f"[green]Acquired paper {paper} via DeepXiv[/green]")
+            else:
+                rprint(f"[yellow]Paper '{paper}' already exists. Skipping.[/yellow]")
         else:
             from lens.acquire.deepxiv import search_deepxiv
 
@@ -776,21 +783,31 @@ def deepxiv(
                 rprint("[yellow]No papers found[/yellow]")
                 return
 
+            existing_ids = {
+                r["paper_id"]
+                for r in store.query_sql(
+                    "SELECT paper_id FROM papers WHERE paper_id IN ({})".format(
+                        ",".join("?" for _ in papers)
+                    ),
+                    tuple(p["paper_id"] for p in papers),
+                )
+            }
             for p in papers:
                 if "embedding" not in p:
                     p["embedding"] = [0.0] * EMBEDDING_DIM
 
             new_count = store.add_papers(papers)
             for p in papers:
-                log_event(
-                    store,
-                    "ingest",
-                    "paper.added",
-                    target_type="paper",
-                    target_id=p["paper_id"],
-                    detail={"title": p["title"], "source": "deepxiv"},
-                    session_id=session_id,
-                )
+                if p["paper_id"] not in existing_ids:
+                    log_event(
+                        store,
+                        "ingest",
+                        "paper.added",
+                        target_type="paper",
+                        target_id=p["paper_id"],
+                        detail={"title": p["title"], "source": "deepxiv"},
+                        session_id=session_id,
+                    )
             skipped = len(papers) - new_count
             msg = f"[green]Acquired {new_count} papers via DeepXiv[/green]"
             if skipped:
