@@ -2,6 +2,9 @@
 
 from unittest.mock import MagicMock, patch
 
+from typer.testing import CliRunner
+
+from lens.cli import app
 from lens.store.models import EMBEDDING_DIM, Paper
 from lens.store.store import LensStore
 
@@ -171,3 +174,58 @@ def test_fetch_deepxiv_paper_handles_missing_optional_fields():
 
     assert paper["keywords"] == []
     assert paper["github_url"] is None
+
+
+# ---------------------------------------------------------------------------
+# CLI integration tests
+# ---------------------------------------------------------------------------
+
+runner = CliRunner()
+
+
+def test_cli_deepxiv_search(tmp_path, monkeypatch):
+    """lens acquire deepxiv should search and store papers."""
+    mock_reader = MagicMock()
+    mock_reader.search.return_value = {
+        "total": 1,
+        "results": [
+            {
+                "arxiv_id": "2507.01701",
+                "title": "Test Paper",
+                "abstract": "Abstract",
+                "authors": [{"name": "Alice"}],
+                "publish_at": "2025-07-02T00:00:00",
+                "citation": 1,
+            }
+        ],
+    }
+
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "storage:\n  data_dir: " + str(tmp_path) + "\nacquire:\n  arxiv_categories: [cs.AI]\n"
+    )
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(config_path))
+
+    with (
+        patch("lens.acquire.deepxiv.Reader", return_value=mock_reader),
+        patch("lens.acquire.deepxiv.HAS_DEEPXIV", True),
+    ):
+        result = runner.invoke(app, ["acquire", "deepxiv", "multi-agent"])
+
+    assert result.exit_code == 0
+    assert "1" in result.output
+
+
+def test_cli_deepxiv_not_installed(tmp_path, monkeypatch):
+    """lens acquire deepxiv should print helpful error when not installed."""
+    config_path = tmp_path / "config.yaml"
+    config_path.write_text(
+        "storage:\n  data_dir: " + str(tmp_path) + "\nacquire:\n  arxiv_categories: [cs.AI]\n"
+    )
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(config_path))
+
+    with patch("lens.acquire.deepxiv.HAS_DEEPXIV", False):
+        result = runner.invoke(app, ["acquire", "deepxiv", "multi-agent"])
+
+    assert result.exit_code == 1
+    assert "deepxiv-sdk" in result.output.lower() or "not installed" in result.output.lower()

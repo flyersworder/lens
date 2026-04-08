@@ -704,6 +704,90 @@ async def _enrich_openalex_async(papers, mailto: str = ""):
     return await enrich_with_openalex(papers, mailto=mailto)
 
 
+@acquire_app.command()
+def deepxiv(
+    query: str = typer.Argument(None, help="Search query for DeepXiv."),
+    paper: str | None = typer.Option(None, "--paper", help="Fetch single paper by arXiv ID."),
+    since: str | None = typer.Option(
+        None, "--since", help="Only papers after this date (YYYY-MM-DD)."
+    ),
+    max_results: int = typer.Option(20, "--max-results", help="Maximum papers to fetch."),
+    categories: str | None = typer.Option(
+        None, "--categories", help="Comma-separated arXiv categories (e.g. cs.AI,cs.CL)."
+    ),
+) -> None:
+    """Search and fetch papers via DeepXiv (requires deepxiv-sdk)."""
+    from lens.acquire.deepxiv import HAS_DEEPXIV
+
+    if not HAS_DEEPXIV:
+        rprint("[red]deepxiv-sdk not installed. Run: uv sync --extra deepxiv[/red]")
+        raise typer.Exit(code=1)
+
+    if not query and not paper:
+        rprint("[red]Provide a search query or --paper ARXIV_ID[/red]")
+        raise typer.Exit(code=1)
+
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+    session_id = str(uuid4())[:8]
+
+    if paper:
+        from lens.acquire.deepxiv import fetch_deepxiv_paper
+
+        paper_data = fetch_deepxiv_paper(paper)
+
+        existing = store.query("papers", "paper_id = ?", (paper_data["paper_id"],))
+        if existing:
+            rprint(f"[yellow]Paper '{paper}' already exists. Skipping.[/yellow]")
+            return
+
+        paper_data["embedding"] = [0.0] * EMBEDDING_DIM
+        store.add_papers([paper_data])
+        log_event(
+            store,
+            "ingest",
+            "paper.added",
+            target_type="paper",
+            target_id=paper_data["paper_id"],
+            detail={"title": paper_data["title"], "source": "deepxiv"},
+            session_id=session_id,
+        )
+        rprint(f"[green]Acquired paper {paper} via DeepXiv[/green]")
+    else:
+        from lens.acquire.deepxiv import search_deepxiv
+
+        cat_list = [c.strip() for c in categories.split(",")] if categories else None
+        papers = search_deepxiv(
+            query=query,
+            categories=cat_list,
+            since=since,
+            max_results=max_results,
+        )
+
+        if not papers:
+            rprint("[yellow]No papers found[/yellow]")
+            return
+
+        for p in papers:
+            if "embedding" not in p:
+                p["embedding"] = [0.0] * EMBEDDING_DIM
+
+        store.add_papers(papers)
+        for p in papers:
+            log_event(
+                store,
+                "ingest",
+                "paper.added",
+                target_type="paper",
+                target_id=p["paper_id"],
+                detail={"title": p["title"], "source": "deepxiv"},
+                session_id=session_id,
+            )
+        rprint(f"[green]Acquired {len(papers)} papers via DeepXiv[/green]")
+
+
 # ---------------------------------------------------------------------------
 # Build subcommands
 # ---------------------------------------------------------------------------
