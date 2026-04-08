@@ -42,7 +42,7 @@ def _extract_date(publish_at: str | None) -> str:
     if not publish_at:
         return "1970-01-01"
     match = re.match(r"(\d{4}-\d{2}-\d{2})", publish_at)
-    return match.group(1) if match else publish_at[:10]
+    return match.group(1) if match else "1970-01-01"
 
 
 def _extract_authors(authors: list[dict | str] | None) -> list[str]:
@@ -92,13 +92,16 @@ def search_deepxiv(
 
     papers = []
     for r in results:
+        arxiv_id = r.get("arxiv_id")
+        if not arxiv_id:
+            continue
         date = _extract_date(r.get("publish_at") or r.get("published"))
         citations = r.get("citation", 0) or 0
         venue = r.get("venue") or r.get("journal_name")
         papers.append(
             {
-                "paper_id": r["arxiv_id"],
-                "arxiv_id": r["arxiv_id"],
+                "paper_id": arxiv_id,
+                "arxiv_id": arxiv_id,
                 "title": r.get("title", ""),
                 "abstract": r.get("abstract", ""),
                 "authors": _extract_authors(r.get("authors")),

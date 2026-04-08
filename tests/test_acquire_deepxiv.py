@@ -86,7 +86,10 @@ def test_search_deepxiv_maps_results_to_paper_dicts():
         ],
     }
 
-    with patch("lens.acquire.deepxiv.Reader", return_value=mock_reader):
+    with (
+        patch("lens.acquire.deepxiv.Reader", return_value=mock_reader),
+        patch("lens.acquire.deepxiv.HAS_DEEPXIV", True),
+    ):
         from lens.acquire.deepxiv import search_deepxiv
 
         papers = search_deepxiv(query="multi-agent", max_results=5)
@@ -108,7 +111,10 @@ def test_search_deepxiv_empty_results():
     mock_reader = MagicMock()
     mock_reader.search.return_value = {"total": 0, "results": []}
 
-    with patch("lens.acquire.deepxiv.Reader", return_value=mock_reader):
+    with (
+        patch("lens.acquire.deepxiv.Reader", return_value=mock_reader),
+        patch("lens.acquire.deepxiv.HAS_DEEPXIV", True),
+    ):
         from lens.acquire.deepxiv import search_deepxiv
 
         papers = search_deepxiv(query="nonexistent topic xyz")
@@ -130,7 +136,10 @@ def test_fetch_deepxiv_paper_returns_rich_metadata():
         "github_url": "https://github.com/bc200/LbMAS",
     }
 
-    with patch("lens.acquire.deepxiv.Reader", return_value=mock_reader):
+    with (
+        patch("lens.acquire.deepxiv.Reader", return_value=mock_reader),
+        patch("lens.acquire.deepxiv.HAS_DEEPXIV", True),
+    ):
         from lens.acquire.deepxiv import fetch_deepxiv_paper
 
         paper = fetch_deepxiv_paper("2507.01701")
@@ -152,7 +161,10 @@ def test_fetch_deepxiv_paper_handles_missing_optional_fields():
         "citations": 0,
     }
 
-    with patch("lens.acquire.deepxiv.Reader", return_value=mock_reader):
+    with (
+        patch("lens.acquire.deepxiv.Reader", return_value=mock_reader),
+        patch("lens.acquire.deepxiv.HAS_DEEPXIV", True),
+    ):
         from lens.acquire.deepxiv import fetch_deepxiv_paper
 
         paper = fetch_deepxiv_paper("2507.01701")
