@@ -24,7 +24,7 @@ VEC_TABLES: dict[str, tuple[str, str]] = {
 
 # Maps table_name -> set of columns that are JSON-serialized (lists or dicts).
 JSON_FIELDS: dict[str, set[str]] = {
-    "papers": {"authors"},
+    "papers": {"authors", "keywords"},
     "tradeoff_extractions": {"new_concepts"},
     "architecture_extractions": {"new_concepts"},
     "agentic_extractions": {"components", "new_concepts"},
@@ -148,6 +148,8 @@ _COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("architecture_extractions", "new_concepts", "TEXT NOT NULL DEFAULT '{}'"),
     ("agentic_extractions", "category", "TEXT NOT NULL DEFAULT ''"),
     ("agentic_extractions", "new_concepts", "TEXT NOT NULL DEFAULT '{}'"),
+    ("papers", "keywords", "TEXT NOT NULL DEFAULT '[]'"),
+    ("papers", "github_url", "TEXT"),
 ]
 
 
@@ -220,13 +222,25 @@ class LensStore:
     # Data helpers
     # ------------------------------------------------------------------
 
-    def add_rows(self, table: str, rows: list[dict]) -> None:
-        """INSERT rows into *table*, auto-serializing JSON fields and extracting embeddings."""
+    def add_rows(self, table: str, rows: list[dict], *, ignore_conflicts: bool = False) -> int:
+        """INSERT rows into *table*, auto-serializing JSON fields and extracting embeddings.
+
+        Parameters
+        ----------
+        ignore_conflicts:
+            If True, use INSERT OR IGNORE to silently skip rows that violate
+            a UNIQUE or PRIMARY KEY constraint. Useful for idempotent batch
+            ingestion where duplicates are expected.
+
+        Returns the number of rows actually inserted.
+        """
         if not rows:
-            return
+            return 0
 
         json_cols = JSON_FIELDS.get(table, set())
         vec_info = VEC_TABLES.get(table)  # (id_col, id_type) or None
+        insert_verb = "INSERT OR IGNORE" if ignore_conflicts else "INSERT"
+        inserted = 0
 
         for row in rows:
             processed = {}
@@ -248,25 +262,31 @@ class LensStore:
             col_names = ", ".join(cols)
             vals = [processed[c] for c in cols]
 
-            self.conn.execute(
-                f"INSERT INTO {table} ({col_names}) VALUES ({placeholders})",
+            cursor = self.conn.execute(
+                f"{insert_verb} INTO {table} ({col_names}) VALUES ({placeholders})",
                 vals,
             )
+            if cursor.rowcount > 0:
+                inserted += 1
 
             # Insert into companion vec table if applicable.
-            if vec_info and embedding is not None:
+            if vec_info and embedding is not None and cursor.rowcount > 0:
                 id_col, _ = vec_info
                 id_val = processed[id_col]
                 self.conn.execute(
-                    f"INSERT INTO {table}_vec ({id_col}, embedding) VALUES (?, ?)",
+                    f"INSERT OR IGNORE INTO {table}_vec ({id_col}, embedding) VALUES (?, ?)",
                     (id_val, _pack_embedding(embedding)),
                 )
 
         self.conn.commit()
+        return inserted
 
-    def add_papers(self, data: list[dict]) -> None:
-        """Convenience alias for ``add_rows("papers", data)``."""
-        self.add_rows("papers", data)
+    def add_papers(self, data: list[dict]) -> int:
+        """Insert papers, skipping duplicates by primary key.
+
+        Returns the number of new papers actually inserted.
+        """
+        return self.add_rows("papers", data, ignore_conflicts=True)
 
     def query(self, table: str, where: str = "", params: tuple | None = None) -> list[dict]:
         """SELECT * from *table* with optional WHERE clause.

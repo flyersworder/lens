@@ -297,6 +297,20 @@ wheels = [
 ]
 
 [[package]]
+name = "deepxiv-sdk"
+version = "0.2.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "python-dotenv" },
+    { name = "requests" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/dc/1f/ccddabae1f81e561cc7680b66e8778f559cb8fe2dd2d1138d4d7d0fd9cfe/deepxiv_sdk-0.2.4.tar.gz", hash = "sha256:572d2504da3e781aab06bb3c3b517d4fed497edbcf9f53ad4636c8eb291f2f1f", size = 50882, upload-time = "2026-04-02T05:26:07.001Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/31/f8/4b4cb9df479d53d3e3a6bb2134506f29320628590f3243d393dadfbddda6/deepxiv_sdk-0.2.4-py3-none-any.whl", hash = "sha256:7e8654dafc11da97722abbd8193917b318fead3be0227e90e91aa52b448d7705", size = 44287, upload-time = "2026-04-02T05:26:05.469Z" },
+]
+
+[[package]]
 name = "distro"
 version = "1.9.0"
 source = { registry = "https://pypi.org/simple" }
@@ -711,7 +725,7 @@ wheels = [
 
 [[package]]
 name = "lens-research"
-version = "0.6.0"
+version = "0.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "arxiv" },
@@ -729,6 +743,9 @@ dependencies = [
 ]
 
 [package.optional-dependencies]
+deepxiv = [
+    { name = "deepxiv-sdk" },
+]
 litellm = [
     { name = "litellm" },
 ]
@@ -744,6 +761,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "arxiv", specifier = ">=2.4.1" },
+    { name = "deepxiv-sdk", marker = "extra == 'deepxiv'", specifier = ">=0.2.0" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "json-repair", specifier = ">=0.58.7" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40" },
@@ -757,7 +775,7 @@ requires-dist = [
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["litellm"]
+provides-extras = ["litellm", "deepxiv"]
 
 [package.metadata.requires-dev]
 dev = [

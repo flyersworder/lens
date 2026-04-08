@@ -86,6 +86,10 @@ uv run lens explore agents Reasoning        # filter by category
 uv run lens acquire arxiv --query "LLM" --since 2025-01
 uv run lens acquire file paper.pdf          # ingest a local PDF
 
+# Acquire via DeepXiv (requires: uv sync --extra deepxiv)
+uv run lens acquire deepxiv "LLM agent architecture" --max-results 10
+uv run lens acquire deepxiv --paper 2507.01701  # single paper with rich metadata
+
 # Run a monitoring cycle (acquire → extract → ideate)
 uv run lens monitor
 uv run lens monitor --trending              # show ideation gaps
@@ -149,6 +153,7 @@ uv run lens config set embeddings.model text-embedding-3-small
 - **SQLite + sqlite-vec** — embedded database with vector search (cosine distance)
 - **openai SDK** — LLM and embedding client (works with any OpenAI-compatible endpoint)
 - **litellm** (optional) — multi-provider routing for direct API access
+- **deepxiv-sdk** (optional) — agent-optimized paper search with hybrid retrieval and progressive reading
 - **Guided extraction** — canonical vocabulary for all extraction types (tradeoffs, architecture, agentic)
 - **sentence-transformers** or **cloud embeddings** — configurable provider
 - **Typer** — CLI framework
@@ -156,7 +161,7 @@ uv run lens config set embeddings.model text-embedding-3-small
 Data flows through four layers:
 
 ```
-Layer 0: Papers (arxiv, PDF, OpenAlex enrichment)
+Layer 0: Papers (arxiv, DeepXiv, PDF, OpenAlex enrichment)
     ↓
 Layer 1: Raw Extractions (LLM-extracted tradeoffs, architecture, agentic patterns)
     ↓

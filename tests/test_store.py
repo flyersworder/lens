@@ -241,6 +241,45 @@ def test_add_papers(store, sample_paper_data):
     assert rows[0]["paper_id"] == "2401.12345"
 
 
+def test_add_papers_skips_duplicates(store, sample_paper_data):
+    """add_papers should skip duplicates without crashing."""
+    inserted_first = store.add_papers([sample_paper_data])
+    assert inserted_first == 1
+
+    # Insert same paper again — should be silently skipped
+    inserted_second = store.add_papers([sample_paper_data])
+    assert inserted_second == 0
+
+    rows = store.query("papers")
+    assert len(rows) == 1
+
+
+def test_add_papers_returns_count_with_mixed_new_and_existing(store, sample_paper_data):
+    """add_papers should return count of only newly inserted papers."""
+    store.add_papers([sample_paper_data])
+
+    new_paper = sample_paper_data.copy()
+    new_paper["paper_id"] = "2401.99999"
+    new_paper["arxiv_id"] = "2401.99999"
+
+    inserted = store.add_papers([sample_paper_data, new_paper])
+    assert inserted == 1  # only the new one
+
+    rows = store.query("papers")
+    assert len(rows) == 2
+
+
+def test_add_rows_without_ignore_conflicts_raises_on_duplicate(store, sample_paper_data):
+    """add_rows with ignore_conflicts=False should raise on duplicate PK."""
+    import sqlite3
+
+    import pytest
+
+    store.add_rows("papers", [sample_paper_data])
+    with pytest.raises(sqlite3.IntegrityError):
+        store.add_rows("papers", [sample_paper_data])
+
+
 # ---- Extra: datetime serialization ----
 
 
