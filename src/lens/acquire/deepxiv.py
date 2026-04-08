@@ -6,6 +6,7 @@ Requires: uv sync --extra deepxiv
 from __future__ import annotations
 
 import logging
+import os
 import re
 from typing import Any
 
@@ -23,6 +24,8 @@ except ImportError:
     class Reader:  # type: ignore[no-redef]
         """Placeholder when deepxiv-sdk is not installed."""
 
+        def __init__(self, token: str | None = None) -> None: ...
+
         def search(self, **kwargs: Any) -> dict[str, Any]:
             return {}
 
@@ -34,7 +37,8 @@ def _get_reader() -> Reader:
     """Create a Reader instance. Raises RuntimeError if deepxiv-sdk is not installed."""
     if not HAS_DEEPXIV:
         raise RuntimeError("deepxiv-sdk is not installed. Run: uv sync --extra deepxiv")
-    return Reader()
+    token = os.environ.get("DEEPXIV_TOKEN")
+    return Reader(token=token) if token else Reader()
 
 
 def _extract_date(publish_at: str | None) -> str:
