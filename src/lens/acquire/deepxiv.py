@@ -24,6 +24,8 @@ except ImportError:
     class Reader:  # type: ignore[no-redef]
         """Placeholder when deepxiv-sdk is not installed."""
 
+        token: str | None = None
+
         def __init__(self, token: str | None = None) -> None: ...
 
         def search(self, **kwargs: Any) -> dict[str, Any]:
@@ -33,15 +35,43 @@ except ImportError:
             return {}
 
 
+def _register_and_save_token() -> str | None:
+    """Auto-register a DeepXiv token and save it to the project .env."""
+    from deepxiv_sdk.cli import auto_register_token, save_token
+
+    token, _ = auto_register_token()
+    if token:
+        save_token(token, is_global=False)  # save to project .env
+    return token
+
+
 def _get_reader() -> Reader:
-    """Create a Reader instance. Raises RuntimeError if deepxiv-sdk is not installed."""
+    """Create a Reader instance, auto-registering a token if needed."""
     if not HAS_DEEPXIV:
         raise RuntimeError("deepxiv-sdk is not installed. Run: uv sync --extra deepxiv")
     from dotenv import load_dotenv
 
     load_dotenv()
     token = os.environ.get("DEEPXIV_TOKEN")
+    if not token:
+        logger.info("No DEEPXIV_TOKEN found, auto-registering...")
+        token = _register_and_save_token()
     return Reader(token=token) if token else Reader()
+
+
+def _call_with_token_refresh(reader: Reader, method: str, *args: Any, **kwargs: Any) -> Any:
+    """Call a Reader method, auto-refreshing the token on AuthenticationError."""
+    from deepxiv_sdk import AuthenticationError
+
+    try:
+        return getattr(reader, method)(*args, **kwargs)
+    except AuthenticationError:
+        logger.info("Token expired, auto-registering a new one...")
+        token = _register_and_save_token()
+        if not token:
+            raise
+        reader.token = token
+        return getattr(reader, method)(*args, **kwargs)
 
 
 def _extract_date(publish_at: str | None) -> str:
@@ -94,7 +124,7 @@ def search_deepxiv(
     if since:
         kwargs["date_from"] = since
 
-    response = reader.search(**kwargs)
+    response = _call_with_token_refresh(reader, "search", **kwargs)
     results = response.get("results", [])
 
     papers = []
@@ -128,7 +158,7 @@ def fetch_deepxiv_paper(arxiv_id: str) -> dict[str, Any]:
     Returns a LENS Paper-shaped dict with keywords and github_url populated.
     """
     reader = _get_reader()
-    data = reader.brief(arxiv_id)
+    data = _call_with_token_refresh(reader, "brief", arxiv_id)
 
     date = _extract_date(data.get("publish_at"))
     citations = data.get("citations", 0) or 0
