@@ -37,6 +37,12 @@ def _get_reader() -> Reader:
     """Create a Reader instance. Raises RuntimeError if deepxiv-sdk is not installed."""
     if not HAS_DEEPXIV:
         raise RuntimeError("deepxiv-sdk is not installed. Run: uv sync --extra deepxiv")
+    from pathlib import Path
+
+    from dotenv import load_dotenv
+
+    load_dotenv()  # project .env
+    load_dotenv(Path.home() / ".env")  # user .env (where deepxiv stores its token)
     token = os.environ.get("DEEPXIV_TOKEN")
     return Reader(token=token) if token else Reader()
 
