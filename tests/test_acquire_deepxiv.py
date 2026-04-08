@@ -2,6 +2,7 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from typer.testing import CliRunner
 
 from lens.cli import app
@@ -229,3 +230,51 @@ def test_cli_deepxiv_not_installed(tmp_path, monkeypatch):
 
     assert result.exit_code == 1
     assert "deepxiv-sdk" in result.output.lower() or "not installed" in result.output.lower()
+
+
+# ---------------------------------------------------------------------------
+# Live integration tests (require deepxiv-sdk and network access)
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.integration
+def test_deepxiv_search_live():
+    """Integration test: search DeepXiv for real papers."""
+    from lens.acquire.deepxiv import HAS_DEEPXIV, search_deepxiv
+
+    if not HAS_DEEPXIV:
+        pytest.skip("deepxiv-sdk not installed")
+
+    try:
+        papers = search_deepxiv(query="transformer attention", max_results=3)
+    except Exception as e:
+        if "token" in str(e).lower() or "auth" in str(e).lower() or "401" in str(e):
+            pytest.skip(f"DeepXiv API token not configured: {e}")
+        raise
+
+    assert len(papers) > 0
+    p = papers[0]
+    assert p["paper_id"]
+    assert p["title"]
+    assert p["date"]
+    assert isinstance(p["quality_score"], float)
+
+
+@pytest.mark.integration
+def test_deepxiv_fetch_paper_live():
+    """Integration test: fetch a known paper via DeepXiv."""
+    from lens.acquire.deepxiv import HAS_DEEPXIV, fetch_deepxiv_paper
+
+    if not HAS_DEEPXIV:
+        pytest.skip("deepxiv-sdk not installed")
+
+    try:
+        paper = fetch_deepxiv_paper("2507.01701")
+    except Exception as e:
+        if "token" in str(e).lower() or "auth" in str(e).lower() or "401" in str(e):
+            pytest.skip(f"DeepXiv API token not configured: {e}")
+        raise
+
+    assert paper["paper_id"] == "2507.01701"
+    assert paper["title"]
+    assert isinstance(paper["keywords"], list)
