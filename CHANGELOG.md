@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.7.0 (2026-04-08)
+
+### Added
+- **DeepXiv integration** — New `lens acquire deepxiv` command for paper search
+  and retrieval via [deepxiv-sdk](https://github.com/DeepXiv/deepxiv_sdk).
+  Supports hybrid search (BM25 + vector), single paper fetch with rich metadata,
+  date filtering, and category filtering.
+- **`keywords` field** on papers — JSON list of keywords populated by DeepXiv's
+  `brief()` API. Feeds into vocabulary and aids search.
+- **`github_url` field** on papers — Link to associated code repository, populated
+  by DeepXiv. Useful for reproducibility and code availability tracking.
+- **`deepxiv` optional dependency** — Install with `uv sync --extra deepxiv`.
+  When not installed, all existing functionality works unchanged.
+
+### Changed
+- **Schema migrations** — Two new column migrations (`keywords`, `github_url`)
+  applied automatically on database upgrade via `init_tables()`.
+
 ## 0.6.0 (2026-04-05)
 
 ### Added

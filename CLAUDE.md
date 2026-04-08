@@ -13,6 +13,7 @@
 - Table schemas defined as SQL in `src/lens/store/store.py`
 - Embedding dimension controlled by `EMBEDDING_DIM` constant in `models.py`
 - LLM: openai SDK (core) + litellm (optional, `uv sync --extra litellm`). Supports gateway mode via `llm.api_base`
+- Paper search: deepxiv-sdk (optional, `uv sync --extra deepxiv`). Hybrid search + progressive reading via `lens acquire deepxiv`
 - Embeddings: local (sentence-transformers) or cloud (openai/litellm), via `embeddings.provider` config
 - **Vocabulary** — canonical `vocabulary` table stores parameters, principles, arch slots, and agentic categories with text IDs (slugs). Seed vocabulary in `taxonomy/vocabulary.py`. Extraction prompt injects vocabulary for guided extraction; `NEW:` prefix for novel concepts.
 - **Taxonomy** — single `build_vocabulary()` processes all extraction types. No clustering.

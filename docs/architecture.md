@@ -2,8 +2,8 @@
 
 Design spec for a system that automatically discovers recurring solution patterns, contradiction resolutions, architecture innovations, and agentic design patterns from LLM research papers (arxiv), inspired by TRIZ methodology.
 
-**Status**: Core Complete (v0.6.0)
-**Date**: 2026-03-21 (original), 2026-04-05 (last updated)
+**Status**: Core Complete (v0.7.0)
+**Date**: 2026-03-21 (original), 2026-04-08 (last updated)
 
 > **Migration note**: This design spec was written when LENS used LanceDB + Polars + HDBSCAN clustering. The implementation has since migrated to **SQLite + sqlite-vec + vocabulary-based guided extraction**. The tech stack and approach have changed significantly — see CLAUDE.md and README.md for the current architecture. References to LanceDB, Polars, HDBSCAN, and clustering elsewhere in this document are historical.
 
@@ -20,7 +20,7 @@ Design spec for a system that automatically discovers recurring solution pattern
 | **Agentic Pattern Catalog** | Done | Canonical category vocabulary + free-text patterns from extractions |
 | **Monitor / Ideation** | Done | Sparse cells + cross-pollination gap detection, optional LLM enrichment |
 | **CLI** | Done | All commands wired; `vocab`, `explore`, `analyze`, `explain`, `build`, `monitor`, `lint`, `log`, `export`, `import` |
-| **Acquire pipeline** | Done | arxiv, OpenAlex, Semantic Scholar, seed papers, PDF ingestion |
+| **Acquire pipeline** | Done | arxiv, DeepXiv (optional), OpenAlex, Semantic Scholar, seed papers, PDF ingestion |
 | **Extract pipeline** | Done | LLM-guided extraction using canonical vocabulary for all 3 types |
 | **Vocabulary pipeline** | Done | Replaced HDBSCAN clustering. Single `build_vocabulary()` for all types |
 | **Hybrid search** | Done | FTS5 keyword + sqlite-vec vector search with Reciprocal Rank Fusion |
@@ -129,7 +129,7 @@ Catalogs recurring patterns for building and orchestrating LLM-based agents.
 | Clustering | HDBSCAN + KMeans fallback | Density-based clustering with degenerate-case handling |
 | Embeddings | sentence-transformers (local) or openai/litellm (cloud) | Configurable: local for offline/free, cloud for scalability |
 | Data validation | Pydantic | Structured LLM output validation |
-| Paper sources | arxiv API, OpenAlex, Semantic Scholar | Complementary metadata and embeddings |
+| Paper sources | arxiv API, DeepXiv (optional), OpenAlex, Semantic Scholar | Complementary metadata and embeddings |
 
 ### Data Model
 
@@ -460,6 +460,8 @@ lens init --force                   # Reset everything
 lens acquire seed                   # Ingest curated ~200 seed papers
 lens acquire arxiv --query "LLM"    # Fetch from arxiv
 lens acquire arxiv --since 2024-01  # Fetch recent papers
+lens acquire deepxiv "transformer"  # Search via DeepXiv (optional)
+lens acquire deepxiv --paper 2507.01701  # Single paper with rich metadata
 lens acquire file paper.pdf         # Ingest single paper
 lens acquire openalex --enrich      # Enrich with metadata
 
@@ -554,6 +556,7 @@ lens/
 │       ├── config.py               # YAML config management
 │       ├── acquire/
 │       │   ├── arxiv.py            # arXiv API client with retry
+│       │   ├── deepxiv.py          # DeepXiv search & retrieval (optional)
 │       │   ├── openalex.py         # OpenAlex enrichment (citations, venue)
 │       │   ├── semantic_scholar.py # Semantic Scholar SPECTER2 embeddings
 │       │   ├── seed.py             # Curated seed paper loader
@@ -587,6 +590,7 @@ lens/
 └── tests/
     ├── conftest.py                 # Shared fixtures (tmp_path LanceDB instances)
     ├── test_acquire_arxiv.py
+    ├── test_acquire_deepxiv.py
     ├── test_acquire_openalex.py
     ├── test_acquire_pdf.py
     ├── test_acquire_seed.py
