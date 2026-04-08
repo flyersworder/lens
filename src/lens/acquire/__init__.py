@@ -17,3 +17,14 @@ __all__ = [
     "load_seed_manifest",
     "quality_score",
 ]
+
+try:
+    from lens.acquire.deepxiv import (
+        HAS_DEEPXIV,
+        fetch_deepxiv_paper,
+        search_deepxiv,
+    )
+
+    __all__ += ["HAS_DEEPXIV", "search_deepxiv", "fetch_deepxiv_paper"]
+except ImportError:
+    pass
