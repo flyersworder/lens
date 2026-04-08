@@ -706,7 +706,7 @@ async def _enrich_openalex_async(papers, mailto: str = ""):
 
 @acquire_app.command()
 def deepxiv(
-    query: str = typer.Argument(None, help="Search query for DeepXiv."),
+    query: str | None = typer.Argument(None, help="Search query for DeepXiv."),
     paper: str | None = typer.Option(None, "--paper", help="Fetch single paper by arXiv ID."),
     since: str | None = typer.Option(
         None, "--since", help="Only papers after this date (YYYY-MM-DD)."
@@ -733,59 +733,64 @@ def deepxiv(
     store.init_tables()
     session_id = str(uuid4())[:8]
 
-    if paper:
-        from lens.acquire.deepxiv import fetch_deepxiv_paper
+    try:
+        if paper:
+            from lens.acquire.deepxiv import fetch_deepxiv_paper
 
-        paper_data = fetch_deepxiv_paper(paper)
+            paper_data = fetch_deepxiv_paper(paper)
 
-        existing = store.query("papers", "paper_id = ?", (paper_data["paper_id"],))
-        if existing:
-            rprint(f"[yellow]Paper '{paper}' already exists. Skipping.[/yellow]")
-            return
+            existing = store.query("papers", "paper_id = ?", (paper_data["paper_id"],))
+            if existing:
+                rprint(f"[yellow]Paper '{paper}' already exists. Skipping.[/yellow]")
+                return
 
-        paper_data["embedding"] = [0.0] * EMBEDDING_DIM
-        store.add_papers([paper_data])
-        log_event(
-            store,
-            "ingest",
-            "paper.added",
-            target_type="paper",
-            target_id=paper_data["paper_id"],
-            detail={"title": paper_data["title"], "source": "deepxiv"},
-            session_id=session_id,
-        )
-        rprint(f"[green]Acquired paper {paper} via DeepXiv[/green]")
-    else:
-        from lens.acquire.deepxiv import search_deepxiv
-
-        cat_list = [c.strip() for c in categories.split(",")] if categories else None
-        papers = search_deepxiv(
-            query=query,
-            categories=cat_list,
-            since=since,
-            max_results=max_results,
-        )
-
-        if not papers:
-            rprint("[yellow]No papers found[/yellow]")
-            return
-
-        for p in papers:
-            if "embedding" not in p:
-                p["embedding"] = [0.0] * EMBEDDING_DIM
-
-        store.add_papers(papers)
-        for p in papers:
+            paper_data["embedding"] = [0.0] * EMBEDDING_DIM
+            store.add_papers([paper_data])
             log_event(
                 store,
                 "ingest",
                 "paper.added",
                 target_type="paper",
-                target_id=p["paper_id"],
-                detail={"title": p["title"], "source": "deepxiv"},
+                target_id=paper_data["paper_id"],
+                detail={"title": paper_data["title"], "source": "deepxiv"},
                 session_id=session_id,
             )
-        rprint(f"[green]Acquired {len(papers)} papers via DeepXiv[/green]")
+            rprint(f"[green]Acquired paper {paper} via DeepXiv[/green]")
+        else:
+            from lens.acquire.deepxiv import search_deepxiv
+
+            assert query is not None  # validated above
+            cat_list = [c.strip() for c in categories.split(",")] if categories else None
+            papers = search_deepxiv(
+                query=query,
+                categories=cat_list,
+                since=since,
+                max_results=max_results,
+            )
+
+            if not papers:
+                rprint("[yellow]No papers found[/yellow]")
+                return
+
+            for p in papers:
+                if "embedding" not in p:
+                    p["embedding"] = [0.0] * EMBEDDING_DIM
+
+            store.add_papers(papers)
+            for p in papers:
+                log_event(
+                    store,
+                    "ingest",
+                    "paper.added",
+                    target_type="paper",
+                    target_id=p["paper_id"],
+                    detail={"title": p["title"], "source": "deepxiv"},
+                    session_id=session_id,
+                )
+            rprint(f"[green]Acquired {len(papers)} papers via DeepXiv[/green]")
+    except Exception as e:
+        rprint(f"[red]DeepXiv API error: {e}[/red]")
+        raise typer.Exit(code=1) from None
 
 
 # ---------------------------------------------------------------------------
