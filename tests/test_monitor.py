@@ -93,3 +93,108 @@ async def test_run_monitor_cycle_no_taxonomy(tmp_path):
         )
 
     assert "papers_acquired" in result
+
+
+@pytest.mark.asyncio
+async def test_monitor_cycle_with_build(tmp_path, monkeypatch):
+    """Monitor cycle with run_build=True should call build_vocabulary and build_matrix."""
+    from unittest.mock import AsyncMock
+
+    from lens.monitor.watcher import run_monitor_cycle
+    from lens.store.store import LensStore
+
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    mock_llm = AsyncMock()
+
+    async def fake_fetch(**kwargs):
+        return []
+
+    monkeypatch.setattr("lens.monitor.watcher.fetch_arxiv_papers", fake_fetch)
+
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    load_seed_vocabulary(store)
+
+    result = await run_monitor_cycle(
+        store,
+        mock_llm,
+        run_build=True,
+        run_ideation_flag=False,
+    )
+    assert "taxonomy_built" in result
+    assert result["taxonomy_built"] is True
+
+
+@pytest.mark.asyncio
+async def test_monitor_cycle_skip_build(tmp_path, monkeypatch):
+    """Monitor cycle with run_build=False should skip taxonomy and matrix build."""
+    from unittest.mock import AsyncMock
+
+    from lens.monitor.watcher import run_monitor_cycle
+    from lens.store.store import LensStore
+
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    mock_llm = AsyncMock()
+
+    async def fake_fetch(**kwargs):
+        return []
+
+    monkeypatch.setattr("lens.monitor.watcher.fetch_arxiv_papers", fake_fetch)
+
+    result = await run_monitor_cycle(
+        store,
+        mock_llm,
+        run_build=False,
+        run_ideation_flag=False,
+    )
+    assert result["taxonomy_built"] is False
+    assert result["matrix_built"] is False
+
+
+@pytest.mark.asyncio
+async def test_monitor_cycle_skip_enrich(tmp_path, monkeypatch):
+    """Monitor cycle with run_enrich=False should skip OpenAlex enrichment."""
+    from unittest.mock import AsyncMock
+
+    from lens.monitor.watcher import run_monitor_cycle
+    from lens.store.models import EMBEDDING_DIM
+    from lens.store.store import LensStore
+
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    mock_llm = AsyncMock()
+
+    paper = {
+        "paper_id": "test-001",
+        "title": "Test Paper",
+        "abstract": "Test abstract.",
+        "authors": ["Author"],
+        "date": "2025-01-01",
+        "arxiv_id": "2501.00001",
+        "extraction_status": "pending",
+        "embedding": [0.0] * EMBEDDING_DIM,
+    }
+
+    async def fake_fetch(**kwargs):
+        return [paper]
+
+    monkeypatch.setattr("lens.monitor.watcher.fetch_arxiv_papers", fake_fetch)
+
+    async def fake_extract(store, client, concurrency=3, session_id=None):
+        return 0
+
+    monkeypatch.setattr("lens.monitor.watcher.extract_papers", fake_extract)
+
+    result = await run_monitor_cycle(
+        store,
+        mock_llm,
+        run_enrich=False,
+        run_build=False,
+        run_ideation_flag=False,
+    )
+    assert result["papers_enriched"] == 0

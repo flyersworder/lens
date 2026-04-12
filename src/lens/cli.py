@@ -1,8 +1,10 @@
 """LENS CLI — LLM Engineering Navigation System command-line interface."""
 
 import asyncio
+import logging
 import os
 import shutil
+import struct
 from datetime import UTC
 from pathlib import Path
 from uuid import uuid4
@@ -20,7 +22,7 @@ from lens.store.store import LensStore
 # App and subcommand groups
 # ---------------------------------------------------------------------------
 
-app = typer.Typer(name="lens", help="LENS — LLM Engineering Navigation System")
+app = typer.Typer(name="lens")
 
 acquire_app = typer.Typer(help="Acquire papers from various sources.")
 build_app = typer.Typer(help="Build taxonomy, matrix, and other derived artefacts.")
@@ -33,6 +35,25 @@ app.add_typer(build_app, name="build")
 app.add_typer(explore_app, name="explore")
 app.add_typer(config_app, name="config")
 app.add_typer(vocab_app, name="vocab")
+
+
+@app.callback()
+def main(
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True, help="Increase log verbosity (-v=INFO, -vv=DEBUG)."
+    ),
+) -> None:
+    """LENS — LLM Engineering Navigation System."""
+    level = logging.WARNING
+    if verbose == 1:
+        level = logging.INFO
+    elif verbose >= 2:
+        level = logging.DEBUG
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -147,6 +168,24 @@ def _embedding_kwargs(config: dict) -> dict:
     return kwargs
 
 
+def _require_llm_config(config: dict) -> None:
+    """Exit early with a clear message if no LLM backend is configured.
+
+    Passes if any of: api_key in config, OPENROUTER_API_KEY env, or api_base (gateway mode).
+    """
+    llm_cfg = config.get("llm", {})
+    api_key = llm_cfg.get("api_key") or os.environ.get("OPENROUTER_API_KEY", "")
+    api_base = llm_cfg.get("api_base", "")
+    if not api_key and not api_base:
+        rprint(
+            "[red]LLM backend not configured.[/red]\n"
+            "Set an API key: [bold]lens config set llm.api_key YOUR_KEY[/bold]\n"
+            "Or export: [bold]export OPENROUTER_API_KEY=YOUR_KEY[/bold]\n"
+            "Or use gateway mode: [bold]lens config set llm.api_base http://your-gateway:4000/v1[/bold]"
+        )
+        raise typer.Exit(code=1)
+
+
 # ---------------------------------------------------------------------------
 # Top-level commands
 # ---------------------------------------------------------------------------
@@ -172,12 +211,115 @@ def init(
 
 
 @app.command()
+def status() -> None:
+    """Show a summary of the LENS knowledge base."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    db_path = data_dir / "lens.db"
+    if not db_path.exists():
+        rprint("[yellow]No database found. Run 'lens init' first.[/yellow]")
+        raise typer.Exit(code=1)
+
+    store = LensStore(str(db_path))
+    store.init_tables()
+
+    # Paper counts by extraction status
+    status_rows = store.query_sql(
+        "SELECT extraction_status, COUNT(*) AS cnt FROM papers GROUP BY extraction_status"
+    )
+    total = sum(r["cnt"] for r in status_rows)
+    sorted_statuses = sorted(status_rows, key=lambda r: r["extraction_status"])
+    status_parts = ", ".join(f"{r['extraction_status']}: {r['cnt']}" for r in sorted_statuses)
+
+    rprint("\n[bold]LENS Knowledge Base Status[/bold]")
+    rprint("=" * 40)
+    rprint(f"Papers: {total} ({status_parts})" if status_parts else f"Papers: {total}")
+
+    # Vocabulary counts by kind
+    vocab_rows = store.query_sql("SELECT kind, COUNT(*) AS cnt FROM vocabulary GROUP BY kind")
+    if vocab_rows:
+        vocab_parts = ", ".join(
+            f"{r['cnt']} {r['kind']}s" for r in sorted(vocab_rows, key=lambda r: r["kind"])
+        )
+        rprint(f"Vocabulary: {vocab_parts}")
+    else:
+        rprint("Vocabulary: empty")
+
+    # Matrix
+    matrix_rows = store.query_sql(
+        "SELECT COUNT(*) AS cell_count, COALESCE(SUM(count), 0) AS total_evidence "
+        "FROM matrix_cells"
+    )
+    cell_count = matrix_rows[0]["cell_count"] if matrix_rows else 0
+    if cell_count:
+        rprint(f"Matrix: {cell_count} cells, {matrix_rows[0]['total_evidence']} total evidence")
+    else:
+        rprint("Matrix: empty")
+
+    # Top parameters by paper_count
+    top_params = store.query_sql(
+        "SELECT name, paper_count FROM vocabulary "
+        "WHERE kind = ? AND paper_count > 0 "
+        "ORDER BY paper_count DESC LIMIT 5",
+        ("parameter",),
+    )
+    if top_params:
+        top_str = ", ".join(f"{p['name']} ({p['paper_count']})" for p in top_params)
+        rprint(f"Top parameters: {top_str}")
+
+    # Taxonomy version
+    versions = store.query_sql(
+        "SELECT version_id, created_at FROM taxonomy_versions ORDER BY version_id DESC LIMIT 1"
+    )
+    if versions:
+        v = versions[0]
+        rprint(f"Taxonomy: v{v['version_id']} (built: {v.get('created_at', 'unknown')})")
+    else:
+        rprint("Taxonomy: not built yet")
+
+    # Last event
+    events = store.query_sql(
+        "SELECT timestamp, kind FROM event_log ORDER BY timestamp DESC LIMIT 1"
+    )
+    if events:
+        e = events[0]
+        rprint(f"Last event: {e.get('timestamp', '?')} ({e.get('kind', '?')})")
+    else:
+        rprint("Last event: none")
+
+    # Cheap lint checks
+    from lens.knowledge.linter import (
+        check_missing_embeddings,
+        check_orphan_vocabulary,
+        check_weak_evidence,
+    )
+
+    orphans = check_orphan_vocabulary(store)
+    weak = check_weak_evidence(store)
+    missing_emb = check_missing_embeddings(store)
+    issues = []
+    if orphans:
+        issues.append(f"{len(orphans)} orphans")
+    if weak:
+        issues.append(f"{len(weak)} weak evidence")
+    if missing_emb:
+        issues.append(f"{len(missing_emb)} missing embeddings")
+    if issues:
+        rprint(f"Issues: {', '.join(issues)}")
+    else:
+        rprint("Issues: none")
+
+    rprint()
+
+
+@app.command()
 def analyze(
     query: str = typer.Argument(..., help="Problem description."),
     type_: str | None = typer.Option(None, "--type", help="Query type."),
 ) -> None:
     """Analyze a tradeoff and suggest resolution techniques."""
     config = load_config(_get_config_path())
+    _require_llm_config(config)
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
@@ -243,6 +385,7 @@ def explain(
 ) -> None:
     """Explain an LLM concept with adaptive depth."""
     config = load_config(_get_config_path())
+    _require_llm_config(config)
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
@@ -342,6 +485,7 @@ def extract(
 ) -> None:
     """Extract tradeoffs, architecture, and agentic patterns from papers."""
     config = load_config(_get_config_path())
+    _require_llm_config(config)
     data_dir = _get_data_dir(config)
     llm_model = model or config["llm"]["extract_model"]
 
@@ -363,10 +507,15 @@ def extract(
 
 @app.command()
 def monitor(
-    interval: str = typer.Option("weekly", "--interval", help="Check interval (not yet used)."),
     trending: bool = typer.Option(False, "--trending", help="Show ideation gaps."),
+    skip_enrich: bool = typer.Option(
+        False, "--skip-enrich", help="Skip OpenAlex enrichment stage."
+    ),
+    skip_build: bool = typer.Option(
+        False, "--skip-build", help="Skip taxonomy and matrix rebuild."
+    ),
 ) -> None:
-    """Run one monitoring cycle: acquire -> extract -> ideate."""
+    """Run one monitoring cycle: acquire -> enrich -> extract -> build -> ideate."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir / "lens.db"))
@@ -387,23 +536,39 @@ def monitor(
                 rprint(f"  [{row['gap_type']}] {row['description']}{hyp}")
         raise typer.Exit(code=0)
 
+    _require_llm_config(config)
+
     from lens.llm.client import LLMClient
     from lens.monitor.watcher import run_monitor_cycle
 
     client = LLMClient(model=config["llm"]["extract_model"], **_llm_kwargs(config))
     cats = config["acquire"]["arxiv_categories"]
     monitor_cfg = config["monitor"]
+    openalex_mailto = config["acquire"].get("openalex_mailto", "")
+    session_id = str(uuid4())[:8]
+
     result = asyncio.run(
         run_monitor_cycle(
             store,
             client,
             categories=cats,
+            run_enrich=not skip_enrich,
+            run_build=not skip_build,
             run_ideation_flag=monitor_cfg["ideate"],
+            ideate_with_llm=monitor_cfg.get("ideate_llm", False),
+            openalex_mailto=openalex_mailto,
+            embedding_kwargs=_embedding_kwargs(config),
+            venue_tiers=config["acquire"].get("quality_venue_tiers"),
+            session_id=session_id,
         )
     )
     rprint("[green]Monitor cycle complete:[/green]")
     rprint(f"  Papers acquired: {result['papers_acquired']}")
+    if result["papers_enriched"]:
+        rprint(f"  Papers enriched: {result['papers_enriched']}")
     rprint(f"  Papers extracted: {result['papers_extracted']}")
+    if result["taxonomy_built"]:
+        rprint("  Taxonomy + matrix: rebuilt")
     if result.get("ideation_report"):
         rprint(f"  Gaps found: {result['ideation_report']['gap_count']}")
 
@@ -607,6 +772,28 @@ def seed() -> None:
         )
     rprint(f"[green]Acquired {count} seed papers[/green]")
 
+    # Compute quality scores for newly-added seed papers
+    if count > 0:
+        from lens.acquire.quality import quality_score as compute_quality
+
+        all_papers = store.query("papers")
+        venue_tiers = config["acquire"].get("quality_venue_tiers")
+        for p in all_papers:
+            if p.get("quality_score", 0.0) > 0.0:
+                continue
+            score = compute_quality(
+                citations=p.get("citations", 0) or 0,
+                venue=p.get("venue"),
+                paper_date=p.get("date", "2020-01-01"),
+                venue_tiers=venue_tiers,
+            )
+            store.update(
+                "papers",
+                "quality_score = ?",
+                "paper_id = ?",
+                (score, p["paper_id"]),
+            )
+
 
 async def _acquire_seed_async(store: LensStore) -> int:
     from lens.acquire.seed import acquire_seed
@@ -765,6 +952,20 @@ def openalex(
         updated_count += 1
     rprint(f"[green]Enriched {updated_count} papers with OpenAlex data[/green]")
 
+    # Recompute quality scores now that we have citations and venue
+    from lens.acquire.quality import quality_score as compute_quality
+
+    venue_tiers = config["acquire"].get("quality_venue_tiers")
+    for paper in enriched:
+        pid = paper.get("paper_id", "")
+        score = compute_quality(
+            citations=paper.get("citations", 0) or 0,
+            venue=paper.get("venue"),
+            paper_date=paper.get("date", "2020-01-01"),
+            venue_tiers=venue_tiers,
+        )
+        store.update("papers", "quality_score = ?", "paper_id = ?", (score, pid))
+
 
 async def _enrich_openalex_async(papers, mailto: str = ""):
     from lens.acquire.openalex import enrich_with_openalex
@@ -870,6 +1071,83 @@ def deepxiv(
     except Exception as e:
         rprint(f"[red]DeepXiv API error: {e}[/red]")
         raise typer.Exit(code=1) from None
+
+
+@acquire_app.command()
+def semantic(
+    paper_id: str | None = typer.Option(
+        None,
+        "--paper-id",
+        help="Force-fetch SPECTER2 embedding for a specific paper (overwrites existing).",
+    ),
+    api_key: str | None = typer.Option(None, "--api-key", help="Semantic Scholar API key."),
+) -> None:
+    """Fetch SPECTER2 embeddings from Semantic Scholar."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+
+    if paper_id:
+        papers = store.query("papers", "paper_id = ?", (paper_id,))
+    else:
+        papers = store.query("papers")
+
+    if not papers:
+        rprint("[yellow]No papers to fetch embeddings for.[/yellow]")
+        return
+
+    # Filter to papers with zero-vector or missing embeddings
+    if not paper_id:
+        papers_needing_embeddings = []
+        for p in papers:
+            pid = p["paper_id"]
+            vec_row = store.query_sql(
+                "SELECT embedding FROM papers_vec WHERE paper_id = ?", (pid,)
+            )
+            if not vec_row:
+                papers_needing_embeddings.append(p)
+                continue
+            emb_bytes = vec_row[0]["embedding"]
+            emb = struct.unpack(f"{EMBEDDING_DIM}f", emb_bytes)
+            if all(v == 0.0 for v in emb):
+                papers_needing_embeddings.append(p)
+        papers = papers_needing_embeddings
+
+    if not papers:
+        rprint("[yellow]All papers already have embeddings.[/yellow]")
+        return
+
+    arxiv_ids = [p.get("arxiv_id", p["paper_id"]) for p in papers]
+    pid_by_arxiv = {p.get("arxiv_id", p["paper_id"]): p["paper_id"] for p in papers}
+
+    rprint(f"Fetching SPECTER2 embeddings for {len(arxiv_ids)} paper(s)...")
+
+    from lens.acquire.semantic_scholar import fetch_embeddings_batch
+
+    results = asyncio.run(fetch_embeddings_batch(arxiv_ids, api_key=api_key))
+
+    session_id = str(uuid4())[:8]
+    updated = 0
+    for arxiv_id, embedding in results.items():
+        if embedding is not None:
+            pid = pid_by_arxiv.get(arxiv_id, arxiv_id)
+            store.upsert_embedding("papers", pid, embedding)
+            log_event(
+                store,
+                "ingest",
+                "paper.embedding_updated",
+                target_type="paper",
+                target_id=pid,
+                detail={"source": "semantic_scholar"},
+                session_id=session_id,
+            )
+            updated += 1
+
+    rprint(f"[green]Updated {updated} paper embeddings[/green]")
+    if updated < len(arxiv_ids):
+        missing = len(arxiv_ids) - updated
+        rprint(f"[yellow]{missing} papers had no SPECTER2 embedding available[/yellow]")
 
 
 # ---------------------------------------------------------------------------
@@ -1194,8 +1472,8 @@ def paper(
     rprint(f"\n[bold]{result.get('title', paper_id)}[/bold]")
     if result.get("authors"):
         rprint(f"[dim]Authors:[/dim] {result['authors']}")
-    if result.get("year"):
-        rprint(f"[dim]Year:[/dim] {result['year']}")
+    if result.get("date"):
+        rprint(f"[dim]Date:[/dim] {result['date']}")
     if result.get("abstract"):
         rprint(f"\n{result['abstract']}")
 

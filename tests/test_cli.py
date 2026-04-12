@@ -79,6 +79,13 @@ def test_cli_monitor_exists():
     assert result.exit_code == 0
 
 
+def test_monitor_no_interval_flag():
+    """Monitor command should not have an --interval flag."""
+    result = runner.invoke(app, ["monitor", "--help"])
+    assert result.exit_code == 0
+    assert "--interval" not in result.output
+
+
 def test_explore_architecture_help():
     result = runner.invoke(app, ["explore", "architecture", "--help"])
     assert result.exit_code == 0
@@ -285,3 +292,196 @@ def test_search_no_args(tmp_path):
     )
     assert result.exit_code == 1
     assert "Provide a search query" in result.output
+
+
+def test_explore_paper_shows_date(tmp_path, sample_paper_data):
+    """lens explore paper should display the paper date, not a missing 'year' field."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.add_papers([sample_paper_data])
+
+    result = runner.invoke(
+        app,
+        ["explore", "paper", "2401.12345"],
+        env={"LENS_DATA_DIR": str(tmp_path)},
+    )
+    assert result.exit_code == 0
+    assert "2017-06-12" in result.output
+
+
+def test_verbose_flag_accepted():
+    """The -v flag should be accepted without error."""
+    result = runner.invoke(app, ["-v", "--help"])
+    assert result.exit_code == 0
+
+
+def test_verbose_flag_in_help():
+    """The --verbose flag should appear in top-level help."""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--verbose" in result.output or "-v" in result.output
+
+
+def test_extract_without_api_key_shows_error(tmp_path, monkeypatch):
+    """lens extract should fail early with a clear message when no API key is set."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.conn.close()
+
+    result = runner.invoke(app, ["extract"])
+    assert result.exit_code == 1
+    assert "not configured" in result.output
+
+
+def test_analyze_without_api_key_shows_error(tmp_path, monkeypatch):
+    """lens analyze should fail early with a clear message when no API key is set."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    result = runner.invoke(app, ["analyze", "test query"])
+    assert result.exit_code == 1
+    assert "not configured" in result.output
+
+
+def test_acquire_semantic_help():
+    """acquire semantic subcommand should exist."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["acquire", "semantic", "--help"])
+    assert result.exit_code == 0
+    assert "SPECTER2" in result.output or "Semantic Scholar" in result.output
+
+
+def test_acquire_semantic_no_papers(tmp_path, monkeypatch):
+    """acquire semantic with no papers should print a message."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.conn.close()
+
+    result = runner.invoke(app, ["acquire", "semantic"])
+    assert result.exit_code == 0
+    assert "No papers" in result.output
+
+
+def test_acquire_seed_computes_quality_score(tmp_path, monkeypatch):
+    """acquire seed should compute quality_score for papers with citations/venue."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(tmp_path / "config.yaml"))
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.conn.close()
+
+    result = runner.invoke(app, ["acquire", "seed"])
+    assert result.exit_code == 0
+
+    store = LensStore(db_path)
+    store.init_tables()
+    papers = store.query("papers")
+    # At least some seed papers should have a non-None quality_score
+    scored = [p for p in papers if p.get("quality_score") is not None]
+    assert len(scored) > 0
+
+
+def test_monitor_has_skip_flags():
+    """Monitor should accept --skip-enrich and --skip-build flags."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["monitor", "--help"])
+    assert result.exit_code == 0
+    assert "--skip-enrich" in result.output
+    assert "--skip-build" in result.output
+
+
+def test_status_empty_db(tmp_path, monkeypatch):
+    """lens status on an empty DB should show zeros gracefully."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.conn.close()
+
+    result = runner.invoke(app, ["status"])
+    assert result.exit_code == 0
+    assert "Papers" in result.output
+    assert "0" in result.output
+
+
+def test_status_with_data(tmp_path, sample_paper_data, monkeypatch):
+    """lens status with papers should show counts."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.add_papers([sample_paper_data])
+
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    load_seed_vocabulary(store)
+    store.conn.close()
+
+    result = runner.invoke(app, ["status"])
+    assert result.exit_code == 0
+    assert "Papers" in result.output
+    assert "pending: 1" in result.output
+    assert "Vocabulary" in result.output

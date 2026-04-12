@@ -11,7 +11,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-09T12:41:00.547152Z"
+exclude-newer = "2026-04-09T15:24:08.472139Z"
 exclude-newer-span = "P3D"
 
 [[package]]
@@ -729,7 +729,7 @@ wheels = [
 
 [[package]]
 name = "lens-research"
-version = "0.8.0"
+version = "0.9.0"
 source = { editable = "." }
 dependencies = [
     { name = "arxiv" },

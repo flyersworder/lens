@@ -21,6 +21,12 @@
 - **Schema migrations** — `_COLUMN_MIGRATIONS` in `store.py` handles upgrades from older schemas via `ALTER TABLE` in `init_tables()`.
 - **Event log** — `event_log` table records all mutations (ingest, extract, build, lint, fix). `log_event()` helper in `knowledge/events.py`. Each CLI invocation gets a `session_id` for grouping.
 - **Linter** — `knowledge/linter.py` has 6 checks (orphans, contradictions, weak evidence, missing embeddings, stale extractions, near-duplicates) with optional auto-fix. Lint findings and fixes are themselves logged as events.
+- **Monitor pipeline** — 5 configurable stages: acquire (arxiv) → enrich (OpenAlex + quality scores) → extract (LLM) → build (taxonomy + matrix) → ideate (gap analysis, optional LLM). Flags: `--skip-enrich`, `--skip-build`. Config: `monitor.ideate_llm` for LLM-enriched ideation.
+- **Quality scoring** — `acquire/quality.py` computes 0-1 scores (citations + venue tier + recency). Auto-computed after seed acquisition and OpenAlex enrichment.
+- **SPECTER2 embeddings** — `lens acquire semantic` fetches paper embeddings from Semantic Scholar API. Filters to papers with zero-vector or missing embeddings.
+- **Status command** — `lens status` shows paper counts by extraction status, vocabulary by kind, matrix density, top parameters, taxonomy version, last event, and cheap lint checks.
+- **Logging** — `--verbose / -v` flag on all commands. `-v` = INFO, `-vv` = DEBUG.
+- **API key validation** — `_require_llm_config()` checks for LLM API key before commands that need it (extract, analyze, explain, monitor). Clear error message with setup instructions.
 - CLI via Typer in `src/lens/cli.py`
 - Config at `~/.lens/config.yaml`
 
