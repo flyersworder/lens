@@ -71,6 +71,8 @@ async def run_monitor_cycle(
 
     # --- Stage 2: Enrich ---
     papers_enriched = 0
+    if run_enrich and not openalex_mailto and papers_acquired > 0:
+        logger.info("Skipping OpenAlex enrichment: openalex_mailto not configured")
     if run_enrich and openalex_mailto and papers_acquired > 0:
         try:
             from lens.acquire.openalex import enrich_with_openalex

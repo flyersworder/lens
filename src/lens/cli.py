@@ -268,7 +268,9 @@ def status() -> None:
         rprint(f"Top parameters: {top_str}")
 
     # Taxonomy version
-    versions = store.query_sql("SELECT * FROM taxonomy_versions ORDER BY version_id DESC LIMIT 1")
+    versions = store.query_sql(
+        "SELECT version_id, created_at FROM taxonomy_versions ORDER BY version_id DESC LIMIT 1"
+    )
     if versions:
         v = versions[0]
         rprint(f"Taxonomy: v{v['version_id']} (built: {v.get('created_at', 'unknown')})")
@@ -276,7 +278,9 @@ def status() -> None:
         rprint("Taxonomy: not built yet")
 
     # Last event
-    events = store.query_sql("SELECT * FROM event_log ORDER BY timestamp DESC LIMIT 1")
+    events = store.query_sql(
+        "SELECT timestamp, kind FROM event_log ORDER BY timestamp DESC LIMIT 1"
+    )
     if events:
         e = events[0]
         rprint(f"Last event: {e.get('timestamp', '?')} ({e.get('kind', '?')})")
