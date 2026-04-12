@@ -34,6 +34,22 @@ def test_init_creates_vec_tables(store):
         assert vec_table in tables, f"Missing vec table: {vec_table}"
 
 
+def test_init_creates_papers_fts(store):
+    cursor = store.conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+    tables = {row[0] for row in cursor.fetchall()}
+    assert "papers_fts" in tables
+
+
+def test_rebuild_papers_fts(store, sample_paper_data):
+    store.add_papers([sample_paper_data])
+    store.rebuild_papers_fts()
+    cursor = store.conn.execute(
+        "SELECT * FROM papers_fts WHERE papers_fts MATCH ?", ('"Attention"',)
+    )
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+
+
 # ---- 2. add_rows + query (basic CRUD) ----
 
 

@@ -208,6 +208,12 @@ class LensStore:
             "USING fts5(name, description, kind, content=vocabulary, content_rowid=rowid)"
         )
 
+        # FTS5 table for paper hybrid search (keyword + vector)
+        self.conn.execute(
+            "CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts "
+            "USING fts5(title, abstract, content=papers, content_rowid=rowid)"
+        )
+
         self.conn.commit()
 
     def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
@@ -286,7 +292,10 @@ class LensStore:
 
         Returns the number of new papers actually inserted.
         """
-        return self.add_rows("papers", data, ignore_conflicts=True)
+        count = self.add_rows("papers", data, ignore_conflicts=True)
+        if count > 0:
+            self.rebuild_papers_fts()
+        return count
 
     def query(self, table: str, where: str = "", params: tuple | None = None) -> list[dict]:
         """SELECT * from *table* with optional WHERE clause.
@@ -371,6 +380,11 @@ class LensStore:
     def rebuild_vocabulary_fts(self) -> None:
         """Rebuild the vocabulary FTS5 index from current vocabulary data."""
         self.conn.execute("INSERT INTO vocabulary_fts(vocabulary_fts) VALUES('rebuild')")
+        self.conn.commit()
+
+    def rebuild_papers_fts(self) -> None:
+        """Rebuild the papers FTS5 index from current papers data."""
+        self.conn.execute("INSERT INTO papers_fts(papers_fts) VALUES('rebuild')")
         self.conn.commit()
 
     def hybrid_search(
