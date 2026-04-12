@@ -314,3 +314,16 @@ def test_explore_paper_shows_date(tmp_path, sample_paper_data):
     )
     assert result.exit_code == 0
     assert "2017-06-12" in result.output
+
+
+def test_verbose_flag_accepted():
+    """The -v flag should be accepted without error."""
+    result = runner.invoke(app, ["-v", "--help"])
+    assert result.exit_code == 0
+
+
+def test_verbose_flag_in_help():
+    """The --verbose flag should appear in top-level help."""
+    result = runner.invoke(app, ["--help"])
+    assert result.exit_code == 0
+    assert "--verbose" in result.output or "-v" in result.output

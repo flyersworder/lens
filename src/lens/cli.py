@@ -1,6 +1,7 @@
 """LENS CLI — LLM Engineering Navigation System command-line interface."""
 
 import asyncio
+import logging
 import os
 import shutil
 from datetime import UTC
@@ -20,7 +21,7 @@ from lens.store.store import LensStore
 # App and subcommand groups
 # ---------------------------------------------------------------------------
 
-app = typer.Typer(name="lens", help="LENS — LLM Engineering Navigation System")
+app = typer.Typer(name="lens")
 
 acquire_app = typer.Typer(help="Acquire papers from various sources.")
 build_app = typer.Typer(help="Build taxonomy, matrix, and other derived artefacts.")
@@ -33,6 +34,25 @@ app.add_typer(build_app, name="build")
 app.add_typer(explore_app, name="explore")
 app.add_typer(config_app, name="config")
 app.add_typer(vocab_app, name="vocab")
+
+
+@app.callback()
+def main(
+    verbose: int = typer.Option(
+        0, "--verbose", "-v", count=True, help="Increase log verbosity (-v=INFO, -vv=DEBUG)."
+    ),
+) -> None:
+    """LENS — LLM Engineering Navigation System."""
+    level = logging.WARNING
+    if verbose == 1:
+        level = logging.INFO
+    elif verbose >= 2:
+        level = logging.DEBUG
+    logging.basicConfig(
+        level=level,
+        format="%(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
 
 
 # ---------------------------------------------------------------------------
