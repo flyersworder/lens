@@ -397,3 +397,30 @@ def test_acquire_semantic_no_papers(tmp_path, monkeypatch):
     result = runner.invoke(app, ["acquire", "semantic"])
     assert result.exit_code == 0
     assert "No papers" in result.output
+
+
+def test_acquire_seed_computes_quality_score(tmp_path, monkeypatch):
+    """acquire seed should compute quality_score for papers with citations/venue."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(tmp_path / "config.yaml"))
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.conn.close()
+
+    result = runner.invoke(app, ["acquire", "seed"])
+    assert result.exit_code == 0
+
+    store = LensStore(db_path)
+    store.init_tables()
+    papers = store.query("papers")
+    # At least some seed papers should have a non-None quality_score
+    scored = [p for p in papers if p.get("quality_score") is not None]
+    assert len(scored) > 0

@@ -644,6 +644,28 @@ def seed() -> None:
         )
     rprint(f"[green]Acquired {count} seed papers[/green]")
 
+    # Compute quality scores for newly-added seed papers
+    if count > 0:
+        from lens.acquire.quality import quality_score as compute_quality
+
+        all_papers = store.query("papers")
+        venue_tiers = config["acquire"].get("quality_venue_tiers")
+        for p in all_papers:
+            if p.get("quality_score") is not None:
+                continue
+            score = compute_quality(
+                citations=p.get("citations", 0) or 0,
+                venue=p.get("venue"),
+                paper_date=p.get("date", "2020-01-01"),
+                venue_tiers=venue_tiers,
+            )
+            store.update(
+                "papers",
+                "quality_score = ?",
+                "paper_id = ?",
+                (score, p["paper_id"]),
+            )
+
 
 async def _acquire_seed_async(store: LensStore) -> int:
     from lens.acquire.seed import acquire_seed
@@ -801,6 +823,20 @@ def openalex(
         )
         updated_count += 1
     rprint(f"[green]Enriched {updated_count} papers with OpenAlex data[/green]")
+
+    # Recompute quality scores now that we have citations and venue
+    from lens.acquire.quality import quality_score as compute_quality
+
+    venue_tiers = config["acquire"].get("quality_venue_tiers")
+    for paper in enriched:
+        pid = paper.get("paper_id", "")
+        score = compute_quality(
+            citations=paper.get("citations", 0) or 0,
+            venue=paper.get("venue"),
+            paper_date=paper.get("date", "2020-01-01"),
+            venue_tiers=venue_tiers,
+        )
+        store.update("papers", "quality_score = ?", "paper_id = ?", (score, pid))
 
 
 async def _enrich_openalex_async(papers, mailto: str = ""):
