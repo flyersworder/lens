@@ -50,6 +50,38 @@ def test_rebuild_papers_fts(store, sample_paper_data):
     assert len(rows) == 1
 
 
+def test_papers_fts_populated_after_init(store, sample_paper_data):
+    """papers_fts is populated for papers added before init_tables is called."""
+    # Insert paper directly via raw SQL (bypassing add_papers to simulate old DB)
+    cols = (
+        "paper_id, title, abstract, authors, venue, date,"
+        " arxiv_id, citations, quality_score, extraction_status"
+    )
+    store.conn.execute(
+        f"INSERT INTO papers ({cols}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        (
+            "p1",
+            "Attention Is All You Need",
+            "A new architecture...",
+            '["Vaswani"]',
+            None,
+            "2017-06-12",
+            "1706.03762",
+            100,
+            0.9,
+            "pending",
+        ),
+    )
+    store.conn.commit()
+    # Re-init to simulate opening an existing database
+    store.init_tables()
+    cursor = store.conn.execute(
+        "SELECT * FROM papers_fts WHERE papers_fts MATCH ?", ('"Attention"',)
+    )
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+
+
 # ---- 2. add_rows + query (basic CRUD) ----
 
 

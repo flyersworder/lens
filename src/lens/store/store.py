@@ -216,6 +216,9 @@ class LensStore:
 
         self.conn.commit()
 
+        # Populate papers FTS for existing data (idempotent rebuild)
+        self.rebuild_papers_fts()
+
     def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
         """Add a column to an existing table if it doesn't already exist."""
         cursor = self.conn.execute(f"PRAGMA table_info({table})")
