@@ -400,8 +400,14 @@ def extract(
 @app.command()
 def monitor(
     trending: bool = typer.Option(False, "--trending", help="Show ideation gaps."),
+    skip_enrich: bool = typer.Option(
+        False, "--skip-enrich", help="Skip OpenAlex enrichment stage."
+    ),
+    skip_build: bool = typer.Option(
+        False, "--skip-build", help="Skip taxonomy and matrix rebuild."
+    ),
 ) -> None:
-    """Run one monitoring cycle: acquire -> extract -> ideate."""
+    """Run one monitoring cycle: acquire -> enrich -> extract -> build -> ideate."""
     config = load_config(_get_config_path())
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir / "lens.db"))
@@ -430,17 +436,31 @@ def monitor(
     client = LLMClient(model=config["llm"]["extract_model"], **_llm_kwargs(config))
     cats = config["acquire"]["arxiv_categories"]
     monitor_cfg = config["monitor"]
+    openalex_mailto = config["acquire"].get("openalex_mailto", "")
+    session_id = str(uuid4())[:8]
+
     result = asyncio.run(
         run_monitor_cycle(
             store,
             client,
             categories=cats,
+            run_enrich=not skip_enrich,
+            run_build=not skip_build,
             run_ideation_flag=monitor_cfg["ideate"],
+            ideate_with_llm=monitor_cfg.get("ideate_llm", False),
+            openalex_mailto=openalex_mailto,
+            embedding_kwargs=_embedding_kwargs(config),
+            venue_tiers=config["acquire"].get("quality_venue_tiers"),
+            session_id=session_id,
         )
     )
     rprint("[green]Monitor cycle complete:[/green]")
     rprint(f"  Papers acquired: {result['papers_acquired']}")
+    if result["papers_enriched"]:
+        rprint(f"  Papers enriched: {result['papers_enriched']}")
     rprint(f"  Papers extracted: {result['papers_extracted']}")
+    if result["taxonomy_built"]:
+        rprint("  Taxonomy + matrix: rebuilt")
     if result.get("ideation_report"):
         rprint(f"  Gaps found: {result['ideation_report']['gap_count']}")
 

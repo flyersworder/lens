@@ -424,3 +424,16 @@ def test_acquire_seed_computes_quality_score(tmp_path, monkeypatch):
     # At least some seed papers should have a non-None quality_score
     scored = [p for p in papers if p.get("quality_score") is not None]
     assert len(scored) > 0
+
+
+def test_monitor_has_skip_flags():
+    """Monitor should accept --skip-enrich and --skip-build flags."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["monitor", "--help"])
+    assert result.exit_code == 0
+    assert "--skip-enrich" in result.output
+    assert "--skip-build" in result.output
