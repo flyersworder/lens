@@ -281,6 +281,60 @@ def explain(
 
 
 @app.command()
+def search(
+    query: str | None = typer.Argument(None, help="Text to search for."),
+    author: str | None = typer.Option(None, "--author", help="Filter by author name."),
+    venue: str | None = typer.Option(None, "--venue", help="Filter by venue."),
+    after: str | None = typer.Option(
+        None, "--after", help="Papers on or after date (YYYY-MM-DD)."
+    ),
+    before: str | None = typer.Option(
+        None, "--before", help="Papers on or before date (YYYY-MM-DD)."
+    ),
+    limit: int = typer.Option(10, "--limit", help="Max results."),
+) -> None:
+    """Search papers by keyword, semantic similarity, or metadata filters."""
+    if not query and not author and not venue and not after and not before:
+        rprint(
+            "[red]Provide a search query or at least one filter "
+            "(--author, --venue, --after, --before).[/red]"
+        )
+        raise typer.Exit(code=1)
+
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+
+    from lens.serve.explorer import search_papers
+
+    emb_kw = _embedding_kwargs(config)
+    results = search_papers(
+        store,
+        query=query,
+        author=author,
+        venue=venue,
+        after=after,
+        before=before,
+        limit=limit,
+        embedding_kwargs=emb_kw,
+    )
+
+    if not results:
+        rprint("[yellow]No papers found.[/yellow]")
+        raise typer.Exit(code=0)
+
+    rprint(f"\n[bold]Found {len(results)} paper{'s' if len(results) != 1 else ''}:[/bold]\n")
+    for i, r in enumerate(results, 1):
+        score_str = f"[{r['score']:.2f}] " if r.get("score") is not None else ""
+        venue_str = f" · {r['venue']}" if r.get("venue") else ""
+        rprint(f"  {i}. {score_str}{r['title']} ({r['date']})")
+        rprint(f"     arxiv:{r['arxiv_id']}{venue_str} · {r['authors_display']}")
+        rprint(f"     {r['abstract_snippet']}")
+        rprint()
+
+
+@app.command()
 def extract(
     paper_id: str | None = typer.Option(None, "--paper-id", help="Extract specific paper."),
     model: str | None = typer.Option(None, "--model", help="LLM model override."),

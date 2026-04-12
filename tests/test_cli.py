@@ -216,3 +216,72 @@ def test_import_force_removes_stale_wal(tmp_path):
     # Stale sidecar files should be gone
     assert not wal_file.exists()
     assert not shm_file.exists()
+
+
+def test_search_by_query(tmp_path, sample_paper_data):
+    """lens search with a text query returns matching papers."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.add_papers([sample_paper_data])
+
+    result = runner.invoke(
+        app,
+        ["search", "Attention"],
+        env={
+            "LENS_DATA_DIR": str(tmp_path),
+        },
+    )
+    assert result.exit_code == 0
+    assert "Attention Is All You Need" in result.output
+
+
+def test_search_by_author(tmp_path, sample_paper_data):
+    """lens search --author filters by author name."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.add_papers([sample_paper_data])
+
+    result = runner.invoke(
+        app,
+        ["search", "--author", "Vaswani"],
+        env={
+            "LENS_DATA_DIR": str(tmp_path),
+        },
+    )
+    assert result.exit_code == 0
+    assert "Attention Is All You Need" in result.output
+
+
+def test_search_no_args(tmp_path):
+    """lens search with no query and no filters shows an error."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+
+    runner = CliRunner()
+
+    result = runner.invoke(
+        app,
+        ["search"],
+        env={
+            "LENS_DATA_DIR": str(tmp_path),
+        },
+    )
+    assert result.exit_code == 1
+    assert "Provide a search query" in result.output
