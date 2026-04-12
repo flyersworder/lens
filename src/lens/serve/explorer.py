@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-import json as _json
+import json
 from typing import Any
 
 from lens.store.store import LensStore
@@ -197,7 +197,7 @@ def search_papers(
         authors = r.get("authors", [])
         if isinstance(authors, str):
             try:
-                authors = _json.loads(authors)
+                authors = json.loads(authors)
             except (ValueError, TypeError):
                 authors = [authors]
         if len(authors) > 3:
