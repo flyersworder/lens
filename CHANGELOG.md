@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.8.0 (2026-04-12)
+
+### Added
+- **Paper search** — New top-level `lens search` command for finding papers
+  via hybrid search (FTS5 keyword + sqlite-vec semantic) with Reciprocal Rank
+  Fusion scoring.
+- **Metadata filters** — `--author`, `--venue`, `--after`, `--before` flags
+  for filtering by author name, venue, date range. Works standalone or combined
+  with text search.
+- **`papers_fts` FTS5 table** — Full-text index on paper titles and abstracts,
+  created automatically and kept in sync via `add_papers()`.
+- **Embedding fallback** — Search gracefully degrades to keyword-only when
+  no embedding provider is configured.
+- **Existing data migration** — `init_tables()` rebuilds the FTS index on
+  startup, ensuring papers from older databases are searchable.
+
 ## 0.7.0 (2026-04-08)
 
 ### Added

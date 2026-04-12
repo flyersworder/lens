@@ -34,6 +34,60 @@ def test_init_creates_vec_tables(store):
         assert vec_table in tables, f"Missing vec table: {vec_table}"
 
 
+def test_init_creates_papers_fts(store):
+    cursor = store.conn.execute("SELECT name FROM sqlite_master WHERE type='table' ORDER BY name")
+    tables = {row[0] for row in cursor.fetchall()}
+    assert "papers_fts" in tables
+
+
+def test_rebuild_papers_fts(store, sample_paper_data):
+    store.add_papers([sample_paper_data])
+    store.rebuild_papers_fts()
+    cursor = store.conn.execute(
+        "SELECT * FROM papers_fts WHERE papers_fts MATCH ?", ('"Attention"',)
+    )
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+
+
+def test_papers_fts_populated_after_init(tmp_path):
+    """papers_fts is rebuilt when upgrading a database that predates it."""
+    from lens.store.store import LensStore
+
+    # Create a database with only the papers table (simulating old schema)
+    db_path = str(tmp_path / "upgrade.db")
+    store = LensStore(db_path)
+    store.conn.execute(
+        "CREATE TABLE IF NOT EXISTS papers ("
+        "paper_id TEXT PRIMARY KEY, title TEXT NOT NULL, abstract TEXT NOT NULL, "
+        "authors TEXT NOT NULL, venue TEXT, date TEXT NOT NULL, arxiv_id TEXT NOT NULL, "
+        "citations INTEGER NOT NULL DEFAULT 0, quality_score REAL NOT NULL DEFAULT 0.0, "
+        "extraction_status TEXT NOT NULL DEFAULT 'pending')"
+    )
+    store.conn.execute(
+        "INSERT INTO papers (paper_id, title, abstract, authors, venue, date, arxiv_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        (
+            "p1",
+            "Attention Is All You Need",
+            "A new architecture...",
+            '["Vaswani"]',
+            None,
+            "2017-06-12",
+            "1706.03762",
+        ),
+    )
+    store.conn.commit()
+
+    # Now call init_tables — should create papers_fts AND rebuild the index
+    store.init_tables()
+    cursor = store.conn.execute(
+        "SELECT * FROM papers_fts WHERE papers_fts MATCH ?", ('"Attention"',)
+    )
+    rows = cursor.fetchall()
+    assert len(rows) == 1
+
+
 # ---- 2. add_rows + query (basic CRUD) ----
 
 
@@ -267,6 +321,145 @@ def test_add_papers_returns_count_with_mixed_new_and_existing(store, sample_pape
 
     rows = store.query("papers")
     assert len(rows) == 2
+
+
+# ---- 12. search_papers ----
+
+
+def test_search_papers_hybrid(store, sample_paper_data):
+    """Hybrid search combines FTS5 keyword + vector similarity."""
+    store.add_papers([sample_paper_data])
+    query_embedding = [0.1] * EMBEDDING_DIM
+    results = store.search_papers(
+        query="Attention architecture",
+        embedding=query_embedding,
+        limit=5,
+    )
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"
+    assert "_rrf_score" in results[0]
+
+
+def test_search_papers_fts_only(store, sample_paper_data):
+    """FTS-only search when no embedding is provided."""
+    store.add_papers([sample_paper_data])
+    results = store.search_papers(query="Attention", limit=5)
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"
+    assert "_rrf_score" in results[0]
+
+
+def test_search_papers_filter_only(store, sample_paper_data):
+    """Filter-only mode when no text query is given."""
+    store.add_papers([sample_paper_data])
+    results = store.search_papers(filters={"author": "Vaswani"}, limit=5)
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"
+    assert "_rrf_score" not in results[0]
+
+
+def test_search_papers_hybrid_with_filters(store):
+    """Hybrid search narrowed by date filter."""
+    papers = [
+        {
+            "paper_id": "p1",
+            "title": "Attention Mechanism Survey",
+            "abstract": "A survey of attention mechanisms in deep learning.",
+            "authors": ["Author A"],
+            "venue": None,
+            "date": "2023-01-01",
+            "arxiv_id": "2301.00001",
+            "citations": 10,
+            "quality_score": 0.5,
+            "extraction_status": "pending",
+            "embedding": [0.1] * EMBEDDING_DIM,
+        },
+        {
+            "paper_id": "p2",
+            "title": "Attention in Vision Transformers",
+            "abstract": "Applying attention to computer vision tasks.",
+            "authors": ["Author B"],
+            "venue": None,
+            "date": "2024-06-01",
+            "arxiv_id": "2406.00001",
+            "citations": 5,
+            "quality_score": 0.3,
+            "extraction_status": "pending",
+            "embedding": [0.2] * EMBEDDING_DIM,
+        },
+    ]
+    store.add_papers(papers)
+    results = store.search_papers(
+        query="attention",
+        embedding=[0.15] * EMBEDDING_DIM,
+        filters={"after": "2024-01-01"},
+        limit=5,
+    )
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "p2"
+
+
+def test_search_papers_filter_by_venue(store):
+    """Filter-only mode filters by venue substring."""
+    paper = {
+        "paper_id": "p1",
+        "title": "A NeurIPS Paper",
+        "abstract": "Some content.",
+        "authors": ["Alice"],
+        "venue": "NeurIPS 2024",
+        "date": "2024-01-01",
+        "arxiv_id": "2401.00001",
+        "citations": 0,
+        "quality_score": 0.5,
+        "extraction_status": "pending",
+    }
+    store.add_papers([paper])
+    results = store.search_papers(filters={"venue": "NeurIPS"}, limit=5)
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "p1"
+
+    results = store.search_papers(filters={"venue": "ICML"}, limit=5)
+    assert results == []
+
+
+def test_search_papers_filter_by_before(store):
+    """Filter-only mode filters by before date."""
+    papers = [
+        {
+            "paper_id": "p1",
+            "title": "Old Paper",
+            "abstract": "Content.",
+            "authors": ["Alice"],
+            "venue": None,
+            "date": "2022-06-01",
+            "arxiv_id": "2206.00001",
+            "citations": 0,
+            "quality_score": 0.5,
+            "extraction_status": "pending",
+        },
+        {
+            "paper_id": "p2",
+            "title": "New Paper",
+            "abstract": "Content.",
+            "authors": ["Bob"],
+            "venue": None,
+            "date": "2024-06-01",
+            "arxiv_id": "2406.00001",
+            "citations": 0,
+            "quality_score": 0.5,
+            "extraction_status": "pending",
+        },
+    ]
+    store.add_papers(papers)
+    results = store.search_papers(filters={"before": "2023-01-01"}, limit=5)
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "p1"
+
+
+def test_search_papers_no_results(store):
+    """Search with no matching papers returns empty list."""
+    results = store.search_papers(query="nonexistent topic xyz", limit=5)
+    assert results == []
 
 
 def test_add_rows_without_ignore_conflicts_raises_on_duplicate(store, sample_paper_data):
