@@ -124,7 +124,7 @@ async def run_monitor_cycle(
             build_vocabulary(
                 store,
                 embedding_provider=emb_kw.get("provider", "local"),
-                embedding_model=emb_kw.get("model"),
+                embedding_model=emb_kw.get("model_name"),
                 embedding_api_base=emb_kw.get("api_base"),
                 embedding_api_key=emb_kw.get("api_key"),
                 session_id=session_id,

@@ -348,7 +348,7 @@ def test_extract_without_api_key_shows_error(tmp_path, monkeypatch):
 
     result = runner.invoke(app, ["extract"])
     assert result.exit_code == 1
-    assert "API key not configured" in result.output
+    assert "not configured" in result.output
 
 
 def test_analyze_without_api_key_shows_error(tmp_path, monkeypatch):
@@ -364,7 +364,7 @@ def test_analyze_without_api_key_shows_error(tmp_path, monkeypatch):
 
     result = runner.invoke(app, ["analyze", "test query"])
     assert result.exit_code == 1
-    assert "API key not configured" in result.output
+    assert "not configured" in result.output
 
 
 def test_acquire_semantic_help():

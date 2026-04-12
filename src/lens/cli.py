@@ -169,14 +169,19 @@ def _embedding_kwargs(config: dict) -> dict:
 
 
 def _require_llm_config(config: dict) -> None:
-    """Exit early with a clear message if no LLM API key is configured."""
+    """Exit early with a clear message if no LLM backend is configured.
+
+    Passes if any of: api_key in config, OPENROUTER_API_KEY env, or api_base (gateway mode).
+    """
     llm_cfg = config.get("llm", {})
     api_key = llm_cfg.get("api_key") or os.environ.get("OPENROUTER_API_KEY", "")
-    if not api_key:
+    api_base = llm_cfg.get("api_base", "")
+    if not api_key and not api_base:
         rprint(
-            "[red]LLM API key not configured.[/red]\n"
-            "Set it with: [bold]lens config set llm.api_key YOUR_KEY[/bold]\n"
-            "Or export: [bold]export OPENROUTER_API_KEY=YOUR_KEY[/bold]"
+            "[red]LLM backend not configured.[/red]\n"
+            "Set an API key: [bold]lens config set llm.api_key YOUR_KEY[/bold]\n"
+            "Or export: [bold]export OPENROUTER_API_KEY=YOUR_KEY[/bold]\n"
+            "Or use gateway mode: [bold]lens config set llm.api_base http://your-gateway:4000/v1[/bold]"
         )
         raise typer.Exit(code=1)
 
@@ -219,45 +224,47 @@ def status() -> None:
     store.init_tables()
 
     # Paper counts by extraction status
-    papers = store.query("papers")
-    total = len(papers)
-    by_status: dict[str, int] = {}
-    for p in papers:
-        s = p.get("extraction_status", "unknown")
-        by_status[s] = by_status.get(s, 0) + 1
-
-    status_parts = ", ".join(f"{s}: {c}" for s, c in sorted(by_status.items()))
+    status_rows = store.query_sql(
+        "SELECT extraction_status, COUNT(*) AS cnt FROM papers GROUP BY extraction_status"
+    )
+    total = sum(r["cnt"] for r in status_rows)
+    sorted_statuses = sorted(status_rows, key=lambda r: r["extraction_status"])
+    status_parts = ", ".join(f"{r['extraction_status']}: {r['cnt']}" for r in sorted_statuses)
 
     rprint("\n[bold]LENS Knowledge Base Status[/bold]")
     rprint("=" * 40)
     rprint(f"Papers: {total} ({status_parts})" if status_parts else f"Papers: {total}")
 
     # Vocabulary counts by kind
-    vocab = store.query("vocabulary")
-    vocab_by_kind: dict[str, int] = {}
-    for v in vocab:
-        k = v["kind"]
-        vocab_by_kind[k] = vocab_by_kind.get(k, 0) + 1
-    if vocab_by_kind:
-        vocab_parts = ", ".join(f"{c} {k}s" for k, c in sorted(vocab_by_kind.items()))
+    vocab_rows = store.query_sql("SELECT kind, COUNT(*) AS cnt FROM vocabulary GROUP BY kind")
+    if vocab_rows:
+        vocab_parts = ", ".join(
+            f"{r['cnt']} {r['kind']}s" for r in sorted(vocab_rows, key=lambda r: r["kind"])
+        )
         rprint(f"Vocabulary: {vocab_parts}")
     else:
         rprint("Vocabulary: empty")
 
     # Matrix
-    cells = store.query("matrix_cells")
-    if cells:
-        total_evidence = sum(c.get("count", 0) for c in cells)
-        rprint(f"Matrix: {len(cells)} cells, {total_evidence} total evidence")
+    matrix_rows = store.query_sql(
+        "SELECT COUNT(*) AS cell_count, COALESCE(SUM(count), 0) AS total_evidence "
+        "FROM matrix_cells"
+    )
+    cell_count = matrix_rows[0]["cell_count"] if matrix_rows else 0
+    if cell_count:
+        rprint(f"Matrix: {cell_count} cells, {matrix_rows[0]['total_evidence']} total evidence")
     else:
         rprint("Matrix: empty")
 
     # Top parameters by paper_count
-    params = [v for v in vocab if v["kind"] == "parameter" and v["paper_count"] > 0]
-    if params:
-        params.sort(key=lambda x: x["paper_count"], reverse=True)
-        top = params[:5]
-        top_str = ", ".join(f"{p['name']} ({p['paper_count']})" for p in top)
+    top_params = store.query_sql(
+        "SELECT name, paper_count FROM vocabulary "
+        "WHERE kind = ? AND paper_count > 0 "
+        "ORDER BY paper_count DESC LIMIT 5",
+        ("parameter",),
+    )
+    if top_params:
+        top_str = ", ".join(f"{p['name']} ({p['paper_count']})" for p in top_params)
         rprint(f"Top parameters: {top_str}")
 
     # Taxonomy version
@@ -768,7 +775,7 @@ def seed() -> None:
         all_papers = store.query("papers")
         venue_tiers = config["acquire"].get("quality_venue_tiers")
         for p in all_papers:
-            if p.get("quality_score") is not None:
+            if p.get("quality_score", 0.0) > 0.0:
                 continue
             score = compute_quality(
                 citations=p.get("citations", 0) or 0,
