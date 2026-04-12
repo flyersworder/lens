@@ -19,7 +19,7 @@ Inspired by [TRIZ](https://en.wikipedia.org/wiki/TRIZ) methodology — but with 
 
 ## Status
 
-**Core pipeline implemented.** All three knowledge structures are functional: contradiction matrix, architecture catalog (property-based comparison), and agentic pattern catalog (emergent categories). Monitor/ideation pipeline operational.
+**Core pipeline implemented.** All three knowledge structures are functional: contradiction matrix, architecture catalog (property-based comparison), and agentic pattern catalog (emergent categories). Full monitor pipeline: acquire → enrich → extract → build → ideate.
 
 See [docs/architecture.md](docs/architecture.md) for the full architecture doc.
 
@@ -96,8 +96,17 @@ uv run lens acquire file paper.pdf          # ingest a local PDF
 uv run lens acquire deepxiv "LLM agent architecture" --max-results 10
 uv run lens acquire deepxiv --paper 2507.01701  # single paper with rich metadata
 
-# Run a monitoring cycle (acquire → extract → ideate)
+# Fetch SPECTER2 embeddings from Semantic Scholar
+uv run lens acquire semantic                    # all papers missing embeddings
+uv run lens acquire semantic --paper-id 2401.12345  # specific paper
+
+# Knowledge base overview
+uv run lens status                          # paper counts, vocab, matrix, issues
+
+# Run a monitoring cycle (acquire → enrich → extract → build → ideate)
 uv run lens monitor
+uv run lens monitor --skip-enrich           # skip OpenAlex enrichment
+uv run lens monitor --skip-build            # skip taxonomy/matrix rebuild
 uv run lens monitor --trending              # show ideation gaps
 
 # Browse research opportunities
@@ -117,6 +126,10 @@ uv run lens log --since 2026-04-01 --limit 50  # date range + limit
 # Configuration
 uv run lens config show
 uv run lens config set llm.default_model openrouter/anthropic/claude-sonnet-4-6
+
+# Verbose logging (-v=INFO, -vv=DEBUG)
+uv run lens -v extract
+uv run lens -vv monitor
 ```
 
 ## LLM Backend
