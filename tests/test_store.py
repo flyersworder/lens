@@ -393,6 +393,63 @@ def test_search_papers_hybrid_with_filters(store):
     assert results[0]["paper_id"] == "p2"
 
 
+def test_search_papers_filter_by_venue(store):
+    """Filter-only mode filters by venue substring."""
+    paper = {
+        "paper_id": "p1",
+        "title": "A NeurIPS Paper",
+        "abstract": "Some content.",
+        "authors": ["Alice"],
+        "venue": "NeurIPS 2024",
+        "date": "2024-01-01",
+        "arxiv_id": "2401.00001",
+        "citations": 0,
+        "quality_score": 0.5,
+        "extraction_status": "pending",
+    }
+    store.add_papers([paper])
+    results = store.search_papers(filters={"venue": "NeurIPS"}, limit=5)
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "p1"
+
+    results = store.search_papers(filters={"venue": "ICML"}, limit=5)
+    assert results == []
+
+
+def test_search_papers_filter_by_before(store):
+    """Filter-only mode filters by before date."""
+    papers = [
+        {
+            "paper_id": "p1",
+            "title": "Old Paper",
+            "abstract": "Content.",
+            "authors": ["Alice"],
+            "venue": None,
+            "date": "2022-06-01",
+            "arxiv_id": "2206.00001",
+            "citations": 0,
+            "quality_score": 0.5,
+            "extraction_status": "pending",
+        },
+        {
+            "paper_id": "p2",
+            "title": "New Paper",
+            "abstract": "Content.",
+            "authors": ["Bob"],
+            "venue": None,
+            "date": "2024-06-01",
+            "arxiv_id": "2406.00001",
+            "citations": 0,
+            "quality_score": 0.5,
+            "extraction_status": "pending",
+        },
+    ]
+    store.add_papers(papers)
+    results = store.search_papers(filters={"before": "2023-01-01"}, limit=5)
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "p1"
+
+
 def test_search_papers_no_results(store):
     """Search with no matching papers returns empty list."""
     results = store.search_papers(query="nonexistent topic xyz", limit=5)

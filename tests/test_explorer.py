@@ -345,3 +345,21 @@ def test_search_papers_filter_only(store, sample_paper_data):
     assert len(results) == 1
     assert results[0]["paper_id"] == "2401.12345"
     assert results[0].get("score") is None
+
+
+def test_search_papers_fts_fallback_on_embedding_failure(store, sample_paper_data):
+    """Falls back to FTS-only when embedding provider fails."""
+    from unittest.mock import patch
+
+    from lens.serve.explorer import search_papers
+
+    store.add_papers([sample_paper_data])
+    # Force embed_strings to raise, simulating no embedding provider
+    with patch(
+        "lens.serve.explorer.embed_strings",
+        side_effect=RuntimeError("No model"),
+        create=True,
+    ):
+        results = search_papers(store, query="Attention")
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"

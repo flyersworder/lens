@@ -427,7 +427,7 @@ class LensStore:
                 filter_clauses.append("t.date <= ?")
                 filter_params.append(filters["before"])
 
-        filter_where = (" WHERE " + " AND ".join(filter_clauses)) if filter_clauses else ""
+        filter_where = " AND ".join(filter_clauses) if filter_clauses else ""
 
         def _deserialize(cursor: sqlite3.Cursor) -> list[dict]:
             columns = [desc[0] for desc in cursor.description]
@@ -445,10 +445,10 @@ class LensStore:
 
         # --- Filter-only mode ---
         if not query:
-            # Rewrite filter_where using bare column names (no "t." prefix).
-            bare_clauses = [c.replace("t.", "") for c in filter_clauses]
-            bare_where = (" WHERE " + " AND ".join(bare_clauses)) if bare_clauses else ""
-            sql = f"SELECT * FROM papers t{bare_where} ORDER BY t.date DESC LIMIT ?"
+            sql = "SELECT * FROM papers t"
+            if filter_where:
+                sql += f" WHERE {filter_where}"
+            sql += " ORDER BY t.date DESC LIMIT ?"
             cursor = self.conn.execute(sql, (*filter_params, limit))
             return _deserialize(cursor)
 
@@ -457,7 +457,7 @@ class LensStore:
 
         # --- FTS-only mode ---
         if embedding is None:
-            sql = f"""
+            sql = """
             WITH fts_matches AS (
                 SELECT
                     rowid,
@@ -476,17 +476,18 @@ class LensStore:
                 t.*,
                 c.fts_score AS _rrf_score
             FROM combined c
-            JOIN papers t ON t.rowid = c.rowid{filter_where}
-            ORDER BY _rrf_score DESC
-            LIMIT ?
+            JOIN papers t ON t.rowid = c.rowid
             """
+            if filter_where:
+                sql += f" WHERE {filter_where}"
+            sql += " ORDER BY _rrf_score DESC LIMIT ?"
             params_tuple = (fts_query, limit * 3, rrf_k, *filter_params, limit)
             cursor = self.conn.execute(sql, params_tuple)
             return _deserialize(cursor)
 
         # --- Hybrid mode ---
         emb_bytes = _pack_embedding(embedding)
-        sql = f"""
+        sql = """
         WITH fts_matches AS (
             SELECT
                 rowid,
@@ -519,10 +520,11 @@ class LensStore:
             c.fts_score + c.vec_score AS _rrf_score,
             c.vec_distance AS _distance
         FROM combined c
-        JOIN papers t ON t.paper_id = c.paper_id{filter_where}
-        ORDER BY _rrf_score DESC
-        LIMIT ?
+        JOIN papers t ON t.paper_id = c.paper_id
         """
+        if filter_where:
+            sql += f" WHERE {filter_where}"
+        sql += " ORDER BY _rrf_score DESC LIMIT ?"
         params_tuple = (
             fts_query,
             limit * 3,
