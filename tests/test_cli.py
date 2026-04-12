@@ -365,3 +365,35 @@ def test_analyze_without_api_key_shows_error(tmp_path, monkeypatch):
     result = runner.invoke(app, ["analyze", "test query"])
     assert result.exit_code == 1
     assert "API key not configured" in result.output
+
+
+def test_acquire_semantic_help():
+    """acquire semantic subcommand should exist."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+
+    runner = CliRunner()
+    result = runner.invoke(app, ["acquire", "semantic", "--help"])
+    assert result.exit_code == 0
+    assert "SPECTER2" in result.output or "Semantic Scholar" in result.output
+
+
+def test_acquire_semantic_no_papers(tmp_path, monkeypatch):
+    """acquire semantic with no papers should print a message."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.conn.close()
+
+    result = runner.invoke(app, ["acquire", "semantic"])
+    assert result.exit_code == 0
+    assert "No papers" in result.output

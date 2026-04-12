@@ -909,6 +909,83 @@ def deepxiv(
         raise typer.Exit(code=1) from None
 
 
+@acquire_app.command()
+def semantic(
+    paper_id: str | None = typer.Option(
+        None, "--paper-id", help="Fetch SPECTER2 embedding for a specific paper."
+    ),
+    api_key: str | None = typer.Option(None, "--api-key", help="Semantic Scholar API key."),
+) -> None:
+    """Fetch SPECTER2 embeddings from Semantic Scholar."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+
+    if paper_id:
+        papers = store.query("papers", "paper_id = ?", (paper_id,))
+    else:
+        papers = store.query("papers")
+
+    if not papers:
+        rprint("[yellow]No papers to fetch embeddings for.[/yellow]")
+        return
+
+    # Filter to papers with zero-vector or missing embeddings
+    if not paper_id:
+        import struct
+
+        papers_needing_embeddings = []
+        for p in papers:
+            pid = p["paper_id"]
+            vec_row = store.query_sql(
+                "SELECT embedding FROM papers_vec WHERE paper_id = ?", (pid,)
+            )
+            if not vec_row:
+                papers_needing_embeddings.append(p)
+                continue
+            emb_bytes = vec_row[0]["embedding"]
+            emb = struct.unpack(f"{EMBEDDING_DIM}f", emb_bytes)
+            if all(v == 0.0 for v in emb):
+                papers_needing_embeddings.append(p)
+        papers = papers_needing_embeddings
+
+    if not papers:
+        rprint("[yellow]All papers already have embeddings.[/yellow]")
+        return
+
+    arxiv_ids = [p.get("arxiv_id", p["paper_id"]) for p in papers]
+    pid_by_arxiv = {p.get("arxiv_id", p["paper_id"]): p["paper_id"] for p in papers}
+
+    rprint(f"Fetching SPECTER2 embeddings for {len(arxiv_ids)} paper(s)...")
+
+    from lens.acquire.semantic_scholar import fetch_embeddings_batch
+
+    results = asyncio.run(fetch_embeddings_batch(arxiv_ids, api_key=api_key))
+
+    session_id = str(uuid4())[:8]
+    updated = 0
+    for arxiv_id, embedding in results.items():
+        if embedding is not None:
+            pid = pid_by_arxiv.get(arxiv_id, arxiv_id)
+            store.upsert_embedding("papers", pid, embedding)
+            log_event(
+                store,
+                "ingest",
+                "paper.embedding_updated",
+                target_type="paper",
+                target_id=pid,
+                detail={"source": "semantic_scholar"},
+                session_id=session_id,
+            )
+            updated += 1
+
+    rprint(f"[green]Updated {updated} paper embeddings[/green]")
+    if updated < len(arxiv_ids):
+        missing = len(arxiv_ids) - updated
+        rprint(f"[yellow]{missing} papers had no SPECTER2 embedding available[/yellow]")
+
+
 # ---------------------------------------------------------------------------
 # Build subcommands
 # ---------------------------------------------------------------------------
