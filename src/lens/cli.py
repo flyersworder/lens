@@ -167,6 +167,19 @@ def _embedding_kwargs(config: dict) -> dict:
     return kwargs
 
 
+def _require_llm_config(config: dict) -> None:
+    """Exit early with a clear message if no LLM API key is configured."""
+    llm_cfg = config.get("llm", {})
+    api_key = llm_cfg.get("api_key") or os.environ.get("OPENROUTER_API_KEY", "")
+    if not api_key:
+        rprint(
+            "[red]LLM API key not configured.[/red]\n"
+            "Set it with: [bold]lens config set llm.api_key YOUR_KEY[/bold]\n"
+            "Or export: [bold]export OPENROUTER_API_KEY=YOUR_KEY[/bold]"
+        )
+        raise typer.Exit(code=1)
+
+
 # ---------------------------------------------------------------------------
 # Top-level commands
 # ---------------------------------------------------------------------------
@@ -198,6 +211,7 @@ def analyze(
 ) -> None:
     """Analyze a tradeoff and suggest resolution techniques."""
     config = load_config(_get_config_path())
+    _require_llm_config(config)
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
@@ -263,6 +277,7 @@ def explain(
 ) -> None:
     """Explain an LLM concept with adaptive depth."""
     config = load_config(_get_config_path())
+    _require_llm_config(config)
     data_dir = _get_data_dir(config)
     store = LensStore(str(data_dir / "lens.db"))
     store.init_tables()
@@ -362,6 +377,7 @@ def extract(
 ) -> None:
     """Extract tradeoffs, architecture, and agentic patterns from papers."""
     config = load_config(_get_config_path())
+    _require_llm_config(config)
     data_dir = _get_data_dir(config)
     llm_model = model or config["llm"]["extract_model"]
 
@@ -405,6 +421,8 @@ def monitor(
                     hyp = f" — {h}..."
                 rprint(f"  [{row['gap_type']}] {row['description']}{hyp}")
         raise typer.Exit(code=0)
+
+    _require_llm_config(config)
 
     from lens.llm.client import LLMClient
     from lens.monitor.watcher import run_monitor_cycle

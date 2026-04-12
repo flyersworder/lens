@@ -327,3 +327,41 @@ def test_verbose_flag_in_help():
     result = runner.invoke(app, ["--help"])
     assert result.exit_code == 0
     assert "--verbose" in result.output or "-v" in result.output
+
+
+def test_extract_without_api_key_shows_error(tmp_path, monkeypatch):
+    """lens extract should fail early with a clear message when no API key is set."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.conn.close()
+
+    result = runner.invoke(app, ["extract"])
+    assert result.exit_code == 1
+    assert "API key not configured" in result.output
+
+
+def test_analyze_without_api_key_shows_error(tmp_path, monkeypatch):
+    """lens analyze should fail early with a clear message when no API key is set."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    result = runner.invoke(app, ["analyze", "test query"])
+    assert result.exit_code == 1
+    assert "API key not configured" in result.output
