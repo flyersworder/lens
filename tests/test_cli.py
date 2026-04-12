@@ -428,6 +428,8 @@ def test_acquire_seed_computes_quality_score(tmp_path, monkeypatch):
 
 def test_monitor_has_skip_flags():
     """Monitor should accept --skip-enrich and --skip-build flags."""
+    import re
+
     from typer.testing import CliRunner
 
     from lens.cli import app
@@ -435,8 +437,10 @@ def test_monitor_has_skip_flags():
     runner = CliRunner()
     result = runner.invoke(app, ["monitor", "--help"])
     assert result.exit_code == 0
-    assert "--skip-enrich" in result.output
-    assert "--skip-build" in result.output
+    # Strip ANSI escape codes — Rich formatting can split flag names in CI
+    plain = re.sub(r"\x1b\[[0-9;]*m", "", result.output)
+    assert "--skip-enrich" in plain
+    assert "--skip-build" in plain
 
 
 def test_status_empty_db(tmp_path, monkeypatch):
