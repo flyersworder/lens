@@ -50,15 +50,23 @@ def test_rebuild_papers_fts(store, sample_paper_data):
     assert len(rows) == 1
 
 
-def test_papers_fts_populated_after_init(store, sample_paper_data):
-    """papers_fts is populated for papers added before init_tables is called."""
-    # Insert paper directly via raw SQL (bypassing add_papers to simulate old DB)
-    cols = (
-        "paper_id, title, abstract, authors, venue, date,"
-        " arxiv_id, citations, quality_score, extraction_status"
+def test_papers_fts_populated_after_init(tmp_path):
+    """papers_fts is rebuilt when upgrading a database that predates it."""
+    from lens.store.store import LensStore
+
+    # Create a database with only the papers table (simulating old schema)
+    db_path = str(tmp_path / "upgrade.db")
+    store = LensStore(db_path)
+    store.conn.execute(
+        "CREATE TABLE IF NOT EXISTS papers ("
+        "paper_id TEXT PRIMARY KEY, title TEXT NOT NULL, abstract TEXT NOT NULL, "
+        "authors TEXT NOT NULL, venue TEXT, date TEXT NOT NULL, arxiv_id TEXT NOT NULL, "
+        "citations INTEGER NOT NULL DEFAULT 0, quality_score REAL NOT NULL DEFAULT 0.0, "
+        "extraction_status TEXT NOT NULL DEFAULT 'pending')"
     )
     store.conn.execute(
-        f"INSERT INTO papers ({cols}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO papers (paper_id, title, abstract, authors, venue, date, arxiv_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?)",
         (
             "p1",
             "Attention Is All You Need",
@@ -67,13 +75,11 @@ def test_papers_fts_populated_after_init(store, sample_paper_data):
             None,
             "2017-06-12",
             "1706.03762",
-            100,
-            0.9,
-            "pending",
         ),
     )
     store.conn.commit()
-    # Re-init to simulate opening an existing database
+
+    # Now call init_tables — should create papers_fts AND rebuild the index
     store.init_tables()
     cursor = store.conn.execute(
         "SELECT * FROM papers_fts WHERE papers_fts MATCH ?", ('"Attention"',)

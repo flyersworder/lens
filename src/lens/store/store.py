@@ -208,7 +208,16 @@ class LensStore:
             "USING fts5(name, description, kind, content=vocabulary, content_rowid=rowid)"
         )
 
-        # FTS5 table for paper hybrid search (keyword + vector)
+        # FTS5 table for paper hybrid search (keyword + vector).
+        # Track whether the table is newly created so we can rebuild
+        # the index for databases that predate papers_fts.
+        had_papers_fts = (
+            self.conn.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table' AND name='papers_fts'"
+            ).fetchone()[0]
+            > 0
+        )
+
         self.conn.execute(
             "CREATE VIRTUAL TABLE IF NOT EXISTS papers_fts "
             "USING fts5(title, abstract, content=papers, content_rowid=rowid)"
@@ -216,8 +225,10 @@ class LensStore:
 
         self.conn.commit()
 
-        # Populate papers FTS for existing data (idempotent rebuild)
-        self.rebuild_papers_fts()
+        if not had_papers_fts:
+            paper_count = self.conn.execute("SELECT count(*) FROM papers").fetchone()[0]
+            if paper_count > 0:
+                self.rebuild_papers_fts()
 
     def _add_column_if_missing(self, table: str, column: str, col_type: str) -> None:
         """Add a column to an existing table if it doesn't already exist."""

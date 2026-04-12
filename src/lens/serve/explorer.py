@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
-import json
+import logging
 from typing import Any
 
 from lens.store.store import LensStore
+
+logger = logging.getLogger(__name__)
 
 
 def _matches_canonical(value: str, canonical_name: str) -> bool:
@@ -180,7 +182,7 @@ def search_papers(
             emb_kw = embedding_kwargs or {}
             embedding = embed_strings([query], **emb_kw)[0].tolist()
         except Exception:
-            pass  # Fall back to FTS-only
+            logger.warning("Embedding failed, falling back to keyword-only search")
 
     raw_results = store.search_papers(
         query=query,
@@ -195,11 +197,6 @@ def search_papers(
         snippet = (abstract[:150] + "...") if len(abstract) > 150 else abstract
 
         authors = r.get("authors", [])
-        if isinstance(authors, str):
-            try:
-                authors = json.loads(authors)
-            except (ValueError, TypeError):
-                authors = [authors]
         if len(authors) > 3:
             authors_display = ", ".join(authors[:3]) + ", ..."
         else:
