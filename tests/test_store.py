@@ -285,6 +285,88 @@ def test_add_papers_returns_count_with_mixed_new_and_existing(store, sample_pape
     assert len(rows) == 2
 
 
+# ---- 12. search_papers ----
+
+
+def test_search_papers_hybrid(store, sample_paper_data):
+    """Hybrid search combines FTS5 keyword + vector similarity."""
+    store.add_papers([sample_paper_data])
+    query_embedding = [0.1] * EMBEDDING_DIM
+    results = store.search_papers(
+        query="Attention architecture",
+        embedding=query_embedding,
+        limit=5,
+    )
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"
+    assert "_rrf_score" in results[0]
+
+
+def test_search_papers_fts_only(store, sample_paper_data):
+    """FTS-only search when no embedding is provided."""
+    store.add_papers([sample_paper_data])
+    results = store.search_papers(query="Attention", limit=5)
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"
+    assert "_rrf_score" in results[0]
+
+
+def test_search_papers_filter_only(store, sample_paper_data):
+    """Filter-only mode when no text query is given."""
+    store.add_papers([sample_paper_data])
+    results = store.search_papers(filters={"author": "Vaswani"}, limit=5)
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"
+    assert "_rrf_score" not in results[0]
+
+
+def test_search_papers_hybrid_with_filters(store):
+    """Hybrid search narrowed by date filter."""
+    papers = [
+        {
+            "paper_id": "p1",
+            "title": "Attention Mechanism Survey",
+            "abstract": "A survey of attention mechanisms in deep learning.",
+            "authors": ["Author A"],
+            "venue": None,
+            "date": "2023-01-01",
+            "arxiv_id": "2301.00001",
+            "citations": 10,
+            "quality_score": 0.5,
+            "extraction_status": "pending",
+            "embedding": [0.1] * EMBEDDING_DIM,
+        },
+        {
+            "paper_id": "p2",
+            "title": "Attention in Vision Transformers",
+            "abstract": "Applying attention to computer vision tasks.",
+            "authors": ["Author B"],
+            "venue": None,
+            "date": "2024-06-01",
+            "arxiv_id": "2406.00001",
+            "citations": 5,
+            "quality_score": 0.3,
+            "extraction_status": "pending",
+            "embedding": [0.2] * EMBEDDING_DIM,
+        },
+    ]
+    store.add_papers(papers)
+    results = store.search_papers(
+        query="attention",
+        embedding=[0.15] * EMBEDDING_DIM,
+        filters={"after": "2024-01-01"},
+        limit=5,
+    )
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "p2"
+
+
+def test_search_papers_no_results(store):
+    """Search with no matching papers returns empty list."""
+    results = store.search_papers(query="nonexistent topic xyz", limit=5)
+    assert results == []
+
+
 def test_add_rows_without_ignore_conflicts_raises_on_duplicate(store, sample_paper_data):
     """add_rows with ignore_conflicts=False should raise on duplicate PK."""
     import sqlite3

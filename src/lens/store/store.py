@@ -387,6 +387,152 @@ class LensStore:
         self.conn.execute("INSERT INTO papers_fts(papers_fts) VALUES('rebuild')")
         self.conn.commit()
 
+    def search_papers(
+        self,
+        query: str | None = None,
+        embedding: list[float] | None = None,
+        filters: dict[str, str] | None = None,
+        limit: int = 10,
+        rrf_k: int = 60,
+    ) -> list[dict]:
+        """Search papers using hybrid FTS5 + vector RRF, FTS-only, or filter-only mode.
+
+        Modes:
+        - Hybrid (query + embedding): FTS5 keyword + vector semantic with RRF.
+        - FTS-only (query, no embedding): keyword search only.
+        - Filter-only (no query): plain SQL with WHERE clauses, ordered by date DESC.
+
+        Filter keys: ``author`` (LIKE on authors JSON), ``venue`` (LIKE on venue),
+        ``after`` (date >=), ``before`` (date <=).
+        """
+        json_cols = JSON_FIELDS.get("papers", set())
+
+        # Build filter WHERE clauses and params (used in all modes).
+        filter_clauses: list[str] = []
+        filter_params: list[Any] = []
+        if filters:
+            if "author" in filters:
+                filter_clauses.append("t.authors LIKE ?")
+                filter_params.append(f"%{filters['author']}%")
+            if "venue" in filters:
+                filter_clauses.append("t.venue LIKE ?")
+                filter_params.append(f"%{filters['venue']}%")
+            if "after" in filters:
+                filter_clauses.append("t.date >= ?")
+                filter_params.append(filters["after"])
+            if "before" in filters:
+                filter_clauses.append("t.date <= ?")
+                filter_params.append(filters["before"])
+
+        filter_where = (" WHERE " + " AND ".join(filter_clauses)) if filter_clauses else ""
+
+        def _deserialize(cursor: sqlite3.Cursor) -> list[dict]:
+            columns = [desc[0] for desc in cursor.description]
+            results = []
+            for row in cursor.fetchall():
+                d: dict[str, Any] = {}
+                for i, col in enumerate(columns):
+                    val = row[i]
+                    if col in json_cols and isinstance(val, str):
+                        d[col] = json.loads(val)
+                    else:
+                        d[col] = val
+                results.append(d)
+            return results
+
+        # --- Filter-only mode ---
+        if not query:
+            # Rewrite filter_where using bare column names (no "t." prefix).
+            bare_clauses = [c.replace("t.", "") for c in filter_clauses]
+            bare_where = (" WHERE " + " AND ".join(bare_clauses)) if bare_clauses else ""
+            sql = f"SELECT * FROM papers t{bare_where} ORDER BY t.date DESC LIMIT ?"
+            cursor = self.conn.execute(sql, (*filter_params, limit))
+            return _deserialize(cursor)
+
+        # Escape FTS5 query: wrap each token in double quotes.
+        fts_query = " OR ".join(f'"{token}"' for token in query.strip().split())
+
+        # --- FTS-only mode ---
+        if embedding is None:
+            sql = f"""
+            WITH fts_matches AS (
+                SELECT
+                    rowid,
+                    row_number() OVER (ORDER BY rank) AS rank_number
+                FROM papers_fts
+                WHERE papers_fts MATCH ?
+                LIMIT ?
+            ),
+            combined AS (
+                SELECT
+                    f.rowid,
+                    1.0 / (? + f.rank_number) AS fts_score
+                FROM fts_matches f
+            )
+            SELECT
+                t.*,
+                c.fts_score AS _rrf_score
+            FROM combined c
+            JOIN papers t ON t.rowid = c.rowid{filter_where}
+            ORDER BY _rrf_score DESC
+            LIMIT ?
+            """
+            params_tuple = (fts_query, limit * 3, rrf_k, *filter_params, limit)
+            cursor = self.conn.execute(sql, params_tuple)
+            return _deserialize(cursor)
+
+        # --- Hybrid mode ---
+        emb_bytes = _pack_embedding(embedding)
+        sql = f"""
+        WITH fts_matches AS (
+            SELECT
+                rowid,
+                row_number() OVER (ORDER BY rank) AS rank_number
+            FROM papers_fts
+            WHERE papers_fts MATCH ?
+            LIMIT ?
+        ),
+        vec_matches AS (
+            SELECT
+                paper_id,
+                row_number() OVER (ORDER BY distance) AS rank_number,
+                distance
+            FROM papers_vec
+            WHERE embedding MATCH ? AND k = ?
+        ),
+        combined AS (
+            SELECT
+                coalesce(p.paper_id, vm.paper_id) AS paper_id,
+                coalesce(1.0 / (? + f.rank_number), 0.0) AS fts_score,
+                coalesce(1.0 / (? + vm.rank_number), 0.0) AS vec_score,
+                vm.distance AS vec_distance
+            FROM papers p
+            LEFT JOIN fts_matches f ON p.rowid = f.rowid
+            LEFT JOIN vec_matches vm ON p.paper_id = vm.paper_id
+            WHERE f.rowid IS NOT NULL OR vm.paper_id IS NOT NULL
+        )
+        SELECT
+            t.*,
+            c.fts_score + c.vec_score AS _rrf_score,
+            c.vec_distance AS _distance
+        FROM combined c
+        JOIN papers t ON t.paper_id = c.paper_id{filter_where}
+        ORDER BY _rrf_score DESC
+        LIMIT ?
+        """
+        params_tuple = (
+            fts_query,
+            limit * 3,
+            emb_bytes,
+            limit * 3,
+            rrf_k,
+            rrf_k,
+            *filter_params,
+            limit,
+        )
+        cursor = self.conn.execute(sql, params_tuple)
+        return _deserialize(cursor)
+
     def hybrid_search(
         self,
         query: str,
