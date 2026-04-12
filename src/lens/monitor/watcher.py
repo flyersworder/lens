@@ -99,7 +99,10 @@ async def run_monitor_cycle(
                 papers_enriched += 1
             logger.info("Enriched %d papers via OpenAlex", papers_enriched)
         except Exception:
-            logger.warning("OpenAlex enrichment failed, continuing without enrichment")
+            logger.warning(
+                "OpenAlex enrichment failed, continuing without enrichment",
+                exc_info=True,
+            )
 
     # --- Stage 3: Extract ---
     papers_extracted = 0

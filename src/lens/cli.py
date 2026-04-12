@@ -4,6 +4,7 @@ import asyncio
 import logging
 import os
 import shutil
+import struct
 from datetime import UTC
 from pathlib import Path
 from uuid import uuid4
@@ -1064,7 +1065,9 @@ def deepxiv(
 @acquire_app.command()
 def semantic(
     paper_id: str | None = typer.Option(
-        None, "--paper-id", help="Fetch SPECTER2 embedding for a specific paper."
+        None,
+        "--paper-id",
+        help="Force-fetch SPECTER2 embedding for a specific paper (overwrites existing).",
     ),
     api_key: str | None = typer.Option(None, "--api-key", help="Semantic Scholar API key."),
 ) -> None:
@@ -1085,8 +1088,6 @@ def semantic(
 
     # Filter to papers with zero-vector or missing embeddings
     if not paper_id:
-        import struct
-
         papers_needing_embeddings = []
         for p in papers:
             pid = p["paper_id"]
