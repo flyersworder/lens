@@ -285,3 +285,25 @@ def test_search_no_args(tmp_path):
     )
     assert result.exit_code == 1
     assert "Provide a search query" in result.output
+
+
+def test_explore_paper_shows_date(tmp_path, sample_paper_data):
+    """lens explore paper should display the paper date, not a missing 'year' field."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.add_papers([sample_paper_data])
+
+    result = runner.invoke(
+        app,
+        ["explore", "paper", "2401.12345"],
+        env={"LENS_DATA_DIR": str(tmp_path)},
+    )
+    assert result.exit_code == 0
+    assert "2017-06-12" in result.output

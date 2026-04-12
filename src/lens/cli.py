@@ -1194,8 +1194,8 @@ def paper(
     rprint(f"\n[bold]{result.get('title', paper_id)}[/bold]")
     if result.get("authors"):
         rprint(f"[dim]Authors:[/dim] {result['authors']}")
-    if result.get("year"):
-        rprint(f"[dim]Year:[/dim] {result['year']}")
+    if result.get("date"):
+        rprint(f"[dim]Date:[/dim] {result['date']}")
     if result.get("abstract"):
         rprint(f"\n{result['abstract']}")
 
