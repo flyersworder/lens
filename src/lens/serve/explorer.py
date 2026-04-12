@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json as _json
 from typing import Any
 
 from lens.store.store import LensStore
@@ -142,3 +143,80 @@ def get_paper(store: LensStore, paper_id: str) -> dict[str, Any] | None:
     result = matches[0]
     result.pop("embedding", None)
     return result
+
+
+def search_papers(
+    store: LensStore,
+    query: str | None = None,
+    *,
+    author: str | None = None,
+    venue: str | None = None,
+    after: str | None = None,
+    before: str | None = None,
+    limit: int = 10,
+    embedding_kwargs: dict[str, Any] | None = None,
+) -> list[dict[str, Any]]:
+    """Search papers via hybrid search and/or metadata filters.
+
+    When *query* is provided, embeds it and runs hybrid FTS5 + vector search.
+    Falls back to FTS5-only if embedding fails.
+    When only filters are provided, runs a direct SQL query.
+    """
+    filters: dict[str, str] = {}
+    if author:
+        filters["author"] = author
+    if venue:
+        filters["venue"] = venue
+    if after:
+        filters["after"] = after
+    if before:
+        filters["before"] = before
+
+    embedding = None
+    if query:
+        try:
+            from lens.taxonomy.embedder import embed_strings
+
+            emb_kw = embedding_kwargs or {}
+            embedding = embed_strings([query], **emb_kw)[0].tolist()
+        except Exception:
+            pass  # Fall back to FTS-only
+
+    raw_results = store.search_papers(
+        query=query,
+        embedding=embedding,
+        filters=filters if filters else None,
+        limit=limit,
+    )
+
+    formatted = []
+    for r in raw_results:
+        abstract = r.get("abstract", "")
+        snippet = (abstract[:150] + "...") if len(abstract) > 150 else abstract
+
+        authors = r.get("authors", [])
+        if isinstance(authors, str):
+            try:
+                authors = _json.loads(authors)
+            except (ValueError, TypeError):
+                authors = [authors]
+        if len(authors) > 3:
+            authors_display = ", ".join(authors[:3]) + ", ..."
+        else:
+            authors_display = ", ".join(authors)
+
+        entry: dict[str, Any] = {
+            "paper_id": r["paper_id"],
+            "title": r["title"],
+            "date": r.get("date", ""),
+            "authors_display": authors_display,
+            "abstract_snippet": snippet,
+            "arxiv_id": r.get("arxiv_id", ""),
+            "venue": r.get("venue"),
+        }
+        if "_rrf_score" in r:
+            entry["score"] = r["_rrf_score"]
+
+        formatted.append(entry)
+
+    return formatted

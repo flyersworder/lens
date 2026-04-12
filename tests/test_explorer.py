@@ -300,3 +300,48 @@ def test_get_architecture_timeline(arch_store):
     assert timeline[0]["variant_name"] == "Multi-Head Attention"
     assert timeline[1]["variant_name"] == "Grouped-Query Attention"
     assert "earliest_date" in timeline[0]
+
+
+def test_search_papers_with_query(store, sample_paper_data):
+    """search_papers returns formatted results with scores."""
+    from lens.serve.explorer import search_papers
+
+    store.add_papers([sample_paper_data])
+    results = search_papers(store, query="Attention")
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"
+    assert results[0]["title"] == "Attention Is All You Need"
+    # Abstract should be truncated
+    assert len(results[0]["abstract_snippet"]) <= 153  # 150 + "..."
+
+
+def test_search_papers_authors_truncated(store):
+    """Authors list is truncated to 3 with ellipsis."""
+    from lens.serve.explorer import search_papers
+
+    paper = {
+        "paper_id": "p1",
+        "title": "Multi Author Paper",
+        "abstract": "A paper with many authors about transformers.",
+        "authors": ["Alice", "Bob", "Charlie", "Diana", "Eve"],
+        "venue": None,
+        "date": "2024-01-01",
+        "arxiv_id": "2401.00001",
+        "citations": 0,
+        "quality_score": 0.5,
+        "extraction_status": "pending",
+    }
+    store.add_papers([paper])
+    results = search_papers(store, query="transformers")
+    assert results[0]["authors_display"] == "Alice, Bob, Charlie, ..."
+
+
+def test_search_papers_filter_only(store, sample_paper_data):
+    """Filter-only mode works without a text query."""
+    from lens.serve.explorer import search_papers
+
+    store.add_papers([sample_paper_data])
+    results = search_papers(store, author="Vaswani")
+    assert len(results) == 1
+    assert results[0]["paper_id"] == "2401.12345"
+    assert results[0].get("score") is None
