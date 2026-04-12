@@ -66,6 +66,12 @@ uv run lens explain "grouped-query attention"
 uv run lens explain "knowledge distillation" --tradeoffs
 uv run lens explain "MoE" --related
 
+# Search papers
+uv run lens search "attention mechanisms"          # hybrid keyword + semantic
+uv run lens search --author "Vaswani"              # filter by author
+uv run lens search "efficiency" --after 2024-01-01 # combine search + filters
+uv run lens search --venue "NeurIPS" --limit 5     # filter by venue
+
 # Browse the knowledge base
 uv run lens vocab list                      # list vocabulary (parameters + principles)
 uv run lens vocab list --kind parameter     # filter by kind
