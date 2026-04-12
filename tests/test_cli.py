@@ -437,3 +437,51 @@ def test_monitor_has_skip_flags():
     assert result.exit_code == 0
     assert "--skip-enrich" in result.output
     assert "--skip-build" in result.output
+
+
+def test_status_empty_db(tmp_path, monkeypatch):
+    """lens status on an empty DB should show zeros gracefully."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.conn.close()
+
+    result = runner.invoke(app, ["status"])
+    assert result.exit_code == 0
+    assert "Papers" in result.output
+    assert "0" in result.output
+
+
+def test_status_with_data(tmp_path, sample_paper_data, monkeypatch):
+    """lens status with papers should show counts."""
+    from typer.testing import CliRunner
+
+    from lens.cli import app
+    from lens.store.store import LensStore
+
+    runner = CliRunner()
+    monkeypatch.setenv("LENS_DATA_DIR", str(tmp_path))
+
+    db_path = str(tmp_path / "lens.db")
+    store = LensStore(db_path)
+    store.init_tables()
+    store.add_papers([sample_paper_data])
+
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    load_seed_vocabulary(store)
+    store.conn.close()
+
+    result = runner.invoke(app, ["status"])
+    assert result.exit_code == 0
+    assert "Papers" in result.output
+    assert "pending: 1" in result.output
+    assert "Vocabulary" in result.output

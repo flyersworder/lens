@@ -205,6 +205,102 @@ def init(
 
 
 @app.command()
+def status() -> None:
+    """Show a summary of the LENS knowledge base."""
+    config = load_config(_get_config_path())
+    data_dir = _get_data_dir(config)
+    db_path = data_dir / "lens.db"
+    if not db_path.exists():
+        rprint("[yellow]No database found. Run 'lens init' first.[/yellow]")
+        raise typer.Exit(code=1)
+
+    store = LensStore(str(db_path))
+    store.init_tables()
+
+    # Paper counts by extraction status
+    papers = store.query("papers")
+    total = len(papers)
+    by_status: dict[str, int] = {}
+    for p in papers:
+        s = p.get("extraction_status", "unknown")
+        by_status[s] = by_status.get(s, 0) + 1
+
+    status_parts = ", ".join(f"{s}: {c}" for s, c in sorted(by_status.items()))
+
+    rprint("\n[bold]LENS Knowledge Base Status[/bold]")
+    rprint("=" * 40)
+    rprint(f"Papers: {total} ({status_parts})" if status_parts else f"Papers: {total}")
+
+    # Vocabulary counts by kind
+    vocab = store.query("vocabulary")
+    vocab_by_kind: dict[str, int] = {}
+    for v in vocab:
+        k = v["kind"]
+        vocab_by_kind[k] = vocab_by_kind.get(k, 0) + 1
+    if vocab_by_kind:
+        vocab_parts = ", ".join(f"{c} {k}s" for k, c in sorted(vocab_by_kind.items()))
+        rprint(f"Vocabulary: {vocab_parts}")
+    else:
+        rprint("Vocabulary: empty")
+
+    # Matrix
+    cells = store.query("matrix_cells")
+    if cells:
+        total_evidence = sum(c.get("count", 0) for c in cells)
+        rprint(f"Matrix: {len(cells)} cells, {total_evidence} total evidence")
+    else:
+        rprint("Matrix: empty")
+
+    # Top parameters by paper_count
+    params = [v for v in vocab if v["kind"] == "parameter" and v["paper_count"] > 0]
+    if params:
+        params.sort(key=lambda x: x["paper_count"], reverse=True)
+        top = params[:5]
+        top_str = ", ".join(f"{p['name']} ({p['paper_count']})" for p in top)
+        rprint(f"Top parameters: {top_str}")
+
+    # Taxonomy version
+    versions = store.query_sql("SELECT * FROM taxonomy_versions ORDER BY version_id DESC LIMIT 1")
+    if versions:
+        v = versions[0]
+        rprint(f"Taxonomy: v{v['version_id']} (built: {v.get('created_at', 'unknown')})")
+    else:
+        rprint("Taxonomy: not built yet")
+
+    # Last event
+    events = store.query_sql("SELECT * FROM event_log ORDER BY timestamp DESC LIMIT 1")
+    if events:
+        e = events[0]
+        rprint(f"Last event: {e.get('timestamp', '?')} ({e.get('kind', '?')})")
+    else:
+        rprint("Last event: none")
+
+    # Cheap lint checks
+    from lens.knowledge.linter import (
+        check_missing_embeddings,
+        check_orphan_vocabulary,
+        check_weak_evidence,
+    )
+
+    orphans = check_orphan_vocabulary(store)
+    weak = check_weak_evidence(store)
+    missing_emb = check_missing_embeddings(store)
+    issues = []
+    if orphans:
+        issues.append(f"{len(orphans)} orphans")
+    if weak:
+        issues.append(f"{len(weak)} weak evidence")
+    if missing_emb:
+        issues.append(f"{len(missing_emb)} missing embeddings")
+    if issues:
+        rprint(f"Issues: {', '.join(issues)}")
+    else:
+        rprint("Issues: none")
+
+    rprint()
+
+
+@app.command()
 def analyze(
     query: str = typer.Argument(..., help="Problem description."),
     type_: str | None = typer.Option(None, "--type", help="Query type."),
