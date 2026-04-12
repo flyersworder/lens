@@ -66,6 +66,10 @@ dev = [
     "pytest-timeout>=2.4.0",
 ]
 
+[tool.uv]
+# Override arxiv's requests~=2.32.0 pin to pick up CVE-2026-25645 fix
+override-dependencies = ["requests>=2.33.0"]
+
 [tool.ruff]
 target-version = "py312"
 src = ["src"]
