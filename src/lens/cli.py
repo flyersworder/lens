@@ -363,7 +363,6 @@ def extract(
 
 @app.command()
 def monitor(
-    interval: str = typer.Option("weekly", "--interval", help="Check interval (not yet used)."),
     trending: bool = typer.Option(False, "--trending", help="Show ideation gaps."),
 ) -> None:
     """Run one monitoring cycle: acquire -> extract -> ideate."""

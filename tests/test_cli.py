@@ -79,6 +79,13 @@ def test_cli_monitor_exists():
     assert result.exit_code == 0
 
 
+def test_monitor_no_interval_flag():
+    """Monitor command should not have an --interval flag."""
+    result = runner.invoke(app, ["monitor", "--help"])
+    assert result.exit_code == 0
+    assert "--interval" not in result.output
+
+
 def test_explore_architecture_help():
     result = runner.invoke(app, ["explore", "architecture", "--help"])
     assert result.exit_code == 0
