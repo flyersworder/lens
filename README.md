@@ -26,110 +26,118 @@ See [docs/architecture.md](docs/architecture.md) for the full architecture doc.
 ## Quick Start
 
 ```bash
-# Install dependencies
-uv sync
-
-# Install pre-commit hooks (uses prek, a fast Rust-based pre-commit runner)
-uv tool install prek
-prek install
+# Install from PyPI
+pip install lens-research
+# or
+uv add lens-research
 
 # Initialize the database and config
-uv run lens init
+lens init
 
 # Acquire seed papers (10 landmark LLM papers)
-uv run lens acquire seed
+lens acquire seed
 
 # Initialize canonical vocabulary (12 parameters + 12 principles)
-uv run lens vocab init
+lens vocab init
 
 # Extract tradeoffs, architecture, and agentic patterns from papers
-uv run lens extract
+lens extract
 
 # Build taxonomy and contradiction matrix
-uv run lens build all
+lens build all
+```
+
+### Optional extras
+
+```bash
+# Multi-provider LLM routing (OpenRouter, Anthropic, etc.)
+pip install "lens-research[litellm]"   # or: uv add "lens-research[litellm]"
+
+# Agent-optimized paper search via DeepXiv
+pip install "lens-research[deepxiv]"   # or: uv add "lens-research[deepxiv]"
 ```
 
 ## Usage
 
 ```bash
 # Analyze a tradeoff — suggests resolution techniques from the matrix
-uv run lens analyze "reduce hallucination without hurting latency"
+lens analyze "reduce hallucination without hurting latency"
 
 # Analyze architecture — find matching variants by property
-uv run lens analyze --type architecture "efficient attention for long context"
+lens analyze --type architecture "efficient attention for long context"
 
 # Analyze agentic — find matching patterns
-uv run lens analyze --type agentic "reliable multi-step code generation"
+lens analyze --type agentic "reliable multi-step code generation"
 
 # Explain any LLM concept with adaptive depth
-uv run lens explain "grouped-query attention"
-uv run lens explain "knowledge distillation" --tradeoffs
-uv run lens explain "MoE" --related
+lens explain "grouped-query attention"
+lens explain "knowledge distillation" --tradeoffs
+lens explain "MoE" --related
 
 # Search papers
-uv run lens search "attention mechanisms"          # hybrid keyword + semantic
-uv run lens search --author "Vaswani"              # filter by author
-uv run lens search "efficiency" --after 2024-01-01 # combine search + filters
-uv run lens search --venue "NeurIPS" --limit 5     # filter by venue
+lens search "attention mechanisms"          # hybrid keyword + semantic
+lens search --author "Vaswani"              # filter by author
+lens search "efficiency" --after 2024-01-01 # combine search + filters
+lens search --venue "NeurIPS" --limit 5     # filter by venue
 
 # Browse the knowledge base
-uv run lens vocab list                      # list vocabulary (parameters + principles)
-uv run lens vocab list --kind parameter     # filter by kind
-uv run lens vocab show inference-latency    # details for a concept
-uv run lens explore matrix
-uv run lens explore paper 2401.12345
+lens vocab list                      # list vocabulary (parameters + principles)
+lens vocab list --kind parameter     # filter by kind
+lens vocab show inference-latency    # details for a concept
+lens explore matrix
+lens explore paper 2401.12345
 
 # Browse architecture catalog
-uv run lens explore architecture            # list all slots with variant counts
-uv run lens explore architecture Attention  # compare variants with properties
-uv run lens explore evolution Attention     # timeline view by paper date
+lens explore architecture            # list all slots with variant counts
+lens explore architecture Attention  # compare variants with properties
+lens explore evolution Attention     # timeline view by paper date
 
 # Browse agentic patterns
-uv run lens explore agents                  # list patterns by category
-uv run lens explore agents Reasoning        # filter by category
+lens explore agents                  # list patterns by category
+lens explore agents Reasoning        # filter by category
 
 # Acquire more papers from arxiv
-uv run lens acquire arxiv --query "LLM" --since 2025-01
-uv run lens acquire file paper.pdf          # ingest a local PDF
+lens acquire arxiv --query "LLM" --since 2025-01
+lens acquire file paper.pdf          # ingest a local PDF
 
-# Acquire via DeepXiv (requires: uv sync --extra deepxiv)
-uv run lens acquire deepxiv "LLM agent architecture" --max-results 10
-uv run lens acquire deepxiv --paper 2507.01701  # single paper with rich metadata
+# Acquire via DeepXiv (requires: pip install "lens-research[deepxiv]")
+lens acquire deepxiv "LLM agent architecture" --max-results 10
+lens acquire deepxiv --paper 2507.01701  # single paper with rich metadata
 
 # Fetch SPECTER2 embeddings from Semantic Scholar
-uv run lens acquire semantic                    # all papers missing embeddings
-uv run lens acquire semantic --paper-id 2401.12345  # specific paper
+lens acquire semantic                    # all papers missing embeddings
+lens acquire semantic --paper-id 2401.12345  # specific paper
 
 # Knowledge base overview
-uv run lens status                          # paper counts, vocab, matrix, issues
+lens status                          # paper counts, vocab, matrix, issues
 
 # Run a monitoring cycle (acquire → enrich → extract → build → ideate)
-uv run lens monitor
-uv run lens monitor --skip-enrich           # skip OpenAlex enrichment
-uv run lens monitor --skip-build            # skip taxonomy/matrix rebuild
-uv run lens monitor --trending              # show ideation gaps
+lens monitor
+lens monitor --skip-enrich           # skip OpenAlex enrichment
+lens monitor --skip-build            # skip taxonomy/matrix rebuild
+lens monitor --trending              # show ideation gaps
 
 # Browse research opportunities
-uv run lens explore ideas
-uv run lens explore ideas --type sparse_cell
+lens explore ideas
+lens explore ideas --type sparse_cell
 
 # Health-check the knowledge base
-uv run lens lint                               # report issues across 6 categories
-uv run lens lint --fix                         # auto-fix safe issues
-uv run lens lint --check orphans,stale         # run specific checks only
+lens lint                               # report issues across 6 categories
+lens lint --fix                         # auto-fix safe issues
+lens lint --check orphans,stale         # run specific checks only
 
 # View the event log (audit trail of all mutations)
-uv run lens log                                # last 20 events
-uv run lens log --kind extract                 # filter by event kind
-uv run lens log --since 2026-04-01 --limit 50  # date range + limit
+lens log                                # last 20 events
+lens log --kind extract                 # filter by event kind
+lens log --since 2026-04-01 --limit 50  # date range + limit
 
 # Configuration
-uv run lens config show
-uv run lens config set llm.default_model openrouter/anthropic/claude-sonnet-4-6
+lens config show
+lens config set llm.default_model openrouter/anthropic/claude-sonnet-4-6
 
 # Verbose logging (-v=INFO, -vv=DEBUG)
-uv run lens -v extract
-uv run lens -vv monitor
+lens -v extract
+lens -vv monitor
 ```
 
 ## LLM Backend
@@ -149,7 +157,7 @@ llm:
 **Direct mode** — Install litellm for multi-provider routing (OpenRouter, OpenAI, Anthropic, etc.):
 
 ```bash
-uv add lens[litellm]
+pip install "lens-research[litellm]"   # or: uv add "lens-research[litellm]"
 ```
 
 ## Embeddings
@@ -162,8 +170,8 @@ Two embedding providers, configurable via `~/.lens/config.yaml`:
 
 ```bash
 # Switch to cloud embeddings
-uv run lens config set embeddings.provider cloud
-uv run lens config set embeddings.model text-embedding-3-small
+lens config set embeddings.provider cloud
+lens config set embeddings.model text-embedding-3-small
 ```
 
 ## Architecture
@@ -190,6 +198,22 @@ Layer 3: Knowledge Structures (contradiction matrix, ideation gaps)
 ```
 
 Public API is synchronous; async internals are wrapped with `asyncio.run()`.
+
+## Development
+
+```bash
+# Clone and set up for development
+git clone https://github.com/flyersworder/lens.git
+cd lens
+uv sync
+
+# Install pre-commit hooks (uses prek, a fast Rust-based pre-commit runner)
+uv tool install prek
+prek install
+
+# Run the CLI from source
+uv run lens init
+```
 
 ## Testing
 
