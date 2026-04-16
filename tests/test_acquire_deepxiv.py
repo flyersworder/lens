@@ -245,8 +245,12 @@ def test_deepxiv_search_live():
     if not HAS_DEEPXIV:
         pytest.skip("deepxiv-sdk not installed")
 
+    from deepxiv_sdk.reader import RateLimitError, ServerError
+
     try:
         papers = search_deepxiv(query="transformer attention", max_results=3)
+    except (ServerError, RateLimitError) as e:
+        pytest.skip(f"DeepXiv upstream unavailable: {e}")
     except Exception as e:
         if "token" in str(e).lower() or "auth" in str(e).lower() or "401" in str(e):
             pytest.skip(f"DeepXiv API token not configured: {e}")
@@ -268,8 +272,12 @@ def test_deepxiv_fetch_paper_live():
     if not HAS_DEEPXIV:
         pytest.skip("deepxiv-sdk not installed")
 
+    from deepxiv_sdk.reader import RateLimitError, ServerError
+
     try:
         paper = fetch_deepxiv_paper("2507.01701")
+    except (ServerError, RateLimitError) as e:
+        pytest.skip(f"DeepXiv upstream unavailable: {e}")
     except Exception as e:
         if "token" in str(e).lower() or "auth" in str(e).lower() or "401" in str(e):
             pytest.skip(f"DeepXiv API token not configured: {e}")
