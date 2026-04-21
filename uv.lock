@@ -11,8 +11,11 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-13T19:43:21.962187Z"
+exclude-newer = "2026-04-18T16:21:40.643566Z"
 exclude-newer-span = "P3D"
+
+[options.exclude-newer-package]
+deepxiv-sdk = "2026-04-21T22:00:00Z"
 
 [manifest]
 overrides = [{ name = "requests", specifier = ">=2.33.0" }]
@@ -305,16 +308,16 @@ wheels = [
 
 [[package]]
 name = "deepxiv-sdk"
-version = "0.2.4"
+version = "0.2.5"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "click" },
     { name = "python-dotenv" },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/dc/1f/ccddabae1f81e561cc7680b66e8778f559cb8fe2dd2d1138d4d7d0fd9cfe/deepxiv_sdk-0.2.4.tar.gz", hash = "sha256:572d2504da3e781aab06bb3c3b517d4fed497edbcf9f53ad4636c8eb291f2f1f", size = 50882, upload-time = "2026-04-02T05:26:07.001Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d3/6e/02748e9aa9d7157e16a6fe9fd67e55b5aa2131eef8ba27a4a73db72f65f6/deepxiv_sdk-0.2.5.tar.gz", hash = "sha256:cee3cc785c3f540710f7903ba6a9af6f98276eede93177bc25d1b95a34ec7594", size = 63009, upload-time = "2026-04-20T03:26:58.029Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/31/f8/4b4cb9df479d53d3e3a6bb2134506f29320628590f3243d393dadfbddda6/deepxiv_sdk-0.2.4-py3-none-any.whl", hash = "sha256:7e8654dafc11da97722abbd8193917b318fead3be0227e90e91aa52b448d7705", size = 44287, upload-time = "2026-04-02T05:26:05.469Z" },
+    { url = "https://files.pythonhosted.org/packages/21/5e/394b0b452b5de4b0ddd26152410ec13578a3b20d478fa08012aeedf314e4/deepxiv_sdk-0.2.5-py3-none-any.whl", hash = "sha256:c04bde129fd1e81d616de87f27c5a629c08e39708a7def61de9ade1724916ff9", size = 52596, upload-time = "2026-04-20T03:26:56.554Z" },
 ]
 
 [[package]]
@@ -768,7 +771,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "arxiv", specifier = ">=2.4.1" },
-    { name = "deepxiv-sdk", marker = "extra == 'deepxiv'", specifier = ">=0.2.0" },
+    { name = "deepxiv-sdk", marker = "extra == 'deepxiv'", specifier = ">=0.2.5" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "json-repair", specifier = ">=0.58.7" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.40" },

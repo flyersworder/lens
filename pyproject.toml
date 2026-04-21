@@ -1,6 +1,6 @@
 [project]
 name = "lens-research"
-version = "0.9.0"
+version = "0.9.1"
 description = "LLM Engineering Navigation System — discovers recurring solution patterns from LLM research papers"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -34,7 +34,7 @@ dependencies = [
 
 [project.optional-dependencies]
 litellm = ["litellm>=1.40"]
-deepxiv = ["deepxiv-sdk>=0.2.0"]
+deepxiv = ["deepxiv-sdk>=0.2.5"]
 
 [project.scripts]
 lens = "lens.cli:app"

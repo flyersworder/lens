@@ -1,5 +1,74 @@
 # Changelog
 
+## 0.9.1 (2026-04-21)
+
+### Fixed
+- **DeepXiv retrieve API migration** — adapt `search_deepxiv()` to the new
+  `/arxiv/?type=retrieve` backend that DeepXiv rolled out on 2026-04-20.
+  Response top-level key is now `result` (was `results`) and per-item citation
+  field is `citation_count` (was `citation`). Old SDKs returned empty lists
+  against the new backend, which broke the `test_deepxiv_search_live`
+  integration test.
+- **Deprecated `search_mode` kwarg removed** — the unified retrieve endpoint
+  ignores `search_mode` / `bm25_weight` / `vector_weight` and warns on each
+  call; stop passing them.
+- **Live integration tests degrade gracefully** — `test_deepxiv_search_live`
+  and `test_deepxiv_fetch_paper_live` now `pytest.skip` when the upstream
+  returns an empty or stub response, not just when it raises
+  `ServerError` / `RateLimitError`. Prevents unrelated PRs from being blocked
+  by upstream hiccups.
+- **`test_cli_skip_flags_short` ANSI-safe on CI** — strip ANSI color codes
+  before asserting on CLI output so the test passes under different terminal
+  widths.
+
+### Security
+- **`requests` pinned to `>=2.33.0`** via `[tool.uv] override-dependencies`
+  to pick up the fix for CVE-2026-25645 (arxiv's `~=2.32.0` pin was holding
+  us back on the vulnerable line).
+
+### Changed
+- **`deepxiv-sdk` minimum bumped to `>=0.2.5`** — 0.2.5 is the first release
+  compatible with the new retrieve endpoint. Install with
+  `pip install "lens-research[deepxiv]"` or `uv sync --extra deepxiv`.
+- **`astral-sh/setup-uv` in CI bumped to 8.1.0** — upstream GitHub Action
+  version bump; no functional change for LENS.
+- **`pytest` dev-dep bumped to `9.0.3`**.
+
+### Documentation
+- **README rewritten for end-user installation** — focuses on `pip` / `uv`
+  install flow for users consuming LENS from PyPI, rather than the
+  contributor-oriented workflow.
+- **Backfilled 0.9.0 entry below** — was previously only documented in the
+  GitHub release notes.
+
+## 0.9.0 (2026-04-12)
+
+### Added
+- **`lens status`** — quick overview of the knowledge base: paper counts by
+  extraction status, vocabulary breakdown by kind, matrix density, top
+  parameters, taxonomy version, last event, and cheap lint checks.
+- **`lens acquire semantic`** — fetch SPECTER2 embeddings from Semantic
+  Scholar for papers with zero-vector or missing embeddings.
+- **Monitor pipeline, 5 configurable stages** — acquire (arxiv) → enrich
+  (OpenAlex + quality scores) → extract (LLM) → build (taxonomy + matrix) →
+  ideate (gap analysis, optional LLM). Flags `--skip-enrich`, `--skip-build`.
+  Config `monitor.ideate_llm` for LLM-enriched ideation.
+- **Quality scoring** — `acquire/quality.py` computes 0-1 scores (citations +
+  venue tier + recency). Auto-computed after seed acquisition and OpenAlex
+  enrichment.
+- **`--verbose / -v` flag on all commands** — `-v` = INFO, `-vv` = DEBUG.
+- **API key validation** — `_require_llm_config()` checks for LLM API key
+  (or gateway config) before commands that need it (`extract`, `analyze`,
+  `explain`, `monitor`) and prints a clear setup message.
+
+### Fixed
+- **`lens explore paper`** displayed nothing for date (was reading a
+  nonexistent `year` field).
+- **Removed misleading `--interval` no-op flag from `monitor`**.
+
+### Documentation
+- README and CLAUDE.md updated with the new commands, flags, and pipeline.
+
 ## 0.8.0 (2026-04-12)
 
 ### Added

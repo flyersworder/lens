@@ -117,7 +117,6 @@ def search_deepxiv(
     kwargs: dict[str, Any] = {
         "query": query,
         "size": max_results,
-        "search_mode": "hybrid",
     }
     if categories:
         kwargs["categories"] = categories
@@ -125,7 +124,7 @@ def search_deepxiv(
         kwargs["date_from"] = since
 
     response = _call_with_token_refresh(reader, "search", **kwargs)
-    results = response.get("results", [])
+    results = response.get("result", [])
 
     papers = []
     for r in results:
@@ -133,7 +132,7 @@ def search_deepxiv(
         if not arxiv_id:
             continue
         date = _extract_date(r.get("publish_at") or r.get("published"))
-        citations = r.get("citation", 0) or 0
+        citations = r.get("citation_count", 0) or 0
         venue = r.get("venue") or r.get("journal_name")
         papers.append(
             {
