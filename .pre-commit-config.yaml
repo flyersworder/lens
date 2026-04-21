@@ -42,7 +42,7 @@ repos:
       # Fast unit tests
       - id: pytest-fast
         name: pytest (fast)
-        entry: uv run pytest tests/ -x -q --timeout=10
+        entry: uv run --frozen pytest tests/ -x -q --timeout=10
         language: system
         types: [python]
         pass_filenames: false
