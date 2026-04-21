@@ -249,6 +249,7 @@ async def test_analyze_agentic(arch_agentic_store):
 
     assert result is not None
     assert result["query"] == "step-by-step reasoning for complex tasks"
+    assert result["category"] == "Reasoning"
     assert "patterns" in result
     assert isinstance(result["patterns"], list)
     assert len(result["patterns"]) == 2

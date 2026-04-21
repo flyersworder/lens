@@ -1,6 +1,6 @@
 [project]
 name = "lens-research"
-version = "0.9.1"
+version = "0.10.0"
 description = "LLM Engineering Navigation System — discovers recurring solution patterns from LLM research papers"
 readme = "README.md"
 requires-python = ">=3.12"

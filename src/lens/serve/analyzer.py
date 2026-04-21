@@ -226,4 +226,8 @@ async def analyze_agentic(
             }
         by_name[name]["paper_ids"].append(row["paper_id"])
 
-    return {"query": query, "patterns": list(by_name.values())}
+    return {
+        "query": query,
+        "category": identified_category,
+        "patterns": list(by_name.values()),
+    }

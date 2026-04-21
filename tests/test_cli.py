@@ -69,6 +69,126 @@ def test_cli_explain_exists():
     assert result.exit_code == 0
 
 
+def _seed_taxonomy(store: LensStore) -> None:
+    """Seed the minimum state that `analyze`/`explain` check before running."""
+    store.add_rows(
+        "taxonomy_versions",
+        [
+            {
+                "version_id": 1,
+                "created_at": "2026-04-21T00:00:00",
+                "paper_count": 0,
+                "param_count": 0,
+                "principle_count": 0,
+                "slot_count": 0,
+                "variant_count": 0,
+                "pattern_count": 0,
+            }
+        ],
+    )
+
+
+def test_cli_analyze_provenance(tmp_path, monkeypatch):
+    """`lens analyze --provenance PATH` writes a YAML sidecar next to the answer."""
+    import yaml
+
+    from lens.store.store import LensStore
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    monkeypatch.setenv("LENS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+    _seed_taxonomy(store)
+
+    async def _fake_analyze(query, store, llm_client):
+        return {
+            "query": query,
+            "improving": "Inference Latency",
+            "worsening": "Model Accuracy",
+            "principles": [
+                {
+                    "principle_id": "quantization",
+                    "name": "Quantization",
+                    "count": 3,
+                    "avg_confidence": 0.8,
+                    "score": 2.4,
+                    "paper_ids": ["p1", "p2"],
+                }
+            ],
+        }
+
+    monkeypatch.setattr("lens.serve.analyzer.analyze", _fake_analyze)
+
+    out = tmp_path / "analyze.provenance.yaml"
+    result = runner.invoke(app, ["analyze", "reduce latency", "--provenance", str(out)])
+
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    parsed = yaml.safe_load(out.read_text())
+    assert parsed["command"] == "analyze"
+    assert parsed["taxonomy_version"] == 1
+    assert parsed["paper_ids"] == ["p1", "p2"]
+    assert parsed["claims"][0]["principle_id"] == "quantization"
+
+
+def test_cli_explain_provenance(tmp_path, monkeypatch):
+    """`lens explain --provenance PATH` writes a YAML sidecar with vocab + paper refs."""
+    import yaml
+
+    from lens.store.models import ExplanationResult
+    from lens.store.store import LensStore
+
+    data_dir = tmp_path / "data"
+    data_dir.mkdir()
+    monkeypatch.setenv("LENS_DATA_DIR", str(data_dir))
+    monkeypatch.setenv("LENS_CONFIG_PATH", str(tmp_path / "config.yaml"))
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+    _seed_taxonomy(store)
+
+    async def _fake_explain(query, store, llm_client, focus=None, embedding_kwargs=None):
+        return ExplanationResult(
+            resolved_type="parameter",
+            resolved_id="inference-latency",
+            resolved_name="Inference Latency",
+            narrative="Latency is the time per token...",
+            evolution=[],
+            tradeoffs=[
+                {
+                    "improving_param_id": "inference-latency",
+                    "worsening_param_id": "model-accuracy",
+                    "principle_id": "quantization",
+                    "count": 3,
+                    "avg_confidence": 0.8,
+                    "paper_ids": ["p1"],
+                    "taxonomy_version": 1,
+                }
+            ],
+            connections=["Model Accuracy"],
+            paper_refs=[],
+            alternatives=[],
+        )
+
+    monkeypatch.setattr("lens.serve.explainer.explain", _fake_explain)
+
+    out = tmp_path / "explain.provenance.yaml"
+    result = runner.invoke(app, ["explain", "latency", "--provenance", str(out)])
+
+    assert result.exit_code == 0, result.output
+    assert out.exists()
+    parsed = yaml.safe_load(out.read_text())
+    assert parsed["command"] == "explain"
+    assert parsed["resolved"]["id"] == "inference-latency"
+    assert parsed["paper_ids"] == ["p1"]
+    assert "quantization" in parsed["vocab_ids"]
+
+
 def test_cli_explore_group_exists():
     result = runner.invoke(app, ["explore", "--help"])
     assert result.exit_code == 0

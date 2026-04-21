@@ -72,12 +72,31 @@ def test_parse_extraction_response():
     assert tradeoffs[0]["paper_id"] == "2005.14165"
     assert tradeoffs[0]["improves"] == "model quality across benchmarks"
     assert tradeoffs[0]["confidence"] == 0.92
+    # High confidence + substantive quote => verified.
+    assert tradeoffs[0]["verification_status"] == "verified"
 
     assert len(architecture) == 1
     assert architecture[0]["component_slot"] == "architecture class"
     assert architecture[0]["replaces"] is None
+    # High confidence, no quote field => verified by confidence alone.
+    assert architecture[0]["verification_status"] == "verified"
 
     assert len(agentic) == 0
+
+
+def test_compute_verification_status():
+    from lens.extract.extractor import compute_verification_status
+
+    # High confidence + substantive quote.
+    assert compute_verification_status(0.9, "this is a long enough quote") == "verified"
+    # High confidence, no quote field (arch/agentic case).
+    assert compute_verification_status(0.9) == "verified"
+    # High confidence but tiny quote — demoted to inferred.
+    assert compute_verification_status(0.9, "x") == "inferred"
+    # Medium confidence.
+    assert compute_verification_status(0.6, "some quote here") == "inferred"
+    # Low confidence.
+    assert compute_verification_status(0.3, "some quote here") == "unverified"
 
 
 def test_parse_extraction_response_malformed():

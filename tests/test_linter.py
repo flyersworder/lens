@@ -8,6 +8,7 @@ from lens.knowledge.linter import (
     check_near_duplicates,
     check_orphan_vocabulary,
     check_stale_extractions,
+    check_unverified_extractions,
     check_weak_evidence,
     fix_duplicates,
     fix_orphans,
@@ -489,6 +490,135 @@ def test_lint_near_duplicates_different_kinds(tmp_path):
 
     pairs = check_near_duplicates(store, similarity_threshold=0.92)
     assert len(pairs) == 0
+
+
+def test_lint_unverified_extractions(tmp_path):
+    """Extractions marked unverified/blocked should be aggregated per paper."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "tradeoff_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "improves": "a",
+                "worsens": "b",
+                "technique": "t",
+                "context": "",
+                "confidence": 0.3,
+                "evidence_quote": "short",
+                "new_concepts": {},
+                "verification_status": "unverified",
+            },
+            {
+                "paper_id": "p1",
+                "improves": "c",
+                "worsens": "d",
+                "technique": "t",
+                "context": "",
+                "confidence": 0.9,
+                "evidence_quote": "a long and substantive quote",
+                "new_concepts": {},
+                "verification_status": "verified",
+            },
+            {
+                "paper_id": "p2",
+                "improves": "a",
+                "worsens": "b",
+                "technique": "t",
+                "context": "",
+                "confidence": 0.2,
+                "evidence_quote": "x",
+                "new_concepts": {},
+                "verification_status": "blocked",
+            },
+        ],
+    )
+
+    findings = check_unverified_extractions(store)
+    by_paper = {f["paper_id"]: f for f in findings}
+
+    # p1 has one unverified tradeoff; verified rows are ignored.
+    assert by_paper["p1"]["unverified"] == 1
+    assert by_paper["p1"]["blocked"] == 0
+    assert by_paper["p1"]["by_kind"] == {"tradeoff": {"unverified": 1, "blocked": 0}}
+
+    # p2 has one blocked tradeoff.
+    assert by_paper["p2"]["blocked"] == 1
+    assert by_paper["p2"]["unverified"] == 0
+    assert by_paper["p2"]["by_kind"] == {"tradeoff": {"unverified": 0, "blocked": 1}}
+
+
+def test_lint_unverified_extractions_splits_by_kind(tmp_path):
+    """A single paper with fragile rows across two tables keeps counts per kind."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "tradeoff_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "improves": "a",
+                "worsens": "b",
+                "technique": "t",
+                "context": "",
+                "confidence": 0.3,
+                "evidence_quote": "short",
+                "new_concepts": {},
+                "verification_status": "unverified",
+            }
+            for _ in range(5)
+        ],
+    )
+    store.add_rows(
+        "architecture_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "component_slot": "s",
+                "variant_name": "v",
+                "replaces": None,
+                "key_properties": "k",
+                "confidence": 0.2,
+                "new_concepts": {},
+                "verification_status": "blocked",
+            }
+        ],
+    )
+
+    findings = check_unverified_extractions(store)
+    assert len(findings) == 1
+    assert findings[0]["by_kind"] == {
+        "tradeoff": {"unverified": 5, "blocked": 0},
+        "architecture": {"unverified": 0, "blocked": 1},
+    }
+
+
+def test_lint_unverified_extractions_empty(tmp_path):
+    """No findings when every extraction is verified/inferred."""
+    store = LensStore(str(tmp_path / "test.db"))
+    store.init_tables()
+
+    store.add_rows(
+        "tradeoff_extractions",
+        [
+            {
+                "paper_id": "p1",
+                "improves": "a",
+                "worsens": "b",
+                "technique": "t",
+                "context": "",
+                "confidence": 0.9,
+                "evidence_quote": "a long and substantive quote",
+                "new_concepts": {},
+                "verification_status": "verified",
+            }
+        ],
+    )
+
+    assert check_unverified_extractions(store) == []
 
 
 def test_lint_orchestrator_runs_all_checks(tmp_path):

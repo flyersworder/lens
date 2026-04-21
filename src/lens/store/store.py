@@ -56,7 +56,8 @@ _TABLE_DDL = [
         context TEXT NOT NULL,
         confidence REAL NOT NULL,
         evidence_quote TEXT NOT NULL,
-        new_concepts TEXT NOT NULL DEFAULT '{}'
+        new_concepts TEXT NOT NULL DEFAULT '{}',
+        verification_status TEXT NOT NULL DEFAULT 'unverified'
     )""",
     """CREATE TABLE IF NOT EXISTS architecture_extractions (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -66,7 +67,8 @@ _TABLE_DDL = [
         replaces TEXT,
         key_properties TEXT NOT NULL,
         confidence REAL NOT NULL,
-        new_concepts TEXT NOT NULL DEFAULT '{}'
+        new_concepts TEXT NOT NULL DEFAULT '{}',
+        verification_status TEXT NOT NULL DEFAULT 'unverified'
     )""",
     """CREATE TABLE IF NOT EXISTS agentic_extractions (
         rowid INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -77,7 +79,8 @@ _TABLE_DDL = [
         use_case TEXT NOT NULL,
         components TEXT NOT NULL,
         confidence REAL NOT NULL,
-        new_concepts TEXT NOT NULL DEFAULT '{}'
+        new_concepts TEXT NOT NULL DEFAULT '{}',
+        verification_status TEXT NOT NULL DEFAULT 'unverified'
     )""",
     """CREATE TABLE IF NOT EXISTS vocabulary (
         id TEXT PRIMARY KEY,
@@ -150,6 +153,9 @@ _COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("agentic_extractions", "new_concepts", "TEXT NOT NULL DEFAULT '{}'"),
     ("papers", "keywords", "TEXT NOT NULL DEFAULT '[]'"),
     ("papers", "github_url", "TEXT"),
+    ("tradeoff_extractions", "verification_status", "TEXT NOT NULL DEFAULT 'unverified'"),
+    ("architecture_extractions", "verification_status", "TEXT NOT NULL DEFAULT 'unverified'"),
+    ("agentic_extractions", "verification_status", "TEXT NOT NULL DEFAULT 'unverified'"),
 ]
 
 

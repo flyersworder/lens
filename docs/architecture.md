@@ -31,7 +31,9 @@ Design spec for a system that automatically discovers recurring solution pattern
 | **SQLite + sqlite-vec** | Done | Replaced LanceDB + Polars. Cosine distance, parameterized queries |
 | **Schema migrations** | Done | `_COLUMN_MIGRATIONS` in store.py for safe database upgrades |
 | **Event log** | Done | Unified `event_log` table; `log_event()` helper; `lens log` CLI with filters |
-| **Knowledge base linter** | Done | 6 checks (orphans, contradictions, weak evidence, missing embeddings, stale extractions, near-duplicates) with `--fix` mode |
+| **Knowledge base linter** | Done | 7 checks (orphans, contradictions, weak evidence, missing embeddings, stale extractions, near-duplicates, unverified extractions) with `--fix` mode |
+| **Extraction trust labels** | Done (v0.10.0) | `verification_status` ∈ {verified, inferred, unverified, blocked} per extraction row; auto-computed from confidence + quote length |
+| **Provenance sidecars** | Done (v0.10.0) | `lens analyze --provenance` / `lens explain --provenance` emit YAML tying each claim to backing paper_ids + vocab_ids |
 | **Config validation** | Done | `validate_config()` warns on invalid fields at load time; never crashes |
 | **Backup / restore** | Done | `lens export` (sqlite3 backup API) + `lens import` with SQLite validation and `--force` |
 | **Deployment guide** | Done | `docs/deployment.md` — API keys, gateway mode, data dir, backup, checklist |

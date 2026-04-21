@@ -1,5 +1,52 @@
 # Changelog
 
+## 0.10.0 (2026-04-21)
+
+### Added
+- **`verification_status` on extractions** — new 4-label column
+  (`verified / inferred / unverified / blocked`) on all three extraction
+  tables (`tradeoff_extractions`, `architecture_extractions`,
+  `agentic_extractions`). Auto-computed at extraction time:
+  high-confidence rows with a substantive evidence quote become
+  `verified`, medium-confidence rows become `inferred`, low-confidence
+  rows become `unverified`. `blocked` is reserved for a future
+  verify-quotes pass that re-reads source PDFs. Idempotent `ALTER TABLE`
+  migration backfills existing rows with `unverified`.
+- **Seventh linter check: `unverified_extractions`** — aggregates fragile
+  rows per paper across all three extraction tables, preserving per-kind
+  counts (`{tradeoff: {unverified, blocked}, architecture: {...}, agentic: {...}}`).
+  Findings are logged as `lint/unverified_extraction.found` events.
+- **`lens status` shows extraction trust breakdown** — one-line
+  `Extractions: X verified, Y inferred, Z unverified` rolled up across
+  all three tables, ordered most-trusted to least-trusted.
+- **Provenance sidecars for `lens analyze` and `lens explain`** — new
+  `--provenance PATH` flag emits a YAML sidecar tying each claim back to
+  the papers and vocabulary entries that backed it. Includes `session_id`,
+  `taxonomy_version`, resolved concept(s), per-claim evidence, and
+  generation timestamp so a reader can reproduce the exact DB state. New
+  `src/lens/serve/provenance.py` module; built at the CLI boundary so the
+  `analyzer.py` / `explainer.py` service layer stays format-agnostic.
+
+### Changed
+- **`analyze_agentic` returns `category`** — the identified agentic
+  category now appears on the result dict (was computed but silently
+  dropped). Matches the existing `slot` key on `analyze_architecture`.
+- **Default `lens lint` runs seven checks instead of six.** To restrict
+  to the pre-0.10.0 set, pass
+  `--check orphans,contradictions,weak_evidence,missing_embeddings,stale,near_duplicates`.
+
+### Design notes
+- Features are deliberately borrowed from the Feynman project
+  (`getcompanion-ai/feynman`) but kept narrow: LENS does *not* adopt
+  Feynman's multi-subagent runtime, Markdown-workspace pattern, or
+  paper-execution machinery. The 4-label vocabulary and provenance
+  sidecars are the two ideas that compound with LENS's existing
+  SQLite/matrix flywheel.
+- `verification_status` computation lives in
+  `lens.extract.extractor.compute_verification_status`; thresholds are
+  0.8 / 0.5 for confidence and 10 chars for quote length (documented
+  inline).
+
 ## 0.9.1 (2026-04-21)
 
 ### Fixed

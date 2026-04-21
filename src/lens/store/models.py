@@ -15,6 +15,16 @@ reinitializing the database (``lens init --force``).
 
 VALID_EXTRACTION_STATUSES = {"pending", "complete", "incomplete", "failed"}
 
+VALID_VERIFICATION_STATUSES = {"verified", "inferred", "unverified", "blocked"}
+"""Per-extraction trust label.
+
+- ``verified``: high-confidence extraction backed by a substantive evidence quote.
+- ``inferred``: medium-confidence, or high-confidence without a substantive quote.
+- ``unverified``: low-confidence; treat as a hint rather than a fact.
+- ``blocked``: reserved for extractions whose source could not be checked
+  (e.g. PDF parse failure during a future verify pass).
+"""
+
 # ---------------------------------------------------------------------------
 # Layer 0 — Raw ingested papers
 # ---------------------------------------------------------------------------
@@ -70,6 +80,16 @@ class TradeoffExtraction(BaseModel):
     confidence: float
     evidence_quote: str
     new_concepts: dict[str, str] = {}
+    verification_status: str = "unverified"
+
+    @field_validator("verification_status")
+    @classmethod
+    def _check_verification_status(cls, v: str) -> str:
+        if v not in VALID_VERIFICATION_STATUSES:
+            raise ValueError(
+                f"verification_status must be one of {VALID_VERIFICATION_STATUSES}, got '{v}'"
+            )
+        return v
 
 
 class ArchitectureExtraction(BaseModel):
@@ -82,6 +102,16 @@ class ArchitectureExtraction(BaseModel):
     key_properties: str
     confidence: float
     new_concepts: dict[str, str] = {}
+    verification_status: str = "unverified"
+
+    @field_validator("verification_status")
+    @classmethod
+    def _check_verification_status(cls, v: str) -> str:
+        if v not in VALID_VERIFICATION_STATUSES:
+            raise ValueError(
+                f"verification_status must be one of {VALID_VERIFICATION_STATUSES}, got '{v}'"
+            )
+        return v
 
 
 class AgenticExtraction(BaseModel):
@@ -95,6 +125,16 @@ class AgenticExtraction(BaseModel):
     components: list[str]
     confidence: float
     new_concepts: dict[str, str] = {}
+    verification_status: str = "unverified"
+
+    @field_validator("verification_status")
+    @classmethod
+    def _check_verification_status(cls, v: str) -> str:
+        if v not in VALID_VERIFICATION_STATUSES:
+            raise ValueError(
+                f"verification_status must be one of {VALID_VERIFICATION_STATUSES}, got '{v}'"
+            )
+        return v
 
 
 # ---------------------------------------------------------------------------
@@ -243,4 +283,5 @@ class LintReport(BaseModel):
     missing_embeddings: list[dict] = []
     stale_extractions: list[dict] = []
     near_duplicates: list[dict] = []
+    unverified_extractions: list[dict] = []
     fixes_applied: list[dict] = []

@@ -29,10 +29,43 @@ ExtractionTuple = tuple[
     list[dict[str, Any]],  # agentic
 ]
 
+# Threshold below which a quote is treated as insufficient to "verify" a claim.
+# ~2 words — shorter quotes ("yes", "p<.05") almost never substantiate a full
+# tradeoff, so high-confidence rows with a tiny quote get demoted to "inferred".
+_MIN_QUOTE_LEN = 10
+
+
+def compute_verification_status(
+    confidence: float,
+    evidence_quote: str | None = None,
+) -> str:
+    """Derive a 4-label verification status from an extraction's confidence and evidence.
+
+    For extraction types that carry a quote (tradeoffs), a substantive quote plus
+    high confidence yields ``verified``. For extraction types without a quote
+    (architecture, agentic), only confidence is considered. Borrowed from the
+    Feynman project's verified/inferred/unverified/blocked vocabulary.
+    """
+    quote_ok = evidence_quote is None or len(evidence_quote.strip()) >= _MIN_QUOTE_LEN
+    if confidence >= 0.8 and quote_ok:
+        return "verified"
+    if confidence >= 0.5:
+        return "inferred"
+    return "unverified"
+
 
 def _validate_tradeoff(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
     try:
         merged = {**raw, "paper_id": paper_id}
+        merged.setdefault(
+            "verification_status",
+            compute_verification_status(
+                confidence=float(merged.get("confidence", 0.0)),
+                # Coerce None → "" so an LLM-emitted `null` is treated as "no quote"
+                # rather than flowing into `quote_ok=True` (the None branch).
+                evidence_quote=merged.get("evidence_quote") or "",
+            ),
+        )
         return TradeoffExtraction.model_validate(merged).model_dump()
     except (ValidationError, TypeError) as e:
         logger.warning("Invalid tradeoff for %s: %s", paper_id, e)
@@ -42,6 +75,10 @@ def _validate_tradeoff(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | N
 def _validate_architecture(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
     try:
         merged = {**raw, "paper_id": paper_id}
+        merged.setdefault(
+            "verification_status",
+            compute_verification_status(confidence=float(merged.get("confidence", 0.0))),
+        )
         return ArchitectureExtraction.model_validate(merged).model_dump()
     except (ValidationError, TypeError):
         logger.warning("Invalid architecture for %s", paper_id)
@@ -51,6 +88,10 @@ def _validate_architecture(raw: dict[str, Any], paper_id: str) -> dict[str, Any]
 def _validate_agentic(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | None:
     try:
         merged = {**raw, "paper_id": paper_id}
+        merged.setdefault(
+            "verification_status",
+            compute_verification_status(confidence=float(merged.get("confidence", 0.0))),
+        )
         return AgenticExtraction.model_validate(merged).model_dump()
     except (ValidationError, TypeError):
         logger.warning("Invalid agentic for %s", paper_id)

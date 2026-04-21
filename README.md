@@ -74,6 +74,10 @@ lens explain "grouped-query attention"
 lens explain "knowledge distillation" --tradeoffs
 lens explain "MoE" --related
 
+# Emit a YAML provenance sidecar linking claims to papers + vocabulary
+lens analyze "reduce latency" --provenance analyze.yaml
+lens explain "MoE" --provenance moe.yaml
+
 # Search papers
 lens search "attention mechanisms"          # hybrid keyword + semantic
 lens search --author "Vaswani"              # filter by author
@@ -122,7 +126,7 @@ lens explore ideas
 lens explore ideas --type sparse_cell
 
 # Health-check the knowledge base
-lens lint                               # report issues across 6 categories
+lens lint                               # report issues across 7 categories
 lens lint --fix                         # auto-fix safe issues
 lens lint --check orphans,stale         # run specific checks only
 

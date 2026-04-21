@@ -58,6 +58,38 @@ def test_tradeoff_extraction_model():
         evidence_quote="We observe a 15% improvement...",
     )
     assert ext.confidence == 0.85
+    assert ext.verification_status == "unverified"
+
+
+def test_verification_status_validation():
+    import pytest
+    from pydantic import ValidationError
+
+    from lens.store.models import TradeoffExtraction
+
+    ext = TradeoffExtraction(
+        paper_id="p",
+        improves="a",
+        worsens="b",
+        technique="c",
+        context="",
+        confidence=0.9,
+        evidence_quote="q",
+        verification_status="verified",
+    )
+    assert ext.verification_status == "verified"
+
+    with pytest.raises(ValidationError):
+        TradeoffExtraction(
+            paper_id="p",
+            improves="a",
+            worsens="b",
+            technique="c",
+            context="",
+            confidence=0.9,
+            evidence_quote="q",
+            verification_status="bogus",
+        )
 
 
 def test_architecture_extraction_model():

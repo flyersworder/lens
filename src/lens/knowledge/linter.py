@@ -122,6 +122,46 @@ def fix_stale_extractions(store: LensStore) -> list[str]:
     return fixed_ids
 
 
+def check_unverified_extractions(store: LensStore) -> list[dict]:
+    """Find extractions flagged as ``unverified`` or ``blocked``.
+
+    Aggregates per paper across all three extraction tables so the report
+    points the reader at which papers have the most fragile claims.
+    """
+    rows = store.query_sql(
+        """
+        SELECT paper_id, verification_status, 'tradeoff' AS kind
+        FROM tradeoff_extractions
+        WHERE verification_status IN ('unverified', 'blocked')
+        UNION ALL
+        SELECT paper_id, verification_status, 'architecture' AS kind
+        FROM architecture_extractions
+        WHERE verification_status IN ('unverified', 'blocked')
+        UNION ALL
+        SELECT paper_id, verification_status, 'agentic' AS kind
+        FROM agentic_extractions
+        WHERE verification_status IN ('unverified', 'blocked')
+        """
+    )
+    if not rows:
+        return []
+
+    by_paper: dict[str, dict] = {}
+    for r in rows:
+        pid = r["paper_id"]
+        entry = by_paper.setdefault(
+            pid,
+            {"paper_id": pid, "unverified": 0, "blocked": 0, "by_kind": {}},
+        )
+        entry[r["verification_status"]] += 1
+        bk = entry["by_kind"].setdefault(r["kind"], {"unverified": 0, "blocked": 0})
+        bk[r["verification_status"]] += 1
+
+    findings = list(by_paper.values())
+    findings.sort(key=lambda e: e["blocked"] + e["unverified"], reverse=True)
+    return findings
+
+
 def check_near_duplicates(store: LensStore, similarity_threshold: float = 0.92) -> list[dict]:
     """Find vocabulary entries with cosine similarity above threshold within the same kind.
 
@@ -307,6 +347,7 @@ def lint(
                 "missing_embeddings",
                 "stale",
                 "near_duplicates",
+                "unverified_extractions",
             ]
         )
     )
@@ -401,6 +442,24 @@ def lint(
                     "id_a": finding["id_a"],
                     "id_b": finding["id_b"],
                     "kind": finding["kind"],
+                },
+                session_id=session_id,
+            )
+
+    # 7. Unverified extractions
+    if "unverified_extractions" in active_checks:
+        report.unverified_extractions = check_unverified_extractions(store)
+        for finding in report.unverified_extractions:
+            log_event(
+                store,
+                "lint",
+                "unverified_extraction.found",
+                target_type="paper",
+                target_id=finding["paper_id"],
+                detail={
+                    "unverified": finding["unverified"],
+                    "blocked": finding["blocked"],
+                    "by_kind": finding["by_kind"],
                 },
                 session_id=session_id,
             )

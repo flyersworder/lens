@@ -287,6 +287,29 @@ def status() -> None:
     else:
         rprint("Last event: none")
 
+    # Extraction verification status across all three extraction tables,
+    # ordered from most-trusted to least-trusted so the eye reads left→right.
+    verif_rows = store.query_sql(
+        """
+        SELECT verification_status, COUNT(*) AS cnt FROM (
+            SELECT verification_status FROM tradeoff_extractions
+            UNION ALL
+            SELECT verification_status FROM architecture_extractions
+            UNION ALL
+            SELECT verification_status FROM agentic_extractions
+        ) GROUP BY verification_status
+        """
+    )
+    if verif_rows:
+        _TRUST_ORDER = {"verified": 0, "inferred": 1, "unverified": 2, "blocked": 3}
+        verif_parts = ", ".join(
+            f"{r['cnt']} {r['verification_status']}"
+            for r in sorted(
+                verif_rows, key=lambda r: _TRUST_ORDER.get(r["verification_status"], 99)
+            )
+        )
+        rprint(f"Extractions: {verif_parts}")
+
     # Cheap lint checks
     from lens.knowledge.linter import (
         check_missing_embeddings,
@@ -316,6 +339,11 @@ def status() -> None:
 def analyze(
     query: str = typer.Argument(..., help="Problem description."),
     type_: str | None = typer.Option(None, "--type", help="Query type."),
+    provenance: str | None = typer.Option(
+        None,
+        "--provenance",
+        help="Write a YAML provenance sidecar mapping claims to paper/vocab ids.",
+    ),
 ) -> None:
     """Analyze a tradeoff and suggest resolution techniques."""
     config = load_config(_get_config_path())
@@ -333,6 +361,7 @@ def analyze(
         raise typer.Exit(code=1)
 
     client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
+    session_id = str(uuid4())[:8]
 
     if type_ == "architecture":
         from lens.serve.analyzer import analyze_architecture
@@ -375,6 +404,19 @@ def analyze(
         else:
             rprint("[yellow]No matching techniques found.[/yellow]")
 
+    if provenance:
+        from lens.serve.provenance import build_analyze_provenance, write_provenance
+
+        sidecar = build_analyze_provenance(
+            query=query,
+            type_=type_,
+            result=result,
+            session_id=session_id,
+            taxonomy_version=version,
+        )
+        path = write_provenance(sidecar, provenance)
+        rprint(f"\n[dim]Provenance: {path}[/dim]")
+
 
 @app.command()
 def explain(
@@ -382,6 +424,11 @@ def explain(
     related: bool = typer.Option(False, "--related", help="Focus on related concepts."),
     evolution: bool = typer.Option(False, "--evolution", help="Focus on evolution."),
     tradeoffs: bool = typer.Option(False, "--tradeoffs", help="Focus on tradeoffs."),
+    provenance: str | None = typer.Option(
+        None,
+        "--provenance",
+        help="Write a YAML provenance sidecar mapping the explanation to paper/vocab ids.",
+    ),
 ) -> None:
     """Explain an LLM concept with adaptive depth."""
     config = load_config(_get_config_path())
@@ -409,6 +456,7 @@ def explain(
 
     client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
     emb_kw = _embedding_kwargs(config)
+    session_id = str(uuid4())[:8]
     result = asyncio.run(do_explain(concept, store, client, focus=focus, embedding_kwargs=emb_kw))
 
     if result is None:
@@ -421,6 +469,19 @@ def explain(
         rprint(f"\n[bold]Related:[/bold] {', '.join(result.connections)}")
     if result.paper_refs:
         rprint(f"[bold]Papers:[/bold] {', '.join(result.paper_refs[:5])}")
+
+    if provenance:
+        from lens.serve.provenance import build_explain_provenance, write_provenance
+
+        sidecar = build_explain_provenance(
+            query=concept,
+            focus=focus,
+            result=result,
+            session_id=session_id,
+            taxonomy_version=version,
+        )
+        path = write_provenance(sidecar, provenance)
+        rprint(f"\n[dim]Provenance: {path}[/dim]")
 
 
 @app.command()
@@ -581,7 +642,8 @@ def lint(
         "--check",
         help=(
             "Comma-separated checks to run: "
-            "orphans,contradictions,weak_evidence,missing_embeddings,stale,near_duplicates"
+            "orphans,contradictions,weak_evidence,missing_embeddings,stale,"
+            "near_duplicates,unverified_extractions"
         ),
     ),
     threshold_confidence: float = typer.Option(
@@ -622,6 +684,7 @@ def lint(
     typer.echo(f"  Missing embeddings:    {len(report.missing_embeddings)} found")
     typer.echo(f"  Stale extractions:     {len(report.stale_extractions)} found")
     typer.echo(f"  Near-duplicates:       {len(report.near_duplicates)} pairs found")
+    typer.echo(f"  Unverified extractions:{len(report.unverified_extractions)} papers")
     typer.echo("─" * 36)
 
     total = (
@@ -631,6 +694,7 @@ def lint(
         + len(report.missing_embeddings)
         + len(report.stale_extractions)
         + len(report.near_duplicates)
+        + len(report.unverified_extractions)
     )
     typer.echo(f"  Total issues:          {total}\n")
 
