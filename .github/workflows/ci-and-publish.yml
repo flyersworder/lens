@@ -13,9 +13,13 @@ on:
         required: false
         default: 'false'
 
+permissions: {}
+
 jobs:
   test:
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
@@ -23,11 +27,20 @@ jobs:
           enable-cache: true
           cache-dependency-glob: "pyproject.toml"
       - run: uv python install 3.12
-      - run: uv sync --all-extras --dev
+      - run: uv sync --all-extras --dev --frozen
       - run: uv run pytest
 
+  security:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - run: uvx uv-secure uv.lock
+
   publish:
-    needs: test
+    needs: [test, security]
     if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && github.event.inputs.run_publish == 'true')
     runs-on: ubuntu-latest
     permissions:
