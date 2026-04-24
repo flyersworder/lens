@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.10.1 (2026-04-24)
+
+### Security
+- **Upgrade `litellm` to `>=1.83.7`** — resolves two Dependabot advisories
+  in the `litellm` optional dependency:
+  - Critical: SQL injection in proxy API key verification
+    (affects `>=1.81.16, <1.83.7`)
+  - High: server-side template injection in the `/prompts/test` endpoint
+    (affects `>=1.80.5, <1.83.7`)
+  Both CVEs live in litellm's proxy server code paths, which LENS does
+  not invoke (we only use litellm as a client SDK via `call_llm`), so
+  runtime exposure was nil — but the floor bump prevents future resolver
+  regressions into the vulnerable band.
+- **Add `python-dotenv>=1.2.2` override** — litellm `1.83.7` pins
+  `python-dotenv==1.0.1` exactly, but LENS needs `>=1.2.2` to stay on a
+  CVE-patched release. Added to `[tool.uv].override-dependencies` with a
+  comment explaining why. `load_dotenv()` API is stable across these
+  versions, so no runtime impact.
+
 ## 0.10.0 (2026-04-21)
 
 ### Added
