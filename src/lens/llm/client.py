@@ -16,9 +16,9 @@ from typing import Any, cast
 import openai
 
 try:
-    import litellm  # ty: ignore[unresolved-import]
+    import litellm  # ty: ignore[unresolved-import, unused-ignore-comment]
 
-    litellm.suppress_debug_info = True  # type: ignore[assignment]
+    litellm.suppress_debug_info = True  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
     logging.getLogger("LiteLLM").setLevel(logging.WARNING)
     logging.getLogger("litellm").setLevel(logging.WARNING)
     HAS_LITELLM = True
