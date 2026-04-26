@@ -2,9 +2,150 @@
 
 Architecture for shipping LENS as a public read-only website on a free tier, using Turso for the database, GitHub Actions for the build pipeline, and Vercel for the web frontend + API.
 
-**Status:** Spike validated 2026-04-26; Phase 1 publish chain green under CI; OpenRouter credits in place; Track A (runtime serving) starting
+**Status:** **Live in production** — `https://lens-fawn.vercel.app` (Vercel Hobby) backed by `lens-dev` Turso DB with the real 77-paper corpus. All 4 routes return 200; full stack (cloud embeddings + DeepSeek V4 Flash + libSQL hybrid search + FastAPI) verified end-to-end 2026-04-26.
 **Date:** 2026-04-26
 **Companion doc:** [`deployment.md`](deployment.md) covers self-hosted / local deployment; this doc covers public web deployment.
+
+---
+
+## Live state snapshot (2026-04-26)
+
+| Component | Where it lives | Notes |
+|---|---|---|
+| **Public URL** | `https://lens-fawn.vercel.app` | Production alias on Vercel Hobby (`flyersworders-projects/lens`) |
+| **Endpoints** | `/api/health`, `/api/search`, `/api/analyze`, `/api/explain` | Defined in `api/index.py` |
+| **Database** | Turso `lens-dev` (`libsql://lens-dev-flyersworder.aws-eu-west-1.turso.io`) | 77 papers, 82 vocab, 65 matrix cells, 80 tradeoff extractions; embeddings still 768-dim (sentence-transformers, padded to 1536 at query time) |
+| **Storage adapter** | `TursoStore` in `src/lens/store/turso_store.py` | libSQL native vectors via `vector_top_k` + `vector_distance_cos` |
+| **LLM** | OpenRouter `deepseek/deepseek-v4-flash` | Per ADR D2; ~$20 credit balance, hard cap not yet set |
+| **Embeddings (runtime)** | OpenRouter `openai/text-embedding-3-small` (1536-dim) | Per ADR D1; cloud provider, runs on every search/explain |
+| **Build/publish path** | `scripts/build_seed_fixture.py` + `scripts/publish_to_turso.py` + `tests/test_turso_store.py` | Drop-recreate-copy-verify; ~100s for 728 rows + 174 embeddings |
+| **CI Phase 1** | `.github/workflows/publish-turso.yml` (manual trigger) | Validates publish chain on every workflow_dispatch; no LLM cost |
+| **Local-only path** | `LensStore` (sqlite-vec); `--extra local` install | Used by CLI, build pipeline, and 296-test suite |
+| **Vercel env vars set** | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY` | Production environment only; preview/dev not configured |
+| **Test count** | 296 (256 offline + 17 TursoStore + 19 API/protocol + 4 protocol-specific) | All green |
+
+### Verified working (last checked 2026-04-26)
+
+```
+GET /api/search?q=transformer&limit=5
+  → 5 real papers (Attention Is All You Need, RoFormer, GQA, Llama 3, Qwen2.5-VL)
+
+POST /api/analyze {"query": "reduce inference latency without adding computational overhead"}
+  → improving=Inference Latency, worsening=Model Accuracy
+  → 3 principles ranked: Multi-Query Attention (0.95), Quantization (0.95), Anchor-based self-attention (0.95)
+
+POST /api/explain {"query": "grouped query attention"}
+  → resolved_id=grouped-query-attention, 5026-char narrative, 1 tradeoff connection
+```
+
+### Costs incurred so far
+- **Turso**: free tier (5 GB / 500 M reads / 10 M writes)
+- **Vercel**: free Hobby tier (within 1 M invocations / 4 hr CPU)
+- **GitHub Actions**: unlimited for public repo
+- **OpenRouter**: ~$0.05 used during deploy validation; ~$2–5/mo projected
+
+---
+
+## Picking this up from a fresh context
+
+If you (or future-you) are returning to this work after a break, this is the order of next steps in priority order. Each item is independently completable in ~1 day or less.
+
+### 1. Provision `lens-prod` so test runs don't wipe production data (~1 hour)
+
+**Problem**: TursoStore integration tests (`tests/test_turso_store.py`) and the publish workflow both target `lens-dev`. Each `pytest` run drops `papers`/`vocabulary`. Currently the live Vercel site reads from `lens-dev`, so tests can leave it half-empty.
+
+**Fix**:
+1. `turso db create lens-prod --location iad`
+2. `turso db tokens create lens-prod` (long-lived)
+3. `vercel env rm TURSO_DATABASE_URL production` then re-add pointing at `lens-prod`
+4. Same for `TURSO_AUTH_TOKEN`
+5. `vercel env add TURSO_PROD_DATABASE_URL` + `TURSO_PROD_AUTH_TOKEN` to GitHub Secrets so the publish workflow's `--target prod` works
+6. Run `python scripts/publish_to_turso.py --target prod` once to seed it
+7. `vercel deploy --prod`
+
+Reference: ADR D5, `_resolve_target` in `scripts/publish_to_turso.py:114`.
+
+### 2. Re-embed the corpus with `text-embedding-3-small` (~30 min, deferred until prod is up)
+
+**Problem**: `~/.lens/data/lens.db` has 768-dim sentence-transformers vectors (from the era before ADR D1). At query time we send 1536-dim text-embedding-3-small vectors. The publish step pads stored vectors to 1536 with zeros, so vector search works but recall is degraded — distances aren't computed in the right space.
+
+**Fix**:
+1. `lens config set embeddings.provider cloud`
+2. `lens config set embeddings.model_name "openai/text-embedding-3-small"`
+3. `lens config set embeddings.api_base "https://openrouter.ai/api/v1"`
+4. `lens config set embeddings.api_key $OPENROUTER_API_KEY`
+5. `EMBEDDING_DIM` in `src/lens/store/models.py` from 768 → 1536
+6. `lens build vocabulary --rebuild-embeddings` (and similar for papers — there's a one-shot rebuild that re-embeds everything)
+7. `python scripts/publish_to_turso.py --target prod`
+
+Sanity-check after: a vector-only search with the same query embedding should return semantically related papers, not just FTS hits.
+
+### 3. Phase 2 GH Actions monitor cron (~1 day, after prod DB exists)
+
+**Problem**: lens-prod is static — it only contains whatever the most recent manual publish put there. arXiv produces 50+ relevant papers per week.
+
+**Fix** (sketch — full design in the existing checklist below):
+- `.github/workflows/monitor.yml` triggered weekly + workflow_dispatch
+- Step 1: pull previous `lens.db` from a GitHub release asset (or a Turso dump-and-restore)
+- Step 2: `lens monitor` end-to-end with cloud embeddings + DeepSeek
+- Step 3: `python scripts/publish_to_turso.py --target prod`
+- Step 4: push the updated `lens.db` back as a release asset for the next run
+
+OpenRouter spend per run: ~$0.50–1 at current corpus size.
+
+### 4. Next.js frontend (~1 day)
+
+**Problem**: only `curl`-friendly. Need three pages calling `/api/*` for an actual UI.
+
+**Fix**:
+- `web/` directory in this monorepo (per ADR D4)
+- Three pages: search box landing → results, `/analyze`, `/explain/:concept`
+- Shadcn/ui for fast scaffolding
+- Same `vercel deploy` because Vercel auto-detects Next.js
+
+### 5. Rate limiting + response cache (~half day)
+
+**Problem**: deferred from earlier review (item #4 in the FastAPI review punch list). A bot loop could drain OpenRouter credits in minutes.
+
+**Fix**: `api/_middleware.py` using Vercel KV (Upstash Redis):
+- Per-IP rate limit (10 req/min)
+- Response cache keyed on `endpoint + query.lower().strip()` with 24h TTL (per ADR D3)
+- Hard OpenRouter monthly cap set in OpenRouter dashboard
+
+### 6. Surface degraded mode when embedding fails (~30 min)
+
+**Problem**: Item #7 from the FastAPI review. `serve/explorer.search_papers` swallows embedding failures and silently returns FTS-only results. The API responds with `200 {results: ...}` indistinguishable from healthy hybrid search.
+
+**Fix**: thread a `degraded: bool` flag through the response, computed at the API layer by pre-embedding and catching failures explicitly.
+
+### 7. Misc polish (each ~30 min)
+
+- Custom domain (Vercel `domains` tab; bring your own or buy one)
+- README update with public URL + non-commercial note
+- Vercel Analytics (1-line opt-in)
+- Set OpenRouter spending cap in dashboard
+- Add `lens-prod` row to `docs/web-deployment.md`'s state table once it exists
+
+---
+
+## Vercel deploy gotchas (learned the hard way 2026-04-26)
+
+Each was a separate failed deploy. Captured here so a future deploy from scratch can avoid them.
+
+1. **`vercel.json`'s `functions` block clashes with Vercel's FastAPI auto-detection.** Don't include it — let auto-detection handle the routing. `installCommand` is fine to override.
+2. **`pip install`-time bundle for `lens-research` is ~7 GB** because `sentence-transformers` brings PyTorch with CUDA bindings (`cuda-bindings`, `cuda-pathfinder` — multi-GB libraries useless on CPU-only Lambda). Vercel's hard cap is 500 MB unzipped. Mitigation: heavy ML deps live in `[local]` extra; Vercel installs `--extra web --no-dev` only.
+3. **`uv sync` defaults to editable install for the project package**, dropping a `.pth` file pointing at `/vercel/path0/src/lens` that doesn't survive Vercel's `/var/task/` runtime packaging. **Always pass `--no-editable`** in the Vercel `installCommand`.
+4. **`requirements.txt` lives at repo root, not `api/`.** Vercel's Python builder reads it at root; placing it under `api/` is ignored.
+5. **`numpy` must be a base dep**, not transitive via sentence-transformers. `lens.taxonomy.embedder` imports numpy at module level, so without it in base deps the API function 500s on import.
+6. **`vercel logs` requires `--no-branch`** to see logs from any deployment regardless of git branch — without it, "No logs found" is confusing.
+7. **TursoStore tests' teardown drops `papers`/`vocabulary` on `lens-dev`**, leaving the live API in a half-broken state. Re-publish the seed fixture or real corpus after running tests, OR (recommended) provision a separate `lens-prod` (next-step #1).
+
+The current `vercel.json` captures the working install command:
+```json
+{
+  "installCommand": "uv sync --frozen --extra web --no-dev --no-editable"
+}
+```
 
 ---
 
@@ -388,34 +529,34 @@ When ready to ship, work through these in order:
 - [x] ~~Create Turso account, create `lens-prod` and `lens-dev` databases, capture URL + auth tokens~~ — done 2026-04-26; credentials in `.env.local`
 - [x] ~~Validate libSQL native vectors + FTS5 against remote Turso (Spike 2)~~ — passed 2026-04-26
 - [x] ~~Top up OpenRouter with $10 credit (one-time) to unlock 1000 req/day on free models *and* enable cheap paid models~~ — done; ~$20 balance available, which unblocks cloud embeddings, request-time LLM, and Phase 2 monitor cron
-- [ ] Add `libsql-client` to `pyproject.toml` as a `[project.optional-dependencies] turso` extra
+- [x] ~~Add `libsql-client` to `pyproject.toml` as a `[project.optional-dependencies] turso` extra~~ — done; also added `[web]` extra (fastapi + transitive turso) and `[local]` extra (sentence-transformers + sqlite-vec, kept off Vercel to fit the 500 MB bundle cap)
 - [x] ~~Build new `TursoStore` class with read API matching `Store` (vector queries via `vector_top_k`, FTS5 unchanged)~~ — done (commit bf4664c)
 - [x] ~~Write `scripts/publish_to_turso.py` to translate sqlite-vec schema → libSQL native and copy data~~ — done; end-to-end verified against real LENS DB (728 rows, ~100 s)
 - [x] ~~Wire `TursoStore` into `serve/analyzer.py`, `serve/explainer.py`, `serve/explorer.py` via a small adapter~~ — done via the `ReadableStore` protocol (`src/lens/store/protocols.py`); 4 conformance tests in `tests/test_store_protocols.py` exercise both backends end-to-end
 - [x] ~~Add `TursoStore` integration tests gated on `TURSO_DEV_*` env vars (skip when offline)~~ — done (commit bf4664c, 17 tests)
-- [ ] Switch local config to `embeddings.provider: cloud` with OpenRouter base URL; verify `embedder.py` cloud path works end-to-end
-- [ ] Re-embed the existing corpus once with the chosen embedding model (locks `EMBEDDING_DIM`)
+- [ ] Switch local config to `embeddings.provider: cloud` with OpenRouter base URL; verify `embedder.py` cloud path works end-to-end *(see "Picking up from a fresh context" → step 2)*
+- [ ] Re-embed the existing corpus once with the chosen embedding model (locks `EMBEDDING_DIM`) *(deferred: lens-dev currently has 768-dim sentence-transformers vectors padded to 1536 at query time; works but recall is degraded)*
 
 **Build pipeline**
-- [ ] Write `scripts/pull_from_turso.py` and `scripts/push_to_turso.py` (try/finally around the modify step)
+- [x] ~~Write `scripts/publish_to_turso.py` (try/finally around the modify step)~~ — done; `pull_from_turso.py` deferred to Phase 2 monitor cron (will likely use a release-asset roundtrip instead of a true pull)
 - [x] ~~Phase 1: `.github/workflows/publish-turso.yml` (manual trigger, synthetic seed fixture, no LLM cost)~~ — done; validates the publish chain under CI before the monitor cron lands
 - [ ] Phase 2: `.github/workflows/monitor.yml` with weekly cron + `workflow_dispatch` — runs `lens monitor` end-to-end (deferred until OpenRouter credits + state preservation are in place)
-- [ ] Configure GitHub Secrets: `OPENROUTER_API_KEY`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
-- [ ] Run the workflow once via `workflow_dispatch` to seed the prod DB
+- [x] ~~Configure GitHub Secrets: `TURSO_DEV_DATABASE_URL`, `TURSO_DEV_AUTH_TOKEN`~~ — done (used by `publish-turso.yml` Phase 1). `TURSO_PROD_*` and `OPENROUTER_API_KEY` will be added when Phase 2 lands.
+- [x] ~~Run the workflow once via `workflow_dispatch` to seed the prod DB~~ — Phase 1 workflow run validated end-to-end against `lens-dev` (workflow run id 24960286069); seeding `lens-prod` deferred until that DB is provisioned (see "Picking up from a fresh context" → step 1)
 
 **Web tier**
 - [x] ~~Create `api/` directory at repo root with `analyze.py`, `explain.py`, `search.py` FastAPI handlers~~ — done as a single `api/index.py` (the recommended Vercel multi-route shape; one app, three routes); 15 unit tests in `tests/test_api_index.py` cover validation, dispatch, error paths, and dependency-injection wiring
-- [ ] Wire per-IP rate limit + response cache via Vercel KV
-- [ ] Set OpenRouter monthly spending cap in OpenRouter dashboard
-- [ ] Scaffold Next.js project in `web/` (or separate repo) with 3 pages
-- [ ] Deploy to Vercel; set env vars: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY`, `KV_REST_API_URL`, `KV_REST_API_TOKEN`
-- [ ] Smoke-test all three endpoints against prod Turso (warm and cold start)
-- [ ] Verify `/tmp` libSQL replica behaviour under sustained traffic
+- [ ] Wire per-IP rate limit + response cache via Vercel KV *(see step 5 in "Picking up from a fresh context")*
+- [ ] Set OpenRouter monthly spending cap in OpenRouter dashboard *(see step 7)*
+- [ ] Scaffold Next.js project in `web/` (or separate repo) with 3 pages *(see step 4)*
+- [x] ~~Deploy to Vercel; set env vars: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY`~~ — done; live at `https://lens-fawn.vercel.app`. `KV_REST_API_*` deferred until rate-limit/cache step. The deploy required 7 iterations; full diagnostic log in commits `2195a9c..6d4dd49`.
+- [x] ~~Smoke-test all three endpoints against prod Turso (warm and cold start)~~ — verified 2026-04-26; all 4 routes (`health`, `search`, `analyze`, `explain`) return 200 with real corpus data
+- [ ] Verify `/tmp` libSQL replica behaviour under sustained traffic *(deferred — current deploy uses libSQL HTTP, not embedded replicas; revisit if cold-start latency becomes a real UX issue)*
 
 **Polish**
-- [ ] (Optional) Configure custom domain
-- [ ] Add Vercel Analytics
-- [ ] Update README with the public URL and a note that the site is non-commercial under Vercel Hobby ToS
+- [ ] (Optional) Configure custom domain *(see step 7)*
+- [ ] Add Vercel Analytics *(see step 7)*
+- [ ] Update README with the public URL and a note that the site is non-commercial under Vercel Hobby ToS *(see step 7)*
 
 ---
 
