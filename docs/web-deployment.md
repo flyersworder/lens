@@ -343,7 +343,8 @@ The repo is currently SQLite + sqlite-vec with default local embeddings. To ship
 | Switch `embeddings.provider` from `local` to `cloud` (OpenRouter), re-embed corpus once | 0.5 day | `embedder.py` cloud path already wired; config + rebuild run |
 | Build FastAPI app under `api/` with 3 endpoints + per-IP rate limit + KV cache | 1 day | Direct imports of `serve/*.py` modules with `TursoStore` backend |
 | Build minimal Next.js frontend (3 pages, calls `/api/*`) | 1 day | Tailwind + shadcn/ui for speed |
-| Wire GitHub Actions monitor workflow + `publish_to_turso.py` post-step | 0.5 day | Secret config, uv setup, try/finally around publish |
+| Wire GitHub Actions Phase 1 (`publish-turso.yml`, manual trigger, synthetic seed fixture) | 0.5 day | Validates publish path under CI without LLM costs; uses `scripts/build_seed_fixture.py` + `scripts/publish_to_turso.py` + `scripts/smoke_test_turso.py` |
+| Wire GitHub Actions Phase 2 (full monitor cron with state preservation between runs) | 1 day | Adds `lens monitor`, requires OpenRouter credits + a state-pull step (release asset or similar) at start of each run |
 | Deploy to Vercel, set env vars (Turso URL/token, OpenRouter key), spending cap | 0.5 day | |
 | **Total** | **~6.5 days** | for a single developer |
 
@@ -397,7 +398,8 @@ When ready to ship, work through these in order:
 
 **Build pipeline**
 - [ ] Write `scripts/pull_from_turso.py` and `scripts/push_to_turso.py` (try/finally around the modify step)
-- [ ] Add `.github/workflows/monitor.yml` with weekly cron + `workflow_dispatch`
+- [x] ~~Phase 1: `.github/workflows/publish-turso.yml` (manual trigger, synthetic seed fixture, no LLM cost)~~ — done; validates the publish chain under CI before the monitor cron lands
+- [ ] Phase 2: `.github/workflows/monitor.yml` with weekly cron + `workflow_dispatch` — runs `lens monitor` end-to-end (deferred until OpenRouter credits + state preservation are in place)
 - [ ] Configure GitHub Secrets: `OPENROUTER_API_KEY`, `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`
 - [ ] Run the workflow once via `workflow_dispatch` to seed the prod DB
 

@@ -1,0 +1,55 @@
+name: Publish to Turso (dev)
+
+# Phase 1 of the Turso publish pipeline: validates the publish path
+# under CI by building a synthetic seed DB, publishing it to lens-dev,
+# and smoke-testing via TursoStore. No real LLM extraction yet — that
+# joins in Phase 2 once the weekly monitor cron is wired up.
+#
+# Triggered manually via `gh workflow run publish-turso.yml` or the
+# Actions tab. Required secrets:
+#   - TURSO_DEV_DATABASE_URL  (libsql:// or https:// URL of lens-dev)
+#   - TURSO_DEV_AUTH_TOKEN    (long-lived auth token)
+#
+# This workflow is destructive: it drops the existing lens-dev schema
+# and replaces it with the seed fixture. The TursoStore integration
+# tests (`tests/test_turso_store.py`) also wipe lens-dev during their
+# teardown, so don't be surprised if state doesn't survive between runs.
+
+on:
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - run: uv python install 3.12
+      - run: uv sync --all-extras --dev --frozen
+
+      - name: Build seed fixture
+        run: uv run python scripts/build_seed_fixture.py /tmp/seed.db
+
+      - name: Publish to lens-dev
+        env:
+          TURSO_DEV_DATABASE_URL: ${{ secrets.TURSO_DEV_DATABASE_URL }}
+          TURSO_DEV_AUTH_TOKEN: ${{ secrets.TURSO_DEV_AUTH_TOKEN }}
+        run: |
+          uv run python scripts/publish_to_turso.py \
+            --local /tmp/seed.db \
+            --target dev
+
+      - name: Smoke-test via TursoStore
+        env:
+          TURSO_DEV_DATABASE_URL: ${{ secrets.TURSO_DEV_DATABASE_URL }}
+          TURSO_DEV_AUTH_TOKEN: ${{ secrets.TURSO_DEV_AUTH_TOKEN }}
+        run: uv run python scripts/smoke_test_turso.py --target dev
