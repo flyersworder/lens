@@ -36,7 +36,11 @@ dependencies = [
 litellm = ["litellm>=1.83.7"]
 deepxiv = ["deepxiv-sdk>=0.2.5"]
 turso = ["libsql-client>=0.3.0"]
-web = ["fastapi>=0.115", "libsql-client>=0.3.0"]
+# `web` references the `turso` extra rather than re-listing libsql-client
+# so version bumps stay in one place. Vercel's Python builder reads
+# `api/requirements.txt` (a minimal mirror) since extras aren't its
+# native installation surface.
+web = ["lens-research[turso]", "fastapi>=0.115"]
 
 [project.scripts]
 lens = "lens.cli:app"
@@ -56,6 +60,9 @@ packages = ["src/lens"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Add repo root to pythonpath so `from api.index import ...` works in
+# tests without sys.path hackery (api/ is a sibling of src/, not under it).
+pythonpath = [".", "src"]
 markers = [
     "integration: marks tests that hit live APIs (deselect with '-m \"not integration\"')",
 ]

@@ -5,10 +5,14 @@ top-level ``app: FastAPI`` lives at ``api/index.py``. Each handler is
 a thin wrapper around the existing ``serve/*`` modules, accepting
 either backend through the :class:`ReadableStore` protocol.
 
-Module globals (``_store`` and ``_llm``) are constructed at import
-time so a warm Vercel instance pays the connection cost once and
-reuses it across requests. Cold starts open a Turso libSQL HTTP
-connection (~50–150 ms typical) and a litellm/openai async client.
+Module globals (the ``get_store`` / ``get_llm`` / ``get_embed_kwargs``
+``lru_cache``-d singletons) are constructed on first request so a
+warm Vercel instance pays the connection cost once and reuses it
+across requests. Cold starts open a Turso libSQL HTTP connection
+(~50–150 ms typical) and a litellm/openai async client. Vercel
+function teardown is a hard kill (no graceful shutdown), so the
+singletons rely on the underlying libSQL client being stateless
+HTTP — there's no connection to drain.
 
 Endpoints:
 
@@ -25,6 +29,9 @@ Configuration is via environment variables:
 * ``LENS_EMBED_MODEL``  — default ``openai/text-embedding-3-small``
 * ``LENS_LOCAL_DB``     — fallback path used when ``TURSO_*`` is unset
   (defaults to ``~/.lens/data/lens.db``); intended for local dev only
+* ``LENS_CORS_ORIGINS`` — comma-separated origin allowlist
+  (e.g. ``"https://lens.example,https://staging.lens.example"``).
+  Defaults to no CORS (same-origin only) if unset.
 
 Rate limiting and response caching live in ``api/_middleware.py``
 (planned next commit) — this module is intentionally minimal so the
@@ -35,11 +42,16 @@ from __future__ import annotations
 
 import logging
 import os
+import re
+from functools import lru_cache
+from importlib.metadata import PackageNotFoundError
+from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query
-from pydantic import BaseModel, Field
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel, Field, field_validator
 
 from lens.llm.client import LLMClient
 from lens.serve.analyzer import (
@@ -103,43 +115,41 @@ def _build_llm() -> LLMClient:
 
 
 def _build_embed_kwargs() -> dict[str, Any]:
-    """kwargs forwarded to ``embed_strings`` for runtime query embedding."""
+    """kwargs forwarded to ``embed_strings`` for runtime query embedding.
+
+    Fails loud when ``OPENROUTER_API_KEY`` is missing instead of letting
+    the embed call silently degrade — see the equivalent check in
+    ``_build_llm``.
+    """
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError("OPENROUTER_API_KEY must be set for runtime query embedding.")
     return {
         "provider": "cloud",
         "model_name": os.environ.get("LENS_EMBED_MODEL", "openai/text-embedding-3-small"),
         "api_base": "https://openrouter.ai/api/v1",
-        "api_key": os.environ.get("OPENROUTER_API_KEY"),
+        "api_key": api_key,
     }
 
 
-# Lazy singletons — evaluated on first use rather than at import time so
-# a misconfigured environment fails the affected request, not the whole
-# function instance. This also keeps the test path importable without
-# real credentials.
-_store: ReadableStore | None = None
-_llm: LLMClient | None = None
-_embed_kwargs: dict[str, Any] | None = None
-
-
+# Cache-based singletons via lru_cache. `lru_cache(maxsize=1)` is
+# atomic under concurrent access — two cold-start requests that race
+# the constructor will both get the same instance, no duplicate
+# initialization. Keeps the test path importable without credentials
+# because the build call only fires on first request.
+@lru_cache(maxsize=1)
 def get_store() -> ReadableStore:
-    global _store
-    if _store is None:
-        _store = _build_store()
-    return _store
+    return _build_store()
 
 
+@lru_cache(maxsize=1)
 def get_llm() -> LLMClient:
-    global _llm
-    if _llm is None:
-        _llm = _build_llm()
-    return _llm
+    return _build_llm()
 
 
+@lru_cache(maxsize=1)
 def get_embed_kwargs() -> dict[str, Any]:
-    global _embed_kwargs
-    if _embed_kwargs is None:
-        _embed_kwargs = _build_embed_kwargs()
-    return _embed_kwargs
+    return _build_embed_kwargs()
 
 
 # ---------------------------------------------------------------------------
@@ -150,14 +160,39 @@ def get_embed_kwargs() -> dict[str, Any]:
 AnalysisType = Literal["tradeoff", "architecture", "agentic"]
 
 
+def _strip_or_reject(v: str) -> str:
+    """Strip whitespace; reject if the result is empty.
+
+    Pydantic's ``min_length=1`` only checks raw length, so a query of
+    ``"   "`` would pass — this validator catches that.
+    """
+    stripped = v.strip()
+    if not stripped:
+        raise ValueError("must contain non-whitespace characters")
+    return stripped
+
+
 class AnalyzeRequest(BaseModel):
     query: str = Field(min_length=1, max_length=500)
     type: AnalysisType = "tradeoff"
+
+    @field_validator("query")
+    @classmethod
+    def _strip_query(cls, v: str) -> str:
+        return _strip_or_reject(v)
 
 
 class ExplainRequest(BaseModel):
     query: str = Field(min_length=1, max_length=200)
     focus: str | None = Field(default=None, max_length=64)
+
+    @field_validator("query")
+    @classmethod
+    def _strip_query(cls, v: str) -> str:
+        return _strip_or_reject(v)
+
+
+_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 # ---------------------------------------------------------------------------
@@ -165,11 +200,31 @@ class ExplainRequest(BaseModel):
 # ---------------------------------------------------------------------------
 
 
+try:
+    _LENS_VERSION = _pkg_version("lens-research")
+except PackageNotFoundError:  # pragma: no cover — local source checkout edge case
+    _LENS_VERSION = "0.0.0+unknown"
+
 app = FastAPI(
     title="LENS API",
     description="LLM Engineering Navigation System — public read-only API.",
-    version="0.10.1",
+    version=_LENS_VERSION,
 )
+
+
+# CORS allowlist driven by env. Empty / unset → no CORS headers
+# (same-origin only). Set ``LENS_CORS_ORIGINS`` to a comma-separated
+# list of origins (e.g. ``"https://lens.example,https://staging..."``).
+_cors_env = os.environ.get("LENS_CORS_ORIGINS", "").strip()
+if _cors_env:
+    _cors_origins = [o.strip() for o in _cors_env.split(",") if o.strip()]
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=_cors_origins,
+        allow_credentials=False,  # public read-only API; no cookies/auth
+        allow_methods=["GET", "POST"],
+        allow_headers=["content-type"],
+    )
 
 
 # Annotated[T, Depends(...)] is the modern FastAPI dependency-injection
@@ -198,15 +253,22 @@ async def analyze_endpoint(
     ``req.type``. All three return a JSON-serializable dict.
     """
     try:
-        if req.type == "tradeoff":
-            return await analyze(req.query, store, llm)
-        if req.type == "architecture":
-            return await analyze_architecture(req.query, store, llm)
-        # agentic — Literal exhaustiveness guarantees this is the last case.
-        return await analyze_agentic(req.query, store, llm)
+        # match/case enforces exhaustiveness against the AnalysisType
+        # Literal — adding a new variant without a case here is a
+        # type-checker error rather than a silent fallthrough.
+        match req.type:
+            case "tradeoff":
+                return await analyze(req.query, store, llm)
+            case "architecture":
+                return await analyze_architecture(req.query, store, llm)
+            case "agentic":
+                return await analyze_agentic(req.query, store, llm)
     except Exception as e:
         logger.exception("analyze failed for query=%r type=%s", req.query, req.type)
-        raise HTTPException(status_code=500, detail=f"analyze failed: {e}") from e
+        # Generic detail to avoid leaking internals (stack frames, model
+        # names, even auth-token-bearing URLs in libSQL error messages).
+        # The full error is in server logs.
+        raise HTTPException(status_code=500, detail="analyze failed") from e
 
 
 @app.post("/api/explain")
@@ -231,9 +293,18 @@ async def explain_endpoint(
         )
     except Exception as e:
         logger.exception("explain failed for query=%r", req.query)
-        raise HTTPException(status_code=500, detail=f"explain failed: {e}") from e
+        raise HTTPException(status_code=500, detail="explain failed") from e
 
     return {"result": result.model_dump() if result is not None else None}
+
+
+def _validate_date_param(name: str, value: str | None) -> None:
+    """Reject non-ISO-8601 date inputs at the API layer."""
+    if value is not None and not _DATE_RE.match(value):
+        raise HTTPException(
+            status_code=422,
+            detail=f"{name} must be ISO-8601 date (YYYY-MM-DD)",
+        )
 
 
 @app.get("/api/search")
@@ -254,6 +325,8 @@ def search_endpoint(
     (cursor, total_count, etc.) can be added without changing the
     response envelope.
     """
+    _validate_date_param("after", after)
+    _validate_date_param("before", before)
     try:
         results = serve_search_papers(
             store,
@@ -267,5 +340,5 @@ def search_endpoint(
         )
     except Exception as e:
         logger.exception("search failed for q=%r", q)
-        raise HTTPException(status_code=500, detail=f"search failed: {e}") from e
+        raise HTTPException(status_code=500, detail="search failed") from e
     return {"results": results, "count": len(results)}

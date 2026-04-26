@@ -11,7 +11,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-23T15:46:19.520456Z"
+exclude-newer = "2026-04-23T16:31:48.143884Z"
 exclude-newer-span = "P3D"
 
 [manifest]
@@ -834,8 +834,8 @@ requires-dist = [
     { name = "fastapi", marker = "extra == 'web'", specifier = ">=0.115" },
     { name = "httpx", specifier = ">=0.28.1" },
     { name = "json-repair", specifier = ">=0.58.7" },
+    { name = "lens-research", extras = ["turso"], marker = "extra == 'web'" },
     { name = "libsql-client", marker = "extra == 'turso'", specifier = ">=0.3.0" },
-    { name = "libsql-client", marker = "extra == 'web'", specifier = ">=0.3.0" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.83.7" },
     { name = "openai", specifier = ">=1.0" },
     { name = "pydantic", specifier = ">=2.0" },

@@ -1,0 +1,28 @@
+# Vercel Python builder dependency manifest.
+#
+# Intentionally minimal: only the runtime-essential deps Vercel needs to
+# bootstrap api/index.py. The rest of the LENS source tree (src/lens/...)
+# is mounted via the project root and made importable by Vercel's
+# automatic include of sibling files.
+#
+# KNOWN BUNDLE-SIZE ISSUE (deferred):
+# pyproject.toml currently lists `sentence-transformers` and
+# `sqlite-vec` as base dependencies. If Vercel installs the
+# lens-research package via `pip install .`, those (especially
+# sentence-transformers + torch at ~600 MB) push the bundle past
+# Vercel's 500 MB unzipped cap. Before deploy, those should move
+# to a `local` optional extra so the Vercel runtime can install
+# only what `TursoStore` + cloud embeddings need.
+#
+# For the prototype, Vercel reads this file directly; the lens
+# package itself is imported from src/lens via PYTHONPATH=src
+# (set in vercel.json, when added).
+
+fastapi>=0.115
+libsql-client>=0.3.0
+openai>=1.0
+pydantic>=2.0
+tenacity>=9.1.4
+json-repair>=0.58.7
+pyyaml>=6.0
+httpx>=0.28.1

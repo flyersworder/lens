@@ -19,17 +19,13 @@ What's exercised here:
 
 from __future__ import annotations
 
-import sys
-from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# api/index.py is a sibling of src/, not under src/lens/, so we have to
-# extend sys.path before import.
-_REPO_ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(_REPO_ROOT))
+# `from api.index import ...` works because pyproject.toml's
+# [tool.pytest.ini_options] pythonpath includes the repo root.
 
 
 @pytest.fixture
@@ -54,9 +50,13 @@ def client():
     app.dependency_overrides[get_llm] = lambda: fake_llm
     app.dependency_overrides[get_embed_kwargs] = lambda: {"provider": "cloud"}
 
-    yield TestClient(app), fake_store, fake_llm
-
-    app.dependency_overrides.clear()
+    try:
+        yield TestClient(app), fake_store, fake_llm
+    finally:
+        # Belt-and-suspenders cleanup: a test failure between yield and
+        # this line would otherwise leave overrides on the module-global
+        # `app` and contaminate subsequent tests.
+        app.dependency_overrides.clear()
 
 
 # ---------------------------------------------------------------------------
@@ -152,12 +152,21 @@ def test_analyze_returns_500_on_serve_exception(client, monkeypatch):
     c, _, _ = client
 
     async def boom(query, store, llm):
-        raise RuntimeError("kaboom")
+        raise RuntimeError("kaboom-internal-token-xyz")
 
     monkeypatch.setattr("api.index.analyze", boom)
     r = c.post("/api/analyze", json={"query": "x"})
     assert r.status_code == 500
-    assert "kaboom" in r.json()["detail"]
+    # Detail must be generic — never leaks the internal exception
+    # message to the client (information-disclosure protection).
+    assert r.json()["detail"] == "analyze failed"
+    assert "kaboom" not in r.json()["detail"]
+
+
+def test_analyze_rejects_whitespace_only_query(client):
+    c, _, _ = client
+    r = c.post("/api/analyze", json={"query": "   \t  "})
+    assert r.status_code == 422
 
 
 # ---------------------------------------------------------------------------
@@ -258,3 +267,27 @@ def test_search_rejects_zero_limit(client):
     c, _, _ = client
     r = c.get("/api/search", params={"limit": 0})
     assert r.status_code == 422
+
+
+def test_search_rejects_non_iso_after_date(client):
+    c, _, _ = client
+    r = c.get("/api/search", params={"after": "yesterday"})
+    assert r.status_code == 422
+    assert "ISO-8601" in r.json()["detail"]
+
+
+def test_search_rejects_non_iso_before_date(client):
+    c, _, _ = client
+    r = c.get("/api/search", params={"before": "01-01-2026"})
+    assert r.status_code == 422
+
+
+def test_search_accepts_iso_date(client, monkeypatch):
+    c, _, _ = client
+
+    def fake_search(store, **kwargs):
+        return []
+
+    monkeypatch.setattr("api.index.serve_search_papers", fake_search)
+    r = c.get("/api/search", params={"after": "2024-01-01", "before": "2026-12-31"})
+    assert r.status_code == 200
