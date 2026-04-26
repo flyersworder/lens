@@ -1,4 +1,4 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "uv sync --frozen --extra web --no-dev"
+  "installCommand": "uv sync --frozen --extra web --no-dev --no-editable"
 }
