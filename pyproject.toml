@@ -36,6 +36,7 @@ dependencies = [
 litellm = ["litellm>=1.83.7"]
 deepxiv = ["deepxiv-sdk>=0.2.5"]
 turso = ["libsql-client>=0.3.0"]
+web = ["fastapi>=0.115", "libsql-client>=0.3.0"]
 
 [project.scripts]
 lens = "lens.cli:app"

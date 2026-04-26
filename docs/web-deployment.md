@@ -404,7 +404,7 @@ When ready to ship, work through these in order:
 - [ ] Run the workflow once via `workflow_dispatch` to seed the prod DB
 
 **Web tier**
-- [ ] Create `api/` directory at repo root with `analyze.py`, `explain.py`, `search.py` FastAPI handlers
+- [x] ~~Create `api/` directory at repo root with `analyze.py`, `explain.py`, `search.py` FastAPI handlers~~ — done as a single `api/index.py` (the recommended Vercel multi-route shape; one app, three routes); 15 unit tests in `tests/test_api_index.py` cover validation, dispatch, error paths, and dependency-injection wiring
 - [ ] Wire per-IP rate limit + response cache via Vercel KV
 - [ ] Set OpenRouter monthly spending cap in OpenRouter dashboard
 - [ ] Scaffold Next.js project in `web/` (or separate repo) with 3 pages
