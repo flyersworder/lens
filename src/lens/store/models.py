@@ -5,12 +5,13 @@ from datetime import datetime
 
 from pydantic import BaseModel, field_validator
 
-EMBEDDING_DIM = 768
+EMBEDDING_DIM = 1536
 """Default embedding vector dimension. All Vector fields use this value.
 
-To change the dimension, set this before importing any model classes
-or calling init_tables(). Changing it after tables are created requires
-reinitializing the database (``lens init --force``).
+Matches OpenAI ``text-embedding-3-small`` native output, which is the
+configured runtime + build embedding model (ADR D1). Changing this
+after tables are created requires dropping the ``*_vec`` virtual tables
+and re-embedding the corpus — ``scripts/reembed_corpus.py`` does both.
 """
 
 VALID_EXTRACTION_STATUSES = {"pending", "complete", "incomplete", "failed"}

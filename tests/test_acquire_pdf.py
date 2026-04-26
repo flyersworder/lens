@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+from lens.store.models import EMBEDDING_DIM
+
 
 def test_ingest_pdf(tmp_path):
     from lens.acquire.pdf import ingest_pdf
@@ -17,7 +19,7 @@ def test_ingest_pdf(tmp_path):
     assert paper["title"] == "attention is all you need"
     assert paper["extraction_status"] == "pending"
     assert paper["abstract"] == ""
-    assert len(paper["embedding"]) == 768
+    assert len(paper["embedding"]) == EMBEDDING_DIM
 
 
 def test_ingest_pdf_returns_dict(tmp_path):

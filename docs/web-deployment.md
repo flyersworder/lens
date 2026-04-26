@@ -14,8 +14,8 @@ Architecture for shipping LENS as a public read-only website on a free tier, usi
 |---|---|---|
 | **Public URL** | `https://lens-fawn.vercel.app` | Production alias on Vercel Hobby (`flyersworders-projects/lens`) |
 | **Endpoints** | `/api/health`, `/api/search`, `/api/analyze`, `/api/explain` | Defined in `api/index.py` |
-| **Database (prod)** | Turso `lens-prod` (`libsql://lens-prod-flyersworder.aws-eu-west-1.turso.io`) | Live API source. 77 papers, 82 vocab, 65 matrix cells, 80 tradeoff extractions; embeddings still 768-dim (sentence-transformers, padded to 1536 at query time) |
-| **Database (dev)** | Turso `lens-dev` (`libsql://lens-dev-flyersworder.aws-eu-west-1.turso.io`) | Used by `tests/test_turso_store.py` and the Phase 1 publish workflow; safe to wipe. Same corpus snapshot. |
+| **Database (prod)** | Turso `lens-prod` (`libsql://lens-prod-flyersworder.aws-eu-west-1.turso.io`) | Live API source. 77 papers, 82 vocab, 65 matrix cells, 80 tradeoff extractions; embeddings now 1536-dim `text-embedding-3-small` (matches runtime query space — no truncation). |
+| **Database (dev)** | Turso `lens-dev` (`libsql://lens-dev-flyersworder.aws-eu-west-1.turso.io`) | Used by `tests/test_turso_store.py` and the Phase 1 publish workflow; safe to wipe. Same corpus snapshot, same 1536-dim embeddings. |
 | **Storage adapter** | `TursoStore` in `src/lens/store/turso_store.py` | libSQL native vectors via `vector_top_k` + `vector_distance_cos` |
 | **LLM** | OpenRouter `deepseek/deepseek-v4-flash` | Per ADR D2; ~$20 credit balance, hard cap not yet set |
 | **Embeddings (runtime)** | OpenRouter `openai/text-embedding-3-small` (1536-dim) | Per ADR D1; cloud provider, runs on every search/explain |
@@ -58,20 +58,11 @@ If you (or future-you) are returning to this work after a break, this is the ord
 
 Reference: ADR D5, `_resolve_target` in `scripts/publish_to_turso.py:114`.
 
-### 2. Re-embed the corpus with `text-embedding-3-small` (~30 min)
+### 2. ~~Re-embed the corpus with `text-embedding-3-small`~~ — **done 2026-04-26**
 
-**Problem**: `~/.lens/data/lens.db` has 768-dim sentence-transformers vectors (from the era before ADR D1). At query time we send 1536-dim text-embedding-3-small vectors. The publish step pads stored vectors to 1536 with zeros, so vector search works but recall is degraded — distances aren't computed in the right space.
+`EMBEDDING_DIM` is now 1536, matching `text-embedding-3-small` natively. The `~/.lens/config.yaml` `embeddings.*` block already pointed at the cloud provider; only the dim mismatch (stored 768, query 1536-truncated-to-768) was wrong. `scripts/reembed_corpus.py` drops the `_vec` virtual tables, recreates them at the new dim, and re-embeds every paper (`title + abstract`) and vocab row (`name: description`) in ~2 s. Republished to `lens-prod` and `lens-dev` (343.9 s each — 2× the prior time, since vectors are 2× wider). Sanity check: `/api/search?q=transformer` ranks Attention Is All You Need, RoFormer, and FLatten Transformer in the top 5.
 
-**Fix**:
-1. `lens config set embeddings.provider cloud`
-2. `lens config set embeddings.model_name "openai/text-embedding-3-small"`
-3. `lens config set embeddings.api_base "https://openrouter.ai/api/v1"`
-4. `lens config set embeddings.api_key $OPENROUTER_API_KEY`
-5. `EMBEDDING_DIM` in `src/lens/store/models.py` from 768 → 1536
-6. `lens build vocabulary --rebuild-embeddings` (and similar for papers — there's a one-shot rebuild that re-embeds everything)
-7. `python scripts/publish_to_turso.py --target prod`
-
-Sanity-check after: a vector-only search with the same query embedding should return semantically related papers, not just FTS hits.
+The earlier 15 vocabulary orphan embeddings (referenced in step 1) are gone naturally — the rebuild only embeds rows that exist in `vocabulary`, so stale entries from an old taxonomy version don't survive.
 
 ### 3. Phase 2 GH Actions monitor cron (~1 day, after prod DB exists)
 
@@ -527,8 +518,8 @@ When ready to ship, work through these in order:
 - [x] ~~Write `scripts/publish_to_turso.py` to translate sqlite-vec schema → libSQL native and copy data~~ — done; end-to-end verified against real LENS DB (728 rows, ~100 s)
 - [x] ~~Wire `TursoStore` into `serve/analyzer.py`, `serve/explainer.py`, `serve/explorer.py` via a small adapter~~ — done via the `ReadableStore` protocol (`src/lens/store/protocols.py`); 4 conformance tests in `tests/test_store_protocols.py` exercise both backends end-to-end
 - [x] ~~Add `TursoStore` integration tests gated on `TURSO_DEV_*` env vars (skip when offline)~~ — done (commit bf4664c, 17 tests)
-- [ ] Switch local config to `embeddings.provider: cloud` with OpenRouter base URL; verify `embedder.py` cloud path works end-to-end *(see "Picking up from a fresh context" → step 2)*
-- [ ] Re-embed the existing corpus once with the chosen embedding model (locks `EMBEDDING_DIM`) *(deferred: lens-dev currently has 768-dim sentence-transformers vectors padded to 1536 at query time; works but recall is degraded)*
+- [x] ~~Switch local config to `embeddings.provider: cloud` with OpenRouter base URL; verify `embedder.py` cloud path works end-to-end~~ — done 2026-04-26 (config has been on `cloud` for a while; the missing piece was matching dims)
+- [x] ~~Re-embed the existing corpus once with the chosen embedding model (locks `EMBEDDING_DIM`)~~ — done 2026-04-26 via `scripts/reembed_corpus.py`; `EMBEDDING_DIM = 1536` in `models.py`, all 77 papers + 82 vocab re-embedded with `text-embedding-3-small`, both Turso DBs republished, prod redeployed (`dpl_…lens-9nnkguj08…`)
 
 **Build pipeline**
 - [x] ~~Write `scripts/publish_to_turso.py` (try/finally around the modify step)~~ — done; `pull_from_turso.py` deferred to Phase 2 monitor cron (will likely use a release-asset roundtrip instead of a true pull)

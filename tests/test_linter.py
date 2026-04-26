@@ -249,7 +249,7 @@ def test_lint_missing_embeddings_none_when_present(tmp_path):
                 "first_seen": "2026-04-01",
                 "paper_count": 2,
                 "avg_confidence": 0.8,
-                "embedding": [0.1] * 768,
+                "embedding": [0.1] * EMBEDDING_DIM,
             }
         ],
     )

@@ -38,7 +38,7 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "embeddings": {
         "provider": "local",
         "model": "specter2",
-        "dimensions": 768,
+        "dimensions": 1536,
         "api_base": "",
         "api_key": "",
     },

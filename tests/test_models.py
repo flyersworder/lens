@@ -19,11 +19,11 @@ def test_paper_model_valid():
         citations=100000,
         quality_score=0.95,
         extraction_status="pending",
-        embedding=[0.1] * 768,
+        embedding=[0.1] * EMBEDDING_DIM,
     )
     assert paper.paper_id == "2401.12345"
     assert paper.extraction_status == "pending"
-    assert len(paper.embedding) == 768
+    assert len(paper.embedding) == EMBEDDING_DIM
 
 
 def test_paper_model_nullable_venue():
