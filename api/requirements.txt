@@ -20,9 +20,11 @@
 
 fastapi>=0.115
 libsql-client>=0.3.0
-openai>=1.0
-pydantic>=2.0
-tenacity>=9.1.4
-json-repair>=0.58.7
-pyyaml>=6.0
-httpx>=0.28.1
+
+# The lens package itself, installed from the repo root that Vercel
+# checks out. This pulls in lens-research's BASE deps from
+# pyproject.toml — including sentence-transformers and sqlite-vec
+# (the deferred bundle-size issue noted above). If the build fails
+# with "exceeded the unzipped maximum size of 500 MB", that's the
+# trigger to move those into a `local` extra in pyproject.toml.
+.
