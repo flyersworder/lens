@@ -11,7 +11,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-23T16:46:46.230376Z"
+exclude-newer = "2026-04-23T17:03:05.807619Z"
 exclude-newer-span = "P3D"
 
 [manifest]
@@ -793,6 +793,7 @@ dependencies = [
     { name = "arxiv" },
     { name = "httpx" },
     { name = "json-repair" },
+    { name = "numpy" },
     { name = "openai" },
     { name = "pydantic" },
     { name = "python-dotenv" },
@@ -839,6 +840,7 @@ requires-dist = [
     { name = "lens-research", extras = ["turso"], marker = "extra == 'web'" },
     { name = "libsql-client", marker = "extra == 'turso'", specifier = ">=0.3.0" },
     { name = "litellm", marker = "extra == 'litellm'", specifier = ">=1.83.7" },
+    { name = "numpy", specifier = ">=1.24" },
     { name = "openai", specifier = ">=1.0" },
     { name = "pydantic", specifier = ">=2.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },

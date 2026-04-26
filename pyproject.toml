@@ -28,6 +28,10 @@ dependencies = [
     "arxiv>=2.4.1",
     "python-dotenv>=1.2.2",
     "json-repair>=0.58.7",
+    # numpy used by taxonomy/embedder.py at module-import time. ~30 MB,
+    # well under the Vercel bundle cap, and used unconditionally by the
+    # cloud-embedding code path the runtime needs.
+    "numpy>=1.24",
 ]
 
 [project.optional-dependencies]
