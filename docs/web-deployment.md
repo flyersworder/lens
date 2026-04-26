@@ -129,6 +129,17 @@ These are gotchas confirmed by the live spike against `lens-dev`. Codify them in
    Without `AS k` aliasing the `id` column is ambiguous and the server rejects the query. The Python client surfaces this as a confusing `KeyError: 'result'` rather than the underlying SQL error — always run `turso db shell` to see real server-side errors when the Python client raises a parse error.
 6. **FTS5 works identically on remote Turso** as on local SQLite — no syntax changes, `content_rowid=rowid`, `MATCH ?`, and `INSERT INTO <name>(<name>) VALUES('rebuild')` all behave the same.
 
+#### Conventions verified by `scripts/publish_to_turso.py`
+
+These were learned during the publish-script implementation and are baked into the script:
+
+7. **Schema-discovery, not hardcoded DDL.** Local LENS DBs accumulate columns from historical migrations (e.g. `new_concept_description` from a deprecated migration) that aren't in the current `_COLUMN_MIGRATIONS` list in `store.py`. The publish script reads `PRAGMA table_info` per table and rebuilds DDL from observed columns, so it works against any version of the local schema without script edits.
+8. **`AUTOINCREMENT` can't be detected via `PRAGMA table_info`** — only via `sqlite_schema.sql` parsing. The publish script drops the keyword for `tradeoff_extractions.rowid` etc.; this is fine because the read-only Turso path doesn't depend on the "never reuse a deleted rowid" guarantee.
+9. **`DROP TABLE` on a libSQL FTS5 virtual table cascades to its shadow tables** (`*_data`, `*_idx`, `*_config`, `*_docsize`, `*_content`) — verified live against Turso 2026-04. The publish script's drop list doesn't need to enumerate them.
+10. **Embedding-dimension mismatch is silent until query time** if not caught early. The publish script probes the first row of `<table>_vec.embedding` and verifies `len(blob) == 4 * embedding_dim` before attaching; mismatch fails loudly with the actual dim. This is the first line of defense against an embedding-model swap that nobody updated in config.
+11. **No fallback for `--target prod` env vars.** `_resolve_target` requires explicit `TURSO_PROD_DATABASE_URL` and `TURSO_PROD_AUTH_TOKEN`; falling back to unprefixed `TURSO_DATABASE_URL` would let a dev-shell publish dev creds to "prod". `--target plain` exists for the unprefixed-vars case (e.g. inside GitHub Actions where there's only one DB per run).
+12. **Verify FTS row counts, not just main-table counts.** A silent FTS5 rebuild failure leaves the index empty while the main table is fine; `verify_counts` cross-checks both so the build pipeline fails fast.
+
 ### GitHub Actions (the build pipeline)
 
 | Property | Value |
@@ -377,10 +388,10 @@ When ready to ship, work through these in order:
 - [x] ~~Validate libSQL native vectors + FTS5 against remote Turso (Spike 2)~~ — passed 2026-04-26
 - [ ] Top up OpenRouter with $10 credit (one-time) to unlock 1000 req/day on free models *and* enable cheap paid models
 - [ ] Add `libsql-client` to `pyproject.toml` as a `[project.optional-dependencies] turso` extra
-- [ ] Build new `TursoStore` class with read API matching `Store` (vector queries via `vector_top_k`, FTS5 unchanged)
-- [ ] Write `scripts/publish_to_turso.py` to translate sqlite-vec schema → libSQL native and copy data
+- [x] ~~Build new `TursoStore` class with read API matching `Store` (vector queries via `vector_top_k`, FTS5 unchanged)~~ — done (commit bf4664c)
+- [x] ~~Write `scripts/publish_to_turso.py` to translate sqlite-vec schema → libSQL native and copy data~~ — done; end-to-end verified against real LENS DB (728 rows, ~100 s)
 - [ ] Wire `TursoStore` into `serve/analyzer.py`, `serve/explainer.py`, `serve/explorer.py` via a small adapter
-- [ ] Add `TursoStore` integration tests gated on `TURSO_DEV_*` env vars (skip when offline)
+- [x] ~~Add `TursoStore` integration tests gated on `TURSO_DEV_*` env vars (skip when offline)~~ — done (commit bf4664c, 17 tests)
 - [ ] Switch local config to `embeddings.provider: cloud` with OpenRouter base URL; verify `embedder.py` cloud path works end-to-end
 - [ ] Re-embed the existing corpus once with the chosen embedding model (locks `EMBEDDING_DIM`)
 
