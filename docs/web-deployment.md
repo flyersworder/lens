@@ -21,6 +21,8 @@ Architecture for shipping LENS as a public read-only website on a free tier, usi
 | **Embeddings (runtime)** | OpenRouter `openai/text-embedding-3-small` (1536-dim) | Per ADR D1; cloud provider, runs on every search/explain |
 | **Build/publish path** | `scripts/build_seed_fixture.py` + `scripts/publish_to_turso.py` + `tests/test_turso_store.py` | Drop-recreate-copy-verify; ~100s for 728 rows + 174 embeddings |
 | **CI Phase 1** | `.github/workflows/publish-turso.yml` (manual trigger) | Validates publish chain on every workflow_dispatch; no LLM cost |
+| **CI Phase 2** | `.github/workflows/monitor.yml` (Mondays 06:00 UTC + manual) | Pulls `lens.db` from `corpus-snapshot` release → `lens monitor` → publish to lens-prod → re-uploads `lens.db` to release. ~$0.50–1/run at current corpus size. |
+| **State preservation** | GitHub release `corpus-snapshot`, asset `lens.db` | Single-asset rolling snapshot. Atomically replaced (`gh release upload --clobber`) at the end of every successful monitor run. |
 | **Local-only path** | `LensStore` (sqlite-vec); `--extra local` install | Used by CLI, build pipeline, and 296-test suite |
 | **Vercel env vars set** | `TURSO_DATABASE_URL` (→ lens-prod), `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY` | Production environment only; preview/dev not configured |
 | **GitHub Secrets** | `TURSO_DEV_*` (Phase 1 publish) and `TURSO_PROD_*` (Phase 2 monitor cron, queued) | `OPENROUTER_API_KEY` will be added when Phase 2 lands |
@@ -64,18 +66,15 @@ Reference: ADR D5, `_resolve_target` in `scripts/publish_to_turso.py:114`.
 
 The earlier 15 vocabulary orphan embeddings (referenced in step 1) are gone naturally — the rebuild only embeds rows that exist in `vocabulary`, so stale entries from an old taxonomy version don't survive.
 
-### 3. Phase 2 GH Actions monitor cron (~1 day, after prod DB exists)
+### 3. ~~Phase 2 GH Actions monitor cron~~ — **done 2026-04-26**
 
-**Problem**: lens-prod is static — it only contains whatever the most recent manual publish put there. arXiv produces 50+ relevant papers per week.
+`.github/workflows/monitor.yml` runs Mondays 06:00 UTC (and on `workflow_dispatch`). State preservation uses a single-asset GitHub release: `corpus-snapshot/lens.db` is downloaded at the start of the run, mutated by `lens monitor`, published to `lens-prod`, and atomically re-uploaded (`gh release upload --clobber`). Concurrency group `monitor` prevents a manual dispatch from racing the weekly cron mid-publish.
 
-**Fix** (sketch — full design in the existing checklist below):
-- `.github/workflows/monitor.yml` triggered weekly + workflow_dispatch
-- Step 1: pull previous `lens.db` from a GitHub release asset (or a Turso dump-and-restore)
-- Step 2: `lens monitor` end-to-end with cloud embeddings + DeepSeek
-- Step 3: `python scripts/publish_to_turso.py --target prod`
-- Step 4: push the updated `lens.db` back as a release asset for the next run
+The release was bootstrapped once from the local `~/.lens/data/lens.db`. From here the workflow is the single source of truth for `lens-prod`'s contents — manual `publish_to_turso.py --target prod` runs from a developer's machine will be silently overwritten by the next cron unless that change has also been pushed to `corpus-snapshot`.
 
-OpenRouter spend per run: ~$0.50–1 at current corpus size.
+**First real run not yet triggered** — wait for Monday's cron, or run via `gh workflow run monitor.yml` for an immediate paid backfill (~$0.50–1 OpenRouter spend; runs ~10–20 min).
+
+Why a release asset instead of `pull_from_turso.py`: writing the inverse of the publish script (translating libSQL-native vectors back to sqlite-vec companion tables) doubles the surface area; `turso db dump`/`restore` adds a Turso-region dependency to the runner and is slower cross-region.
 
 ### 4. Next.js frontend (~1 day)
 
@@ -524,7 +523,7 @@ When ready to ship, work through these in order:
 **Build pipeline**
 - [x] ~~Write `scripts/publish_to_turso.py` (try/finally around the modify step)~~ — done; `pull_from_turso.py` deferred to Phase 2 monitor cron (will likely use a release-asset roundtrip instead of a true pull)
 - [x] ~~Phase 1: `.github/workflows/publish-turso.yml` (manual trigger, synthetic seed fixture, no LLM cost)~~ — done; validates the publish chain under CI before the monitor cron lands
-- [ ] Phase 2: `.github/workflows/monitor.yml` with weekly cron + `workflow_dispatch` — runs `lens monitor` end-to-end (deferred until OpenRouter credits + state preservation are in place)
+- [x] ~~Phase 2: `.github/workflows/monitor.yml` with weekly cron + `workflow_dispatch` — runs `lens monitor` end-to-end~~ — workflow added 2026-04-26; `corpus-snapshot` release bootstrapped from local `lens.db`; `OPENROUTER_API_KEY` added to GitHub Secrets. First real run will fire on the next Monday cron, or trigger manually via `gh workflow run monitor.yml`.
 - [x] ~~Configure GitHub Secrets: `TURSO_DEV_DATABASE_URL`, `TURSO_DEV_AUTH_TOKEN`~~ — done (used by `publish-turso.yml` Phase 1). `TURSO_PROD_DATABASE_URL` + `TURSO_PROD_AUTH_TOKEN` added 2026-04-26 in preparation for Phase 2; `OPENROUTER_API_KEY` will land with the monitor workflow.
 - [x] ~~Run the workflow once via `workflow_dispatch` to seed the prod DB~~ — Phase 1 workflow run validated end-to-end against `lens-dev` (workflow run id 24960286069); `lens-prod` seeded from local on 2026-04-26 (77 papers + 82 vocab + 65 matrix cells, 42.6 s)
 

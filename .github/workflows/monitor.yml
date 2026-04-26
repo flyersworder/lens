@@ -1,0 +1,95 @@
+name: Weekly LENS Monitor
+
+# Phase 2 of the Turso pipeline: weekly cron that pulls new arXiv
+# papers, extracts tradeoffs/architecture/agentic patterns via DeepSeek,
+# rebuilds taxonomy + matrix, and publishes the updated DB to lens-prod.
+#
+# State preservation: the canonical `~/.lens/data/lens.db` lives as the
+# only asset on the `corpus-snapshot` GitHub release. Each run downloads
+# it, mutates it, then atomically replaces the asset (`--clobber`). The
+# release was bootstrapped once from the local DB — see step 3 of the
+# "Picking up from a fresh context" section in `docs/web-deployment.md`.
+#
+# Required secrets:
+#   - OPENROUTER_API_KEY     (LLM extract + cloud embeddings)
+#   - TURSO_PROD_DATABASE_URL
+#   - TURSO_PROD_AUTH_TOKEN
+#
+# Concurrency: only one monitor at a time so a manual dispatch can't
+# race the weekly cron mid-publish.
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+  workflow_dispatch:
+
+permissions: {}
+
+concurrency:
+  group: monitor
+  cancel-in-progress: false
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: write   # release upload (corpus-snapshot)
+    env:
+      LENS_DATA_DIR: ${{ github.workspace }}/.lens-data
+      REPO: ${{ github.repository }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "pyproject.toml"
+
+      - run: uv python install 3.12
+      - run: uv sync --all-extras --dev --frozen
+
+      - name: Download corpus snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir -p "$LENS_DATA_DIR"
+          gh release download corpus-snapshot \
+            --repo "$REPO" \
+            --pattern lens.db \
+            --output "$LENS_DATA_DIR/lens.db"
+          ls -la "$LENS_DATA_DIR/lens.db"
+
+      - name: Configure LENS for cloud LLM + embeddings
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: |
+          uv run lens config set llm.api_base https://openrouter.ai/api/v1
+          uv run lens config set llm.api_key "$OPENROUTER_API_KEY"
+          uv run lens config set llm.default_model deepseek/deepseek-v4-flash
+          uv run lens config set llm.extract_model deepseek/deepseek-v4-flash
+          uv run lens config set llm.label_model deepseek/deepseek-v4-flash
+          uv run lens config set embeddings.provider cloud
+          uv run lens config set embeddings.model openai/text-embedding-3-small
+          uv run lens config set embeddings.api_base https://openrouter.ai/api/v1
+          uv run lens config set embeddings.api_key "$OPENROUTER_API_KEY"
+          uv run lens config set embeddings.dimensions 1536
+
+      - name: Run monitor (acquire → enrich → extract → build → ideate)
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: uv run lens monitor
+
+      - name: Publish to lens-prod
+        env:
+          TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}
+          TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
+        run: uv run python scripts/publish_to_turso.py --target prod --local "$LENS_DATA_DIR/lens.db"
+
+      - name: Upload updated corpus snapshot
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh release upload corpus-snapshot "$LENS_DATA_DIR/lens.db" \
+            --repo "$REPO" \
+            --clobber
