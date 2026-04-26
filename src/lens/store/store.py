@@ -9,7 +9,17 @@ import struct
 from datetime import datetime
 from typing import Any
 
-import sqlite_vec
+# sqlite-vec lives in the [local] optional extra so it doesn't bloat
+# the Vercel bundle (CUDA-bindings transitively, ~7 GB unzipped).
+# The module remains importable without it; LensStore's __init__ raises
+# with an actionable message if the extension is missing at runtime.
+try:
+    import sqlite_vec as _sqlite_vec  # type: ignore[import-not-found]
+
+    _SQLITE_VEC_AVAILABLE = True
+except ImportError:  # pragma: no cover — gated by `[local]` extra install
+    _sqlite_vec = None  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
+    _SQLITE_VEC_AVAILABLE = False
 
 from lens.store.models import EMBEDDING_DIM
 
@@ -175,13 +185,19 @@ class LensStore:
     """
 
     def __init__(self, db_path: str) -> None:
+        if not _SQLITE_VEC_AVAILABLE:
+            raise ImportError(
+                "LensStore requires the `local` optional extra. "
+                "Install with: uv sync --extra local "
+                "(or use TursoStore via the `turso` extra for the Vercel runtime)."
+            )
         if not db_path.endswith(".db"):
             db_path = db_path + ".db"
         self.db_path = db_path
         self.conn = sqlite3.connect(db_path)
         self.conn.row_factory = sqlite3.Row
         self.conn.enable_load_extension(True)
-        sqlite_vec.load(self.conn)
+        _sqlite_vec.load(self.conn)
         self.conn.enable_load_extension(False)
         self.conn.execute("PRAGMA journal_mode=WAL")
 

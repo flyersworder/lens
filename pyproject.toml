@@ -25,8 +25,6 @@ dependencies = [
     "rich>=13.0",
     "httpx>=0.28.1",
     "tenacity>=9.1.4",
-    "sentence-transformers>=5.3.0",
-    "sqlite-vec>=0.1.7",
     "arxiv>=2.4.1",
     "python-dotenv>=1.2.2",
     "json-repair>=0.58.7",
@@ -36,10 +34,13 @@ dependencies = [
 litellm = ["litellm>=1.83.7"]
 deepxiv = ["deepxiv-sdk>=0.2.5"]
 turso = ["libsql-client>=0.3.0"]
-# `web` references the `turso` extra rather than re-listing libsql-client
-# so version bumps stay in one place. Vercel's Python builder reads
-# `api/requirements.txt` (a minimal mirror) since extras aren't its
-# native installation surface.
+# The `local` extra carries the heavy ML dependencies that the local
+# CLI / build pipeline / tests need (LensStore + sentence-transformers
+# embeddings) but the Vercel runtime does NOT — Vercel uses TursoStore
+# and cloud embeddings, so installing torch + CUDA there blows the
+# 500 MB bundle cap (last attempt: 7137 MB unzipped, mostly PyTorch
+# CUDA bindings).
+local = ["sentence-transformers>=5.3.0", "sqlite-vec>=0.1.7"]
 web = ["lens-research[turso]", "fastapi>=0.115"]
 
 [project.scripts]

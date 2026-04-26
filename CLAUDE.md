@@ -1,7 +1,7 @@
 # LENS Development Guide
 
 ## Quick Reference
-- **Package manager**: `uv` — use `uv sync` to install, `uv add <pkg>` to add dependencies
+- **Package manager**: `uv` — use `uv sync --all-extras --dev` for CLI dev (heavy ML deps live in the `local` extra to keep the Vercel bundle slim), `uv add <pkg>` to add dependencies
 - **Pre-commit hooks**: `prek` (Rust-based pre-commit replacement) — install with `prek install`
 - **Run CLI**: `uv run lens <command>`
 - **Run tests**: `uv run pytest`

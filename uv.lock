@@ -11,7 +11,7 @@ resolution-markers = [
 ]
 
 [options]
-exclude-newer = "2026-04-23T16:31:48.143884Z"
+exclude-newer = "2026-04-23T16:46:46.230376Z"
 exclude-newer-span = "P3D"
 
 [manifest]
@@ -798,8 +798,6 @@ dependencies = [
     { name = "python-dotenv" },
     { name = "pyyaml" },
     { name = "rich" },
-    { name = "sentence-transformers" },
-    { name = "sqlite-vec" },
     { name = "tenacity" },
     { name = "typer" },
 ]
@@ -810,6 +808,10 @@ deepxiv = [
 ]
 litellm = [
     { name = "litellm" },
+]
+local = [
+    { name = "sentence-transformers" },
+    { name = "sqlite-vec" },
 ]
 turso = [
     { name = "libsql-client" },
@@ -842,12 +844,12 @@ requires-dist = [
     { name = "python-dotenv", specifier = ">=1.2.2" },
     { name = "pyyaml", specifier = ">=6.0" },
     { name = "rich", specifier = ">=13.0" },
-    { name = "sentence-transformers", specifier = ">=5.3.0" },
-    { name = "sqlite-vec", specifier = ">=0.1.7" },
+    { name = "sentence-transformers", marker = "extra == 'local'", specifier = ">=5.3.0" },
+    { name = "sqlite-vec", marker = "extra == 'local'", specifier = ">=0.1.7" },
     { name = "tenacity", specifier = ">=9.1.4" },
     { name = "typer", specifier = ">=0.12" },
 ]
-provides-extras = ["litellm", "deepxiv", "turso", "web"]
+provides-extras = ["litellm", "deepxiv", "turso", "local", "web"]
 
 [package.metadata.requires-dev]
 dev = [
