@@ -2,7 +2,7 @@
 
 Architecture for shipping LENS as a public read-only website on a free tier, using Turso for the database, GitHub Actions for the build pipeline, and Vercel for the web frontend + API.
 
-**Status:** Spike validated 2026-04-26; implementation starting
+**Status:** Spike validated 2026-04-26; Phase 1 publish chain green under CI; OpenRouter credits in place; Track A (runtime serving) starting
 **Date:** 2026-04-26
 **Companion doc:** [`deployment.md`](deployment.md) covers self-hosted / local deployment; this doc covers public web deployment.
 
@@ -25,7 +25,7 @@ These are the architectural commitments confirmed 2026-04-26 after spike validat
 ## Goals and constraints
 
 1. **Public read-only website** — anyone can run `analyze`, `explain`, and `search` queries against the LENS knowledge base via HTTP.
-2. **Near-zero-dollar prototype** — fits inside the free tiers of all platforms; the only paid line item is a one-time OpenRouter credit purchase to unlock cheap-but-good LLM models for request-time disambiguation and narrative generation.
+2. **Near-zero-dollar prototype** — fits inside the free tiers of all platforms; the only paid line item is the OpenRouter credit balance for cheap-but-good LLM models at request time and during the weekly build (currently ~$20 of credit on the project account, expected burn rate ~$2–5/month at projected traffic).
 3. **Live LLM at request time, but cheap and rate-limited** — `analyze` and `explain` retain their LLM-driven UX (concept disambiguation, narrative). Calls go to a cheap OpenRouter model with per-IP throttling, response caching, and a hard spending cap.
 4. **Single Python source of truth** — the same `serve/analyzer.py` / `serve/explainer.py` / `serve/explorer.py` modules used by the CLI also power the web API, deployed as Python Vercel Functions. No TypeScript port, no two-implementation drift.
 5. **Migration-friendly** — every component can be swapped out independently as the project grows.
@@ -387,7 +387,7 @@ When ready to ship, work through these in order:
 **Database & embedding setup**
 - [x] ~~Create Turso account, create `lens-prod` and `lens-dev` databases, capture URL + auth tokens~~ — done 2026-04-26; credentials in `.env.local`
 - [x] ~~Validate libSQL native vectors + FTS5 against remote Turso (Spike 2)~~ — passed 2026-04-26
-- [ ] Top up OpenRouter with $10 credit (one-time) to unlock 1000 req/day on free models *and* enable cheap paid models
+- [x] ~~Top up OpenRouter with $10 credit (one-time) to unlock 1000 req/day on free models *and* enable cheap paid models~~ — done; ~$20 balance available, which unblocks cloud embeddings, request-time LLM, and Phase 2 monitor cron
 - [ ] Add `libsql-client` to `pyproject.toml` as a `[project.optional-dependencies] turso` extra
 - [x] ~~Build new `TursoStore` class with read API matching `Store` (vector queries via `vector_top_k`, FTS5 unchanged)~~ — done (commit bf4664c)
 - [x] ~~Write `scripts/publish_to_turso.py` to translate sqlite-vec schema → libSQL native and copy data~~ — done; end-to-end verified against real LENS DB (728 rows, ~100 s)
