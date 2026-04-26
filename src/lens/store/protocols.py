@@ -17,11 +17,27 @@ Why a protocol and not a base class:
   ``LensStore`` and are used during the build pipeline, never by
   ``serve/*``. Forcing those onto ``TursoStore`` would conflict with
   its read-only design.
+
+This module is a thin leaf: importing it should not pull in either
+concrete backend. Drift between the protocol and the backends is
+caught by ``tests/test_store_protocols.py`` rather than at import
+time, so a constrained context (e.g. a serverless bundle that
+deliberately excludes one backend) can import the protocol freely.
+
+Notes on what is NOT in the protocol:
+
+* ``close()`` and context-manager methods (``__enter__`` / ``__exit__``):
+  both backends expose ``close()`` but ``serve/*`` never calls it —
+  the connection lifecycle is managed by whichever process owns the
+  store (CLI for ``LensStore``, Vercel function module-globals for
+  ``TursoStore``). Adding it to the protocol would obligate every
+  future implementation without delivering any guarantee that
+  ``serve/*`` actually relies on.
 """
 
 from __future__ import annotations
 
-from typing import Any, Protocol, runtime_checkable
+from typing import Protocol, runtime_checkable
 
 
 @runtime_checkable
@@ -64,9 +80,18 @@ class ReadableStore(Protocol):
     ) -> list[dict]:
         """k-NN search against the embedding index for ``table``.
 
-        Both backends accept an optional ``where`` clause; the filter
-        column references must be qualified with the alias ``t`` on the
-        joined main row.
+        ``where`` filter syntax (mandatory, both backends):
+            Filter columns MUST be qualified with the alias ``t``
+            because both backends JOIN the main row as ``t``. Using
+            an unaliased column name will fail on TursoStore (the
+            libSQL backend) with a SQL error.
+
+            Correct:    ``where="t.kind = ?"``
+            Incorrect:  ``where="kind = ?"``
+
+        ``limit`` applies after the filter; both backends over-fetch
+        and trim, so ``limit=k`` may return fewer than ``k`` rows
+        when ``where`` excludes most candidates.
         """
         ...
 
@@ -102,32 +127,8 @@ class ReadableStore(Protocol):
 # Sentinel used by serve/* type hints. Implementations:
 # - LensStore (sqlite-vec backend, CLI / build / tests)
 # - TursoStore (libSQL native backend, Vercel runtime)
+#
+# Drift detection lives in tests/test_store_protocols.py — see
+# `test_lens_store_satisfies_readable_protocol` and
+# `test_turso_store_satisfies_readable_protocol`.
 __all__: list[str] = ["ReadableStore"]
-
-
-# Defensive runtime registration: if either concrete backend ever drifts
-# from the protocol surface, this fails at import time rather than at
-# the first request. Cheap insurance.
-def _verify_backends_satisfy_protocol() -> None:
-    from lens.store.store import LensStore  # noqa: PLC0415 — lazy, avoids cycle
-
-    _check_protocol_methods(LensStore)
-    try:
-        from lens.store.turso_store import TursoStore  # noqa: PLC0415
-    except ImportError:
-        # TursoStore requires the optional `turso` extra. If it's not
-        # installed, we don't enforce the protocol against it.
-        return
-    _check_protocol_methods(TursoStore)
-
-
-def _check_protocol_methods(cls: Any) -> None:
-    required = {"query", "query_sql", "vector_search", "search_papers", "hybrid_search"}
-    missing = required - {name for name in dir(cls) if not name.startswith("_")}
-    if missing:
-        raise TypeError(
-            f"{cls.__name__} is missing methods required by ReadableStore: {sorted(missing)}"
-        )
-
-
-_verify_backends_satisfy_protocol()

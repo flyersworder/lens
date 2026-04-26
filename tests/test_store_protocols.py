@@ -59,15 +59,18 @@ def test_serve_explorer_accepts_lens_store(tmp_path):
 # ---------------------------------------------------------------------------
 
 
-_turso_creds_present = bool(
-    os.environ.get("TURSO_DEV_DATABASE_URL") and os.environ.get("TURSO_DEV_AUTH_TOKEN")
-)
+def _turso_creds_present() -> bool:
+    """Re-evaluated each test invocation so env mutation between collection
+    and run is respected (e.g. if a test fixture sets the var)."""
+    return bool(
+        os.environ.get("TURSO_DEV_DATABASE_URL") and os.environ.get("TURSO_DEV_AUTH_TOKEN")
+    )
 
 
-@pytest.mark.skipif(
-    not _turso_creds_present,
-    reason="TURSO_DEV_* not set; skipping integration check",
-)
+_SKIP_REASON = "TURSO_DEV_* not set; skipping integration check"
+
+
+@pytest.mark.skipif(not _turso_creds_present(), reason=_SKIP_REASON)
 def test_turso_store_satisfies_readable_protocol():
     from lens.store.turso_store import TursoStore
 
@@ -81,19 +84,25 @@ def test_turso_store_satisfies_readable_protocol():
         store.close()
 
 
-@pytest.mark.skipif(
-    not _turso_creds_present,
-    reason="TURSO_DEV_* not set; skipping integration check",
-)
+@pytest.mark.skipif(not _turso_creds_present(), reason=_SKIP_REASON)
 def test_serve_explorer_against_turso_store():
     """serve/explorer.list_parameters works against the libSQL backend.
 
-    This is the load-bearing integration check: it proves the Protocol
-    typing isn't just a static-typing convenience but a real contract
-    the serve layer can rely on at runtime.
+    Type-and-shape integration check: it proves the Protocol typing
+    isn't just a static convenience but a real contract the serve
+    layer can rely on at runtime.
 
-    Requires that some compatible schema is live on lens-dev — we set
-    one up locally first if missing, then tear it down.
+    Coverage scope: this test only exercises ``query`` (via
+    ``list_parameters``). Broader coverage of the other 4 protocol
+    methods against ``TursoStore`` lives in ``tests/test_turso_store.py``
+    (vector_search, search_papers, hybrid_search, query_sql).
+
+    Concurrency caveat: this test sets up + tears down a ``vocabulary``
+    table on lens-dev. Running it concurrently with the
+    ``publish-turso.yml`` GH Actions workflow against the same DB will
+    race. Phase 1 prototype assumes serial execution; if we move to
+    parallel CI, point this test at a dedicated ``lens-dev-test``
+    database.
     """
     import libsql_client
 
