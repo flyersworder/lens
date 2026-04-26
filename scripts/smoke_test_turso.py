@@ -23,17 +23,6 @@ from pathlib import Path
 from lens.store.turso_store import TursoStore
 
 
-def _load_env_local() -> None:
-    """Pick up TURSO_* env vars from .env.local if present (local dev only)."""
-    env_local = Path(__file__).resolve().parent.parent / ".env.local"
-    if env_local.exists():
-        for line in env_local.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
-
-
 def _resolve_target(target: str) -> tuple[str, str]:
     """Mirror of publish_to_turso.py's resolver, kept independent for clarity."""
     if target == "dev":
@@ -162,7 +151,9 @@ def main() -> None:
     )
     args = parser.parse_args()
 
-    _load_env_local()
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     url, token = _resolve_target(args.target)
     print(f"smoke-testing target: {url}")
     failed = smoke_test(url, token)

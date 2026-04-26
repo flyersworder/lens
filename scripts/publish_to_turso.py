@@ -15,7 +15,7 @@ to ``papers`` / ``vocabulary``) into the libSQL-native shape that
 Usage::
 
     # Set TURSO_DATABASE_URL and TURSO_AUTH_TOKEN in environment
-    # (or .env.local at repo root)
+    # (or .env at repo root — auto-loaded via python-dotenv)
     uv run python scripts/publish_to_turso.py
 
     # Custom local DB and target
@@ -98,17 +98,6 @@ def _normalize_url(url: str) -> str:
     if url.startswith("libsql://"):
         return "https://" + url[len("libsql://") :]
     return url
-
-
-def _load_env_local() -> None:
-    """Pick up TURSO_* env vars from .env.local if present."""
-    env_local = Path(__file__).resolve().parent.parent / ".env.local"
-    if env_local.exists():
-        for line in env_local.read_text().splitlines():
-            line = line.strip()
-            if line and not line.startswith("#") and "=" in line:
-                k, v = line.split("=", 1)
-                os.environ.setdefault(k.strip(), v.strip())
 
 
 def _resolve_target(target: str) -> tuple[str, str]:
@@ -494,7 +483,9 @@ def main() -> None:
     level = logging.DEBUG if args.verbose >= 1 else logging.INFO
     logging.basicConfig(level=level, format="%(message)s")
 
-    _load_env_local()
+    from dotenv import load_dotenv
+
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
     url, token = _resolve_target(args.target)
     publish(args.local, url, token, embedding_dim=args.embedding_dim)
 

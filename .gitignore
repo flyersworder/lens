@@ -23,7 +23,6 @@ Thumbs.db
 
 # Environment
 .env
-.env.local
 
 # Data
 *.lance/

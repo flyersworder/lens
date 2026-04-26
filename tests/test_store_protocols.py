@@ -16,19 +16,13 @@ import struct
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 
 from lens.store.protocols import ReadableStore
 from lens.store.store import LensStore
 
-# Same .env.local loader as test_turso_store.py — keeps the test
-# self-contained when run locally.
-_ENV_LOCAL = Path(__file__).resolve().parent.parent / ".env.local"
-if _ENV_LOCAL.exists():
-    for line in _ENV_LOCAL.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+# Load .env so the test picks up TURSO_DEV_* creds when running locally.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 # ---------------------------------------------------------------------------

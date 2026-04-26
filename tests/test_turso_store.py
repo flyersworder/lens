@@ -1,7 +1,7 @@
 """Integration tests for TursoStore against a real remote libSQL DB.
 
 Skipped by default; runs only when ``TURSO_DEV_DATABASE_URL`` and
-``TURSO_DEV_AUTH_TOKEN`` are set in the environment (see ``.env.local``).
+``TURSO_DEV_AUTH_TOKEN`` are set in the environment (see ``.env``).
 
 Tests build the canonical ``papers`` / ``vocabulary`` schema on the
 remote DB and tear it down at the end. The dev DB is dedicated to
@@ -16,15 +16,10 @@ import struct
 from pathlib import Path
 
 import pytest
+from dotenv import load_dotenv
 
-# Load .env.local so tests pick up dev creds when running locally.
-_ENV_LOCAL = Path(__file__).resolve().parent.parent / ".env.local"
-if _ENV_LOCAL.exists():
-    for line in _ENV_LOCAL.read_text().splitlines():
-        line = line.strip()
-        if line and not line.startswith("#") and "=" in line:
-            k, v = line.split("=", 1)
-            os.environ.setdefault(k.strip(), v.strip())
+# Load .env so tests pick up dev creds when running locally.
+load_dotenv(Path(__file__).resolve().parent.parent / ".env")
 
 
 pytestmark = pytest.mark.skipif(

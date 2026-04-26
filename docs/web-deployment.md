@@ -2,7 +2,7 @@
 
 Architecture for shipping LENS as a public read-only website on a free tier, using Turso for the database, GitHub Actions for the build pipeline, and Vercel for the web frontend + API.
 
-**Status:** **Live in production** — `https://lens-fawn.vercel.app` (Vercel Hobby) backed by `lens-dev` Turso DB with the real 77-paper corpus. All 4 routes return 200; full stack (cloud embeddings + DeepSeek V4 Flash + libSQL hybrid search + FastAPI) verified end-to-end 2026-04-26.
+**Status:** **Live in production** — `https://lens-fawn.vercel.app` (Vercel Hobby) backed by **`lens-prod`** Turso DB with the real 77-paper corpus. All 4 routes return 200; full stack (cloud embeddings + DeepSeek V4 Flash + libSQL hybrid search + FastAPI) verified end-to-end 2026-04-26 against `lens-prod`.
 **Date:** 2026-04-26
 **Companion doc:** [`deployment.md`](deployment.md) covers self-hosted / local deployment; this doc covers public web deployment.
 
@@ -14,14 +14,16 @@ Architecture for shipping LENS as a public read-only website on a free tier, usi
 |---|---|---|
 | **Public URL** | `https://lens-fawn.vercel.app` | Production alias on Vercel Hobby (`flyersworders-projects/lens`) |
 | **Endpoints** | `/api/health`, `/api/search`, `/api/analyze`, `/api/explain` | Defined in `api/index.py` |
-| **Database** | Turso `lens-dev` (`libsql://lens-dev-flyersworder.aws-eu-west-1.turso.io`) | 77 papers, 82 vocab, 65 matrix cells, 80 tradeoff extractions; embeddings still 768-dim (sentence-transformers, padded to 1536 at query time) |
+| **Database (prod)** | Turso `lens-prod` (`libsql://lens-prod-flyersworder.aws-eu-west-1.turso.io`) | Live API source. 77 papers, 82 vocab, 65 matrix cells, 80 tradeoff extractions; embeddings still 768-dim (sentence-transformers, padded to 1536 at query time) |
+| **Database (dev)** | Turso `lens-dev` (`libsql://lens-dev-flyersworder.aws-eu-west-1.turso.io`) | Used by `tests/test_turso_store.py` and the Phase 1 publish workflow; safe to wipe. Same corpus snapshot. |
 | **Storage adapter** | `TursoStore` in `src/lens/store/turso_store.py` | libSQL native vectors via `vector_top_k` + `vector_distance_cos` |
 | **LLM** | OpenRouter `deepseek/deepseek-v4-flash` | Per ADR D2; ~$20 credit balance, hard cap not yet set |
 | **Embeddings (runtime)** | OpenRouter `openai/text-embedding-3-small` (1536-dim) | Per ADR D1; cloud provider, runs on every search/explain |
 | **Build/publish path** | `scripts/build_seed_fixture.py` + `scripts/publish_to_turso.py` + `tests/test_turso_store.py` | Drop-recreate-copy-verify; ~100s for 728 rows + 174 embeddings |
 | **CI Phase 1** | `.github/workflows/publish-turso.yml` (manual trigger) | Validates publish chain on every workflow_dispatch; no LLM cost |
 | **Local-only path** | `LensStore` (sqlite-vec); `--extra local` install | Used by CLI, build pipeline, and 296-test suite |
-| **Vercel env vars set** | `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY` | Production environment only; preview/dev not configured |
+| **Vercel env vars set** | `TURSO_DATABASE_URL` (→ lens-prod), `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY` | Production environment only; preview/dev not configured |
+| **GitHub Secrets** | `TURSO_DEV_*` (Phase 1 publish) and `TURSO_PROD_*` (Phase 2 monitor cron, queued) | `OPENROUTER_API_KEY` will be added when Phase 2 lands |
 | **Test count** | 296 (256 offline + 17 TursoStore + 19 API/protocol + 4 protocol-specific) | All green |
 
 ### Verified working (last checked 2026-04-26)
@@ -50,22 +52,13 @@ POST /api/explain {"query": "grouped query attention"}
 
 If you (or future-you) are returning to this work after a break, this is the order of next steps in priority order. Each item is independently completable in ~1 day or less.
 
-### 1. Provision `lens-prod` so test runs don't wipe production data (~1 hour)
+### 1. ~~Provision `lens-prod` so test runs don't wipe production data~~ — **done 2026-04-26**
 
-**Problem**: TursoStore integration tests (`tests/test_turso_store.py`) and the publish workflow both target `lens-dev`. Each `pytest` run drops `papers`/`vocabulary`. Currently the live Vercel site reads from `lens-dev`, so tests can leave it half-empty.
-
-**Fix**:
-1. `turso db create lens-prod --location iad`
-2. `turso db tokens create lens-prod` (long-lived)
-3. `vercel env rm TURSO_DATABASE_URL production` then re-add pointing at `lens-prod`
-4. Same for `TURSO_AUTH_TOKEN`
-5. `vercel env add TURSO_PROD_DATABASE_URL` + `TURSO_PROD_AUTH_TOKEN` to GitHub Secrets so the publish workflow's `--target prod` works
-6. Run `python scripts/publish_to_turso.py --target prod` once to seed it
-7. `vercel deploy --prod`
+`lens-prod` is live, seeded from the local 77-paper corpus, and Vercel production points at it. `TURSO_PROD_*` is in `.env` (auto-loaded by `python-dotenv`) and GitHub Secrets so `python scripts/publish_to_turso.py --target prod` works locally and in CI. The dev DB (`lens-dev`) is now disposable: `pytest` and the Phase 1 publish workflow can wipe it without affecting the live site.
 
 Reference: ADR D5, `_resolve_target` in `scripts/publish_to_turso.py:114`.
 
-### 2. Re-embed the corpus with `text-embedding-3-small` (~30 min, deferred until prod is up)
+### 2. Re-embed the corpus with `text-embedding-3-small` (~30 min)
 
 **Problem**: `~/.lens/data/lens.db` has 768-dim sentence-transformers vectors (from the era before ADR D1). At query time we send 1536-dim text-embedding-3-small vectors. The publish step pads stored vectors to 1536 with zeros, so vector search works but recall is degraded — distances aren't computed in the right space.
 
@@ -526,7 +519,7 @@ When the prototype graduates to a product, migrating to Neon is a contained proj
 When ready to ship, work through these in order:
 
 **Database & embedding setup**
-- [x] ~~Create Turso account, create `lens-prod` and `lens-dev` databases, capture URL + auth tokens~~ — done 2026-04-26; credentials in `.env.local`
+- [x] ~~Create Turso account, create `lens-prod` and `lens-dev` databases, capture URL + auth tokens~~ — done 2026-04-26; credentials in `.env` (auto-loaded by `python-dotenv`)
 - [x] ~~Validate libSQL native vectors + FTS5 against remote Turso (Spike 2)~~ — passed 2026-04-26
 - [x] ~~Top up OpenRouter with $10 credit (one-time) to unlock 1000 req/day on free models *and* enable cheap paid models~~ — done; ~$20 balance available, which unblocks cloud embeddings, request-time LLM, and Phase 2 monitor cron
 - [x] ~~Add `libsql-client` to `pyproject.toml` as a `[project.optional-dependencies] turso` extra~~ — done; also added `[web]` extra (fastapi + transitive turso) and `[local]` extra (sentence-transformers + sqlite-vec, kept off Vercel to fit the 500 MB bundle cap)
@@ -541,8 +534,8 @@ When ready to ship, work through these in order:
 - [x] ~~Write `scripts/publish_to_turso.py` (try/finally around the modify step)~~ — done; `pull_from_turso.py` deferred to Phase 2 monitor cron (will likely use a release-asset roundtrip instead of a true pull)
 - [x] ~~Phase 1: `.github/workflows/publish-turso.yml` (manual trigger, synthetic seed fixture, no LLM cost)~~ — done; validates the publish chain under CI before the monitor cron lands
 - [ ] Phase 2: `.github/workflows/monitor.yml` with weekly cron + `workflow_dispatch` — runs `lens monitor` end-to-end (deferred until OpenRouter credits + state preservation are in place)
-- [x] ~~Configure GitHub Secrets: `TURSO_DEV_DATABASE_URL`, `TURSO_DEV_AUTH_TOKEN`~~ — done (used by `publish-turso.yml` Phase 1). `TURSO_PROD_*` and `OPENROUTER_API_KEY` will be added when Phase 2 lands.
-- [x] ~~Run the workflow once via `workflow_dispatch` to seed the prod DB~~ — Phase 1 workflow run validated end-to-end against `lens-dev` (workflow run id 24960286069); seeding `lens-prod` deferred until that DB is provisioned (see "Picking up from a fresh context" → step 1)
+- [x] ~~Configure GitHub Secrets: `TURSO_DEV_DATABASE_URL`, `TURSO_DEV_AUTH_TOKEN`~~ — done (used by `publish-turso.yml` Phase 1). `TURSO_PROD_DATABASE_URL` + `TURSO_PROD_AUTH_TOKEN` added 2026-04-26 in preparation for Phase 2; `OPENROUTER_API_KEY` will land with the monitor workflow.
+- [x] ~~Run the workflow once via `workflow_dispatch` to seed the prod DB~~ — Phase 1 workflow run validated end-to-end against `lens-dev` (workflow run id 24960286069); `lens-prod` seeded from local on 2026-04-26 (77 papers + 82 vocab + 65 matrix cells, 42.6 s)
 
 **Web tier**
 - [x] ~~Create `api/` directory at repo root with `analyze.py`, `explain.py`, `search.py` FastAPI handlers~~ — done as a single `api/index.py` (the recommended Vercel multi-route shape; one app, three routes); 15 unit tests in `tests/test_api_index.py` cover validation, dispatch, error paths, and dependency-injection wiring
