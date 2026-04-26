@@ -17,7 +17,7 @@ from lens.serve.explorer import (
     list_architecture_variants,
 )
 from lens.store.models import ExplanationResult
-from lens.store.store import LensStore
+from lens.store.protocols import ReadableStore
 from lens.taxonomy.embedder import embed_strings
 
 logger = logging.getLogger(__name__)
@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 def find_candidates(
     query: str,
-    store: LensStore,
+    store: ReadableStore,
     top_k: int = 3,
     embedding_kwargs: dict[str, Any] | None = None,
 ) -> list[dict[str, Any]]:
@@ -82,7 +82,7 @@ def find_candidates(
 def graph_walk(
     resolved_type: str,
     resolved_id: str,
-    store: LensStore,
+    store: ReadableStore,
 ) -> dict[str, Any]:
     """Walk the knowledge graph outward from a resolved concept.
 
@@ -98,7 +98,7 @@ def graph_walk(
     return {"identity": {"name": "Unknown", "description": "", "type": resolved_type}}
 
 
-def _walk_tradeoff(resolved_type: str, resolved_id: str, store: LensStore) -> dict[str, Any]:
+def _walk_tradeoff(resolved_type: str, resolved_id: str, store: ReadableStore) -> dict[str, Any]:
     """Walk tradeoff graph for parameter or principle."""
     walk: dict[str, Any] = {}
     vocab = store.query("vocabulary")
@@ -139,7 +139,7 @@ def _walk_tradeoff(resolved_type: str, resolved_id: str, store: LensStore) -> di
     return walk
 
 
-def _walk_architecture(resolved_id: str, store: LensStore) -> dict[str, Any]:
+def _walk_architecture(resolved_id: str, store: ReadableStore) -> dict[str, Any]:
     """Walk architecture data for an arch_slot."""
     walk: dict[str, Any] = {}
     entry = store.query("vocabulary", "id = ?", (resolved_id,))
@@ -168,7 +168,7 @@ def _walk_architecture(resolved_id: str, store: LensStore) -> dict[str, Any]:
     return walk
 
 
-def _walk_agentic(resolved_id: str, store: LensStore) -> dict[str, Any]:
+def _walk_agentic(resolved_id: str, store: ReadableStore) -> dict[str, Any]:
     """Walk agentic data for an agentic_category."""
     walk: dict[str, Any] = {}
     entry = store.query("vocabulary", "id = ?", (resolved_id,))
@@ -376,7 +376,7 @@ def _build_agentic_prompt(
 
 async def explain(
     query: str,
-    store: LensStore,
+    store: ReadableStore,
     llm_client: LLMClient,
     focus: str | None = None,
     embedding_kwargs: dict[str, Any] | None = None,

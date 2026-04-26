@@ -391,7 +391,7 @@ When ready to ship, work through these in order:
 - [ ] Add `libsql-client` to `pyproject.toml` as a `[project.optional-dependencies] turso` extra
 - [x] ~~Build new `TursoStore` class with read API matching `Store` (vector queries via `vector_top_k`, FTS5 unchanged)~~ — done (commit bf4664c)
 - [x] ~~Write `scripts/publish_to_turso.py` to translate sqlite-vec schema → libSQL native and copy data~~ — done; end-to-end verified against real LENS DB (728 rows, ~100 s)
-- [ ] Wire `TursoStore` into `serve/analyzer.py`, `serve/explainer.py`, `serve/explorer.py` via a small adapter
+- [x] ~~Wire `TursoStore` into `serve/analyzer.py`, `serve/explainer.py`, `serve/explorer.py` via a small adapter~~ — done via the `ReadableStore` protocol (`src/lens/store/protocols.py`); 4 conformance tests in `tests/test_store_protocols.py` exercise both backends end-to-end
 - [x] ~~Add `TursoStore` integration tests gated on `TURSO_DEV_*` env vars (skip when offline)~~ — done (commit bf4664c, 17 tests)
 - [ ] Switch local config to `embeddings.provider: cloud` with OpenRouter base URL; verify `embedder.py` cloud path works end-to-end
 - [ ] Re-embed the existing corpus once with the chosen embedding model (locks `EMBEDDING_DIM`)

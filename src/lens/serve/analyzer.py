@@ -8,7 +8,7 @@ from typing import Any
 
 from lens.llm.client import LLMClient
 from lens.llm.utils import strip_code_fences
-from lens.store.store import LensStore
+from lens.store.protocols import ReadableStore
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +32,7 @@ def _build_classify_prompt(query: str, param_names: list[str]) -> str:
 
 async def analyze(
     query: str,
-    store: LensStore,
+    store: ReadableStore,
     llm_client: LLMClient,
 ) -> dict[str, Any]:
     """Analyze a tradeoff query and return ranked principles."""
@@ -151,7 +151,7 @@ def _build_category_identify_prompt(query: str, category_names: list[str]) -> st
 
 async def analyze_architecture(
     query: str,
-    store: LensStore,
+    store: ReadableStore,
     llm_client: LLMClient,
 ) -> dict[str, Any]:
     """Analyze a query about transformer architecture and return matching variants."""
@@ -190,7 +190,7 @@ async def analyze_architecture(
 
 async def analyze_agentic(
     query: str,
-    store: LensStore,
+    store: ReadableStore,
     llm_client: LLMClient,
 ) -> dict[str, Any]:
     """Analyze a query about agentic design patterns and return matching patterns."""
