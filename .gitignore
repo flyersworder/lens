@@ -38,3 +38,9 @@ htmlcov/
 # Worktrees
 .worktrees/
 .vercel
+
+# Next.js / Node
+node_modules/
+.next/
+next-env.d.ts.swp
+*.tsbuildinfo
