@@ -13,11 +13,12 @@ Architecture for shipping LENS as a public read-only website on a free tier, usi
 | Component | Where it lives | Notes |
 |---|---|---|
 | **Public URL** | `https://lens-fawn.vercel.app` | Production alias on Vercel Hobby (`flyersworders-projects/lens`) |
-| **Endpoints** | `/api/health`, `/api/search`, `/api/analyze`, `/api/explain` | Defined in `api/index.py` |
+| **Endpoints** | `/api/health`, `/api/search`, `/api/analyze`, `/api/explain`, `/api/stats`, `/api/track` | Defined in `api/index.py`. `stats` aggregates corpus counts (5-min in-process cache); `track` writes a row into `usage_events` on Turso (lazy DDL, no-op when `TURSO_*` is unset). |
+| **Frontend** | Next.js 16 App Router at repo root (`app/`, `lib/`) | Three pages — `/` (search + landing), `/analyze`, `/explain/[concept]` — plus a global `StatsBar`. Uses Tailwind; no shadcn registry. Tracks views + submissions via `lib/api.ts#track()` (sendBeacon). |
 | **Database (prod)** | Turso `lens-prod` (`libsql://lens-prod-flyersworder.aws-eu-west-1.turso.io`) | Live API source. 77 papers, 82 vocab, 65 matrix cells, 80 tradeoff extractions; embeddings now 1536-dim `text-embedding-3-small` (matches runtime query space — no truncation). |
 | **Database (dev)** | Turso `lens-dev` (`libsql://lens-dev-flyersworder.aws-eu-west-1.turso.io`) | Used by `tests/test_turso_store.py` and the Phase 1 publish workflow; safe to wipe. Same corpus snapshot, same 1536-dim embeddings. |
 | **Storage adapter** | `TursoStore` in `src/lens/store/turso_store.py` | libSQL native vectors via `vector_top_k` + `vector_distance_cos` |
-| **LLM** | OpenRouter `deepseek/deepseek-v4-flash` | Per ADR D2; ~$20 credit balance, hard cap not yet set |
+| **LLM** | OpenRouter `deepseek/deepseek-v4-flash` | Per ADR D2; ~$20 credit balance, **weekly cap $5** (set 2026-04-28 — ~$20/mo effective ceiling) |
 | **Embeddings (runtime)** | OpenRouter `openai/text-embedding-3-small` (1536-dim) | Per ADR D1; cloud provider, runs on every search/explain |
 | **Build/publish path** | `scripts/build_seed_fixture.py` + `scripts/publish_to_turso.py` + `tests/test_turso_store.py` | Drop-recreate-copy-verify; ~100s for 728 rows + 174 embeddings |
 | **CI Phase 1** | `.github/workflows/publish-turso.yml` (manual trigger) | Validates publish chain on every workflow_dispatch; no LLM cost |
@@ -46,13 +47,15 @@ POST /api/explain {"query": "grouped query attention"}
 - **Turso**: free tier (5 GB / 500 M reads / 10 M writes)
 - **Vercel**: free Hobby tier (within 1 M invocations / 4 hr CPU)
 - **GitHub Actions**: unlimited for public repo
-- **OpenRouter**: ~$0.05 used during deploy validation; ~$2–5/mo projected
+- **OpenRouter**: ~$0.05 used during deploy validation; ~$2–5/mo projected; hard cap **$5/week** (configured)
 
 ---
 
 ## Picking this up from a fresh context
 
 If you (or future-you) are returning to this work after a break, this is the order of next steps in priority order. Each item is independently completable in ~1 day or less.
+
+> **OpenRouter spend cap: $5/week** (configured 2026-04-28; tighter than the per-month default since the prototype has no rate limiting or response cache yet — deferred to step 5 below). At ~$0.0005 per LLM call (DeepSeek V4 Flash, 1.5K-in / 0.5K-out), $5 covers ~10K cache-miss calls per week, well above the projected legitimate traffic and well below what a determined bot loop could burn through. The cap is the standing safeguard until `api/_middleware.py` lands. Re-evaluate once the rate limit + cache ship — at that point you can raise the cap or convert it to a higher monthly ceiling.
 
 ### 1. ~~Provision `lens-prod` so test runs don't wipe production data~~ — **done 2026-04-26**
 
@@ -76,15 +79,61 @@ The release was bootstrapped once from the local `~/.lens/data/lens.db`. From he
 
 Why a release asset instead of `pull_from_turso.py`: writing the inverse of the publish script (translating libSQL-native vectors back to sqlite-vec companion tables) doubles the surface area; `turso db dump`/`restore` adds a Turso-region dependency to the runner and is slower cross-region.
 
-### 4. Next.js frontend (~1 day)
+### 4. ~~Next.js frontend~~ — **done 2026-04-28**
 
-**Problem**: only `curl`-friendly. Need three pages calling `/api/*` for an actual UI.
+Next.js 16 (App Router) lives at the repo root (not `web/` — Vercel's monorepo+Python+Next.js pattern wants the framework at root, and ADR D4's intent is "single deploy"). Tailwind, no shadcn (the three pages don't earn a registry init). Pages:
 
-**Fix**:
-- `web/` directory in this monorepo (per ADR D4)
-- Three pages: search box landing → results, `/analyze`, `/explain/:concept`
-- Shadcn/ui for fast scaffolding
-- Same `vercel deploy` because Vercel auto-detects Next.js
+- `/` — hero search → live results from `/api/search`, with prompt chips and the global `StatsBar` in the footer
+- `/analyze` — toggle for `tradeoff` / `architecture` / `agentic`; renders `improving`/`worsening` cards + ranked principles, with deep-links into `/explain/<id>`
+- `/explain/[concept]` — narrative + evolution + connected concepts + paper refs, with sibling links
+
+Two API additions backing the UI:
+- `/api/stats` — aggregates `papers`, `vocabulary` by kind, `matrix_cells`, `tradeoffs`, `taxonomy_version`. Cached for 5 minutes per warm instance via an `lru_cache` keyed on `int(time.time() // 300)`.
+- `/api/track` — POST `{event, query?}` writing a row into `usage_events` on Turso (lazy `CREATE TABLE IF NOT EXISTS` on first call). Queries are SHA-256-hashed (16 hex) before persistence — analytics without storing raw user input. No-ops locally when `TURSO_*` is unset.
+
+`vercel.json` now combines installs: `npm install --no-audit --no-fund && uv sync --frozen --extra web --no-dev --no-editable`, plus `buildCommand: "next build"`.
+
+### 4a. Local development
+
+`scripts/dev.sh` boots both halves of the stack — uvicorn on `:8000`, Next.js on `:3000` — under a single shell with a cleanup trap. Ctrl+C tears down both. **Default mode is `preview`** (production build + `next start`), which keeps the runtime footprint to ~100 MB instead of the ~1.5–2 GB Turbopack `next dev` uses. On a memory-constrained laptop, `next dev` cascading into swap-thrash → kernel panic is a documented failure mode in this repo (sessions on 2026-04-28 saw two MBA restarts before we switched the default).
+
+```sh
+./scripts/dev.sh                          # preview mode (default, low memory)
+./scripts/dev.sh --stop                   # tear down a running session
+LENS_DEV_MODE=hot ./scripts/dev.sh        # next dev + Turbopack (HMR, heavy)
+LENS_DEV_MODE=webpack ./scripts/dev.sh    # next dev --no-turbopack (HMR, lighter)
+./scripts/dev.sh --turso                  # use TURSO_PROD_* instead of local DB
+LENS_API_PORT=8001 ./scripts/dev.sh       # alternate backend port
+```
+
+`Ctrl+C` from your terminal works in the normal foreground case. If you launched dev.sh as a background job (`./scripts/dev.sh &`), bash inherits a SIG_IGN mask for INT/TERM that the in-script trap can't reliably override on macOS bash 3.2 — use `./scripts/dev.sh --stop` instead, which reads `/tmp/lens-dev.pids` and recursively tears down the full process tree.
+
+**Why preview, not dev, by default**: `next dev` (with Turbopack or webpack) holds the source tree + node_modules + a TS type-checker in memory and re-checks on every keystroke. `next build` is a one-time spike that exits cleanly; `next start` afterwards is a small Node HTTP server with no compiler in the loop. For *inspecting* the UI (the common case after first scaffold), preview is strictly better. Switch to `hot` only when actively iterating on the frontend.
+
+**Why `--extra local-store` instead of `--extra local`**: the latter pulls `sentence-transformers` + `torch` (~400 MB resident, dragged in via litellm's plugin discovery). The runtime uses cloud embeddings (per ADR D1), so torch is dead weight in dev. The `[local-store]` extra carries only `sqlite-vec` for `LensStore`'s vector index. If you actually need offline embeddings (rare in web-tier work), pass `--extra local-embed` or the back-compat `--extra local`.
+
+**Why a script and not a one-liner**: detached background processes (the original launch path) survived shell exit and piled up memory until macOS gave up. `dev.sh` keeps both children attached to the parent shell's TTY so a single Ctrl+C cleanly terminates both via a `trap` on `INT/TERM/EXIT`.
+
+**`next.config.mjs` rewrite contract**: the rewrite condition (`if (process.env.VERCEL) return []`) is evaluated at **build time**, then baked into `.next/routes-manifest.json`. Locally `next build` runs without `VERCEL` set, so the proxy `/api/* → 127.0.0.1:$LENS_API_PORT` is included in the manifest and `next start` honours it. On Vercel the platform sets `VERCEL=1` for both build and runtime, so the rewrite resolves to `[]` and the platform's own `api/*.py` auto-detection wins. If you ever change the condition, **rebuild** — the preview-mode `dev.sh` does this for you on every launch.
+
+### 4b. Inspecting `usage_events`
+
+Phase-2 monitor and the `/api/track` endpoint both write into a single Turso table. There's no read API yet — query it directly via the Turso CLI:
+
+```sh
+turso db shell lens-prod \
+  "SELECT event, COUNT(*) AS n
+     FROM usage_events
+    WHERE ts >= strftime('%s','now') - 7*86400
+    GROUP BY event
+    ORDER BY n DESC;"
+```
+
+Useful follow-ups:
+
+- **Top distinct queries (last 7 days):** `SELECT query_hash, COUNT(*) FROM usage_events WHERE query_hash IS NOT NULL AND ts >= strftime('%s','now') - 7*86400 GROUP BY query_hash ORDER BY 2 DESC LIMIT 20;` — `query_hash` is a 16-char SHA-256 prefix, so duplicate queries collide deterministically without exposing user input.
+- **Strict-Mode dev inflation:** the React-19 `useEffect` double-fire is suppressed in production by a `useRef` guard (`lib/use-track-once.ts`); `next dev` runs without that, so dev-environment events double-count.
+- **Cross-origin spam:** `/api/track` returns `{"status":"ignored"}` (no DB write) for any request whose `Origin`/`Referer` isn't in `LENS_TRACK_ORIGINS` (or `LENS_CORS_ORIGINS` if track-specific isn't set). Configure `LENS_TRACK_ORIGINS=https://lens-fawn.vercel.app` in Vercel env to enforce.
 
 ### 5. Rate limiting + response cache (~half day)
 
@@ -93,7 +142,7 @@ Why a release asset instead of `pull_from_turso.py`: writing the inverse of the 
 **Fix**: `api/_middleware.py` using Vercel KV (Upstash Redis):
 - Per-IP rate limit (10 req/min)
 - Response cache keyed on `endpoint + query.lower().strip()` with 24h TTL (per ADR D3)
-- Hard OpenRouter monthly cap set in OpenRouter dashboard
+- ~~Hard OpenRouter monthly cap set in OpenRouter dashboard~~ — done 2026-04-28: **weekly $5** cap configured (tighter than the planned monthly cap; revisit when the rate limit + cache land)
 
 ### 6. Surface degraded mode when embedding fails (~30 min)
 
@@ -106,7 +155,7 @@ Why a release asset instead of `pull_from_turso.py`: writing the inverse of the 
 - Custom domain (Vercel `domains` tab; bring your own or buy one)
 - README update with public URL + non-commercial note
 - Vercel Analytics (1-line opt-in)
-- Set OpenRouter spending cap in dashboard
+- ~~Set OpenRouter spending cap in dashboard~~ — done 2026-04-28 ($5/week)
 - Add `lens-prod` row to `docs/web-deployment.md`'s state table once it exists
 
 ---
@@ -381,7 +430,7 @@ Live LLM at the edge is cheap *only if* it's protected. The Vercel Python Functi
 
 1. **Per-IP rate limit** — e.g., 10 requests/min per IP, enforced via Vercel KV (free 30K req/mo). Prevents bot loops from draining credits.
 2. **Response cache** — every `analyze`/`explain` request keyed by query string + type, cached for 24 h in Vercel KV or as a stored row in Turso. Most public queries repeat (`"reduce hallucination"`, `"MoE explained"`, etc.); caching ~10× the underlying API cost.
-3. **OpenRouter spending cap** — set a hard monthly limit in OpenRouter dashboard (e.g., $5/mo). If exceeded, the API returns `402` and the Function falls back to a cached or static response.
+3. **OpenRouter spending cap** — set a hard limit in the OpenRouter dashboard. We currently use **$5/week** (configured 2026-04-28); a monthly cap is the more common shape but the weekly window bounds blast radius better while we have no rate limit. If exceeded, the API returns `402` and the Function falls back to a cached or static response.
 
 **Estimated cost per active month** (with 10K visitors, average 3 queries each, 80% cache hit rate):
 - Cache misses: ~6,000 LLM calls
@@ -427,7 +476,7 @@ Budget cap of **$5/month** gives ~2× safety margin and triple-digit-thousand vi
 | Vercel Active CPU | **4 hours / mo** | ~1 hour (avg ~100 ms × 30K invocations) | 4× |
 | Vercel Edge Requests | 1 M / mo | ~50K | 20× |
 | OpenRouter (paid credits ≥$10) | 1000 req/day on free models, or pay-per-use on cheap models | well within with caching | comfortable |
-| OpenRouter spend (cheap models) | hard cap $5/mo (configurable) | ~$2/mo at 10K visitors | 2.5× |
+| OpenRouter spend (cheap models) | hard cap **$5/week** (configured 2026-04-28; ≈ $20/mo ceiling) | ~$2/mo at 10K visitors | 10× |
 
 **Verdict:** The whole stack is essentially free except for ~$2–5/month in OpenRouter usage if traffic grows. Vercel Active CPU is the tightest constraint and the first thing to watch — at higher traffic, increase response-cache hit rate to keep CPU time per request low.
 
@@ -530,8 +579,8 @@ When ready to ship, work through these in order:
 **Web tier**
 - [x] ~~Create `api/` directory at repo root with `analyze.py`, `explain.py`, `search.py` FastAPI handlers~~ — done as a single `api/index.py` (the recommended Vercel multi-route shape; one app, three routes); 15 unit tests in `tests/test_api_index.py` cover validation, dispatch, error paths, and dependency-injection wiring
 - [ ] Wire per-IP rate limit + response cache via Vercel KV *(see step 5 in "Picking up from a fresh context")*
-- [ ] Set OpenRouter monthly spending cap in OpenRouter dashboard *(see step 7)*
-- [ ] Scaffold Next.js project in `web/` (or separate repo) with 3 pages *(see step 4)*
+- [x] ~~Set OpenRouter monthly spending cap in OpenRouter dashboard~~ — done 2026-04-28; configured a **weekly** $5 cap instead of monthly (tighter; the prototype's lack of rate-limiting argues for shorter accumulation windows). Re-evaluate once `api/_middleware.py` lands.
+- [x] ~~Scaffold Next.js project in `web/` (or separate repo) with 3 pages~~ — done 2026-04-28; built at the repo root (not `web/`) per ADR D4. Three pages + StatsBar + tracking, all calling `/api/*` same-origin. `next build` clean (4 static + 1 dynamic route)
 - [x] ~~Deploy to Vercel; set env vars: `TURSO_DATABASE_URL`, `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY`~~ — done; live at `https://lens-fawn.vercel.app`. `KV_REST_API_*` deferred until rate-limit/cache step. The deploy required 7 iterations; full diagnostic log in commits `2195a9c..6d4dd49`.
 - [x] ~~Smoke-test all three endpoints against prod Turso (warm and cold start)~~ — verified 2026-04-26; all 4 routes (`health`, `search`, `analyze`, `explain`) return 200 with real corpus data
 - [ ] Verify `/tmp` libSQL replica behaviour under sustained traffic *(deferred — current deploy uses libSQL HTTP, not embedded replicas; revisit if cold-start latency becomes a real UX issue)*
