@@ -1,30 +1,31 @@
-# Vercel Python builder dependency manifest.
+# Vercel Python builder dependency manifest for ``api/index.py``.
 #
-# Intentionally minimal: only the runtime-essential deps Vercel needs to
-# bootstrap api/index.py. The rest of the LENS source tree (src/lens/...)
-# is mounted via the project root and made importable by Vercel's
-# automatic include of sibling files.
+# Vercel runs two install steps for this monorepo:
 #
-# KNOWN BUNDLE-SIZE ISSUE (deferred):
-# pyproject.toml currently lists `sentence-transformers` and
-# `sqlite-vec` as base dependencies. If Vercel installs the
-# lens-research package via `pip install .`, those (especially
-# sentence-transformers + torch at ~600 MB) push the bundle past
-# Vercel's 500 MB unzipped cap. Before deploy, those should move
-# to a `local` optional extra so the Vercel runtime can install
-# only what `TursoStore` + cloud embeddings need.
+#   1. ``installCommand`` from vercel.json — currently
+#      ``npm install ... && uv sync --frozen --extra web --no-dev --no-editable``
+#      This is what builds the *project* environment that ``next build``
+#      uses, and it's also where the ``[web]`` extra (lens-research +
+#      fastapi + libsql-client) lands.
 #
-# For the prototype, Vercel reads this file directly; the lens
-# package itself is imported from src/lens via PYTHONPATH=src
-# (set in vercel.json, when added).
+#   2. ``@vercel/python`` reads THIS file when packaging the
+#      serverless function bundle for ``api/index.py``. Anything not
+#      listed here will not be importable at request time, regardless
+#      of what step #1 installed into the build sandbox.
+#
+# So the file must mirror the ``[web]`` extra in pyproject.toml.
+# Keep these two lists in lockstep — drift = ImportError at cold start.
+#
+# Heavy ML deps (sentence-transformers, torch, sqlite-vec) live in the
+# ``[local]`` extra and are NEVER part of the Vercel bundle. The
+# runtime uses TursoStore (libSQL native vectors) + cloud embeddings,
+# so torch is unreachable. See pyproject.toml `[project.optional-dependencies]`.
 
 fastapi>=0.115
 libsql-client>=0.3.0
 
-# The lens package itself, installed from the repo root that Vercel
-# checks out. This pulls in lens-research's BASE deps from
-# pyproject.toml — including sentence-transformers and sqlite-vec
-# (the deferred bundle-size issue noted above). If the build fails
-# with "exceeded the unzipped maximum size of 500 MB", that's the
-# trigger to move those into a `local` extra in pyproject.toml.
+# The lens package itself. ``pip install .`` runs without extras, so
+# only the BASE deps from pyproject.toml's ``dependencies`` list are
+# pulled — none of the ``[local]`` ML deps. If you add a new BASE
+# dep, double-check it's <500 MB unzipped before merging.
 .

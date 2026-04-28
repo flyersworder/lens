@@ -194,7 +194,17 @@ class LensStore:
         if not db_path.endswith(".db"):
             db_path = db_path + ".db"
         self.db_path = db_path
-        self.conn = sqlite3.connect(db_path)
+        # ``check_same_thread=False`` lets FastAPI's threadpool dispatch
+        # requests to worker threads that share this connection — without
+        # it, sqlite3 raises ``ProgrammingError: SQLite objects created
+        # in a thread can only be used in that same thread`` on the
+        # second concurrent request. Concurrent reads under WAL mode
+        # (set below) are safe at the SQLite engine level, and our API
+        # path performs no writes against LensStore (writes happen
+        # via the libsql client in api/index.py for the Turso path).
+        # The CLI / build pipeline / test paths are single-threaded
+        # so the relaxation is a strict no-op for them.
+        self.conn = sqlite3.connect(db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row
         self.conn.enable_load_extension(True)
         _sqlite_vec.load(self.conn)

@@ -40,16 +40,19 @@ storage + LLM wiring can be reviewed in isolation.
 
 from __future__ import annotations
 
+import contextlib
+import hashlib
 import logging
 import os
 import re
+import time
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
 from pathlib import Path
 from typing import Annotated, Any, Literal
 
-from fastapi import Depends, FastAPI, HTTPException, Query
+from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, field_validator
 
@@ -193,6 +196,142 @@ class ExplainRequest(BaseModel):
 
 
 _DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+TrackEvent = Literal[
+    "view_home",
+    "view_analyze",
+    "view_explain",  # /explain landing page
+    "view_explain_concept",  # /explain/[concept] page-load (before resolution)
+    "search",
+    "analyze",
+    "explain",  # /explain/[concept] resolution succeeded
+]
+
+
+class TrackRequest(BaseModel):
+    event: TrackEvent
+    # Optional 200-char string for the originating query / path slug;
+    # we hash it on the server before persisting so we don't store
+    # raw user inputs (privacy + small storage footprint).
+    query: str | None = Field(default=None, max_length=200)
+
+
+# ---------------------------------------------------------------------------
+# Usage tracking — write path on Turso
+# ---------------------------------------------------------------------------
+#
+# TursoStore is read-only by design. For tracking we punch a small hole:
+# a dedicated libsql client just for INSERTs into ``usage_events``. The
+# table is created lazily on first track call (idempotent CREATE TABLE
+# IF NOT EXISTS), so a fresh ``lens-prod`` doesn't need a manual
+# migration step. Local dev (no TURSO_*) gets a no-op tracker — we
+# don't want test runs polluting a usage table on disk.
+
+
+_USAGE_DDL = """CREATE TABLE IF NOT EXISTS usage_events (
+    rowid INTEGER PRIMARY KEY AUTOINCREMENT,
+    ts INTEGER NOT NULL,
+    event TEXT NOT NULL,
+    query_hash TEXT
+)"""
+
+
+def _track_origin_allowed(request: Request) -> bool:
+    """Return True if the request's Origin (or Referer) is acceptable
+    for `/api/track`.
+
+    Behaviour:
+
+    * ``LENS_TRACK_ORIGINS`` set (comma-separated)  → strict allowlist;
+      reject anything else. Use this in production.
+    * ``LENS_CORS_ORIGINS``   set (comma-separated) → reuse it as the
+      track allowlist so a single env controls both.
+    * Neither set → permissive (dev mode). Without an allowlist there
+      is no way to distinguish a legitimate caller from a script, so
+      we don't pretend to enforce.
+
+    The check looks at ``Origin`` first (sent by browsers on
+    cross-origin requests), then falls back to a prefix match against
+    ``Referer`` (some clients elide ``Origin`` for same-origin POSTs).
+    Same-origin browser requests typically omit ``Origin`` entirely;
+    we accept those as long as the allowlist is non-empty and the
+    ``Referer`` matches.
+    """
+    raw = (
+        os.environ.get("LENS_TRACK_ORIGINS") or os.environ.get("LENS_CORS_ORIGINS") or ""
+    ).strip()
+    if not raw:
+        return True
+    allow = [o.strip().rstrip("/") for o in raw.split(",") if o.strip()]
+    origin = (request.headers.get("origin") or "").rstrip("/")
+    if origin and origin in allow:
+        return True
+    referer = request.headers.get("referer") or ""
+    return any(referer.startswith(o + "/") or referer == o for o in allow)
+
+
+# Hand-rolled "memoize on success only" cell. ``lru_cache`` would memoize
+# the failure paths too — we don't want a half-broken client (DDL failed)
+# or an early-cold-start ``None`` (env not yet present) pinned for the
+# instance's lifetime.
+_WRITER_CELL: dict[str, Any] = {}
+
+
+def _get_writer():  # type: ignore[no-untyped-def]
+    """Return a libsql write client, or ``None`` when tracking is unavailable.
+
+    Returns the underlying ``libsql_client.Client`` rather than wrapping
+    it — the only operation we need is ``execute(sql, params)``. The DDL
+    fires once per successful init and is idempotent.
+
+    Memoization rules:
+
+    * Successful client + DDL → cached for the warm instance lifetime.
+    * Missing ``TURSO_*`` env → returns ``None`` *without* caching, so a
+      late-arriving env (test harness, dev server reload) recovers on
+      the next call.
+    * DDL raise → close the client, return ``None``, do *not* cache.
+      Next call retries from scratch, matching the inline contract
+      ("don't cache a half-broken client").
+    """
+    cached = _WRITER_CELL.get("client")
+    if cached is not None:
+        return cached
+
+    turso_url = os.environ.get("TURSO_DATABASE_URL")
+    turso_token = os.environ.get("TURSO_AUTH_TOKEN")
+    if not (turso_url and turso_token):
+        logger.info("track: no TURSO_* env, tracking is a no-op")
+        return None
+
+    import libsql_client  # noqa: PLC0415
+
+    url = turso_url
+    if url.startswith("libsql://"):
+        url = "https://" + url[len("libsql://") :]
+    client = libsql_client.create_client_sync(url=url, auth_token=turso_token)
+    try:
+        client.execute(_USAGE_DDL)
+    except Exception:
+        logger.exception("track: failed to ensure usage_events table")
+        with contextlib.suppress(Exception):  # best-effort cleanup
+            client.close()
+        return None
+
+    _WRITER_CELL["client"] = client
+    return client
+
+
+def _hash_query(q: str | None) -> str | None:
+    """Stable short hash of a query string for usage analytics.
+
+    Truncated SHA-256 — 16 hex chars is plenty for de-duping common
+    queries without giving us a way to reconstruct the input.
+    """
+    if not q:
+        return None
+    return hashlib.sha256(q.strip().lower().encode("utf-8")).hexdigest()[:16]
 
 
 # ---------------------------------------------------------------------------
@@ -342,3 +481,128 @@ def search_endpoint(
         logger.exception("search failed for q=%r", q)
         raise HTTPException(status_code=500, detail="search failed") from e
     return {"results": results, "count": len(results)}
+
+
+# Hand-rolled TTL cache (one slot) for /api/stats. We can't use
+# ``lru_cache`` here because the cached function would have to call
+# ``get_store()`` directly, defeating ``app.dependency_overrides`` in
+# tests. Instead we key on a 5-minute time bucket and pass the
+# DI-resolved store through.
+_STATS_TTL_SECONDS = 300
+_stats_cache: dict[str, Any] = {"bucket": -1, "value": None}
+
+
+def _stats_bucket() -> int:
+    """Cache bucket key — same value for 5 minutes, then rolls over."""
+    return int(time.time() // _STATS_TTL_SECONDS)
+
+
+@app.get("/api/stats")
+def stats_endpoint(store: StoreDep) -> dict[str, Any]:
+    """Aggregate corpus stats for the public landing page.
+
+    Cached for 5 minutes per warm instance — counts barely move
+    between weekly monitor runs, and a cold start refreshes anyway.
+    The cache is *per-store-identity-and-bucket* so a test using
+    ``app.dependency_overrides[get_store]`` gets a fresh aggregation
+    instead of a stale entry computed against the production store.
+    """
+    bucket = _stats_bucket()
+    cache_key = (bucket, id(store))
+    if _stats_cache.get("key") == cache_key and _stats_cache.get("value") is not None:
+        return _stats_cache["value"]
+    value = _compute_stats(store)
+    _stats_cache["key"] = cache_key
+    _stats_cache["value"] = value
+    return value
+
+
+def _compute_stats(store: ReadableStore) -> dict[str, Any]:
+    """One-shot aggregation across the read-only corpus tables.
+
+    Each ``query_sql`` is independent — failures degrade to ``None``
+    so a missing table (e.g. fresh DB) doesn't 500 the whole stats
+    response. The frontend treats ``None`` as "—".
+    """
+
+    def _count(sql: str) -> int | None:
+        try:
+            rows = store.query_sql(sql)
+            if rows and "n" in rows[0]:
+                return int(rows[0]["n"])
+        except Exception:
+            logger.exception("stats: query failed: %s", sql)
+        return None
+
+    def _kind_counts() -> dict[str, int] | None:
+        """Return per-kind counts, or ``None`` when the aggregation fails.
+
+        We deliberately distinguish ``None`` (query failed / table
+        missing) from ``{}`` (table exists but empty) so the response
+        shape is uniformly null-vs-int — see the ``vocabulary`` block
+        below where the failure case sets *all* fields to ``None``.
+        """
+        try:
+            rows = store.query_sql("SELECT kind, COUNT(*) AS n FROM vocabulary GROUP BY kind")
+            return {str(r["kind"]): int(r["n"]) for r in rows}
+        except Exception:
+            logger.exception("stats: vocabulary kind aggregation failed")
+            return None
+
+    vocab = _kind_counts()
+    if vocab is None:
+        # Failure → propagate ``None`` to every kind field. Avoids the
+        # confusing UI state where ``total: None`` ("—") sits next to
+        # ``parameter: 0`` ("0") for the same root cause.
+        vocabulary_block: dict[str, int | None] = {
+            "total": None,
+            "parameter": None,
+            "principle": None,
+            "arch_slot": None,
+            "agentic": None,
+        }
+    else:
+        vocabulary_block = {
+            "total": sum(vocab.values()),
+            "parameter": vocab.get("parameter", 0),
+            "principle": vocab.get("principle", 0),
+            "arch_slot": vocab.get("arch_slot", 0),
+            "agentic": vocab.get("agentic", 0),
+        }
+    return {
+        "papers": _count("SELECT COUNT(*) AS n FROM papers"),
+        "vocabulary": vocabulary_block,
+        "matrix_cells": _count("SELECT COUNT(*) AS n FROM matrix_cells"),
+        "tradeoffs": _count("SELECT COUNT(*) AS n FROM tradeoff_extractions"),
+        "taxonomy_version": _count("SELECT MAX(version_id) AS n FROM taxonomy_versions"),
+    }
+
+
+@app.post("/api/track")
+def track_endpoint(req: TrackRequest, request: Request) -> dict[str, str]:
+    """Best-effort write of a single usage event.
+
+    Always returns 200 so the client doesn't have to handle errors
+    on a fire-and-forget call. Failures land in server logs.
+
+    Cross-origin requests are silently ignored when an allowlist is
+    configured (``LENS_TRACK_ORIGINS`` or ``LENS_CORS_ORIGINS``).
+    Returning 200 with ``{"status":"ignored"}`` rather than 403 is
+    deliberate: a polite no-op is harder to weaponize for probing than
+    a distinct error code, and keeps the public response surface flat.
+    """
+    if not _track_origin_allowed(request):
+        return {"status": "ignored"}
+
+    writer = _get_writer()
+    if writer is None:
+        return {"status": "noop"}
+    try:
+        writer.execute(
+            "INSERT INTO usage_events (ts, event, query_hash) VALUES (?, ?, ?)",
+            [int(time.time()), req.event, _hash_query(req.query)],
+        )
+    except Exception:
+        logger.exception("track: insert failed event=%s", req.event)
+        return {"status": "error"}
+    return {"status": "ok"}

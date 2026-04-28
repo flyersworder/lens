@@ -1,4 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "uv sync --frozen --extra web --no-dev --no-editable"
+  "installCommand": "npm install --no-audit --no-fund && uv sync --frozen --extra web --no-dev --no-editable",
+  "buildCommand": "next build"
 }

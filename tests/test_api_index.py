@@ -291,3 +291,217 @@ def test_search_accepts_iso_date(client, monkeypatch):
     monkeypatch.setattr("api.index.serve_search_papers", fake_search)
     r = c.get("/api/search", params={"after": "2024-01-01", "before": "2026-12-31"})
     assert r.status_code == 200
+
+
+# ---------------------------------------------------------------------------
+# /api/stats
+# ---------------------------------------------------------------------------
+
+
+def _stub_kind_query_sql(rows_by_sql: dict[str, list[dict[str, Any]]]):
+    """Return a ``query_sql`` that maps SQL prefixes to canned rows.
+
+    Stats fires several independent SQL strings; we match by *prefix*
+    so the test doesn't have to mirror the exact SELECT verbatim.
+    """
+
+    def _impl(sql: str, params: tuple | None = None) -> list[dict[str, Any]]:
+        for prefix, rows in rows_by_sql.items():
+            if sql.startswith(prefix):
+                return rows
+        return []
+
+    return _impl
+
+
+def _reset_stats_cache():
+    """Stats has a module-level TTL cache. Reset between cases so an
+    earlier test doesn't pin a stale value into a later one."""
+    from api.index import _stats_cache
+
+    _stats_cache.pop("key", None)
+    _stats_cache.pop("value", None)
+
+
+def test_stats_returns_aggregated_shape(client):
+    c, fake_store, _ = client
+    _reset_stats_cache()
+    fake_store.query_sql = _stub_kind_query_sql(
+        {
+            "SELECT COUNT(*) AS n FROM papers": [{"n": 77}],
+            "SELECT kind, COUNT(*) AS n FROM vocabulary": [
+                {"kind": "parameter", "n": 21},
+                {"kind": "principle", "n": 29},
+                {"kind": "arch_slot", "n": 23},
+            ],
+            "SELECT COUNT(*) AS n FROM matrix_cells": [{"n": 65}],
+            "SELECT COUNT(*) AS n FROM tradeoff_extractions": [{"n": 80}],
+            "SELECT MAX(version_id) AS n FROM taxonomy_versions": [{"n": 4}],
+        }
+    )
+
+    r = c.get("/api/stats")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["papers"] == 77
+    assert body["vocabulary"] == {
+        "total": 73,
+        "parameter": 21,
+        "principle": 29,
+        "arch_slot": 23,
+        "agentic": 0,  # missing from rows → present-but-empty kind defaults to 0
+    }
+    assert body["matrix_cells"] == 65
+    assert body["tradeoffs"] == 80
+    assert body["taxonomy_version"] == 4
+
+
+def test_stats_propagates_none_when_kind_aggregation_fails(client):
+    c, fake_store, _ = client
+    _reset_stats_cache()
+
+    def boom_on_kind(sql: str, params: tuple | None = None):
+        if sql.startswith("SELECT kind, COUNT(*)"):
+            raise RuntimeError("vocabulary table missing")
+        if sql.startswith("SELECT COUNT(*) AS n FROM papers"):
+            return [{"n": 5}]
+        return []
+
+    fake_store.query_sql = boom_on_kind
+    r = c.get("/api/stats")
+    assert r.status_code == 200
+    vocab = r.json()["vocabulary"]
+    # Failure must be uniform across all five fields — the whole point
+    # of the post-review fix is that "—" / 0 inconsistency is gone.
+    assert vocab == {
+        "total": None,
+        "parameter": None,
+        "principle": None,
+        "arch_slot": None,
+        "agentic": None,
+    }
+
+
+def test_stats_dependency_override_is_respected(client):
+    """Regression: previously ``_stats_cached`` called ``get_store()``
+    directly inside an ``lru_cache`` body, so ``app.dependency_overrides``
+    silently failed for ``/api/stats``. The fix keys the cache on the
+    DI-resolved store identity, so a per-test override flows through."""
+    c, fake_store, _ = client
+    _reset_stats_cache()
+    fake_store.query_sql = _stub_kind_query_sql({"SELECT COUNT(*) AS n FROM papers": [{"n": 999}]})
+    r = c.get("/api/stats")
+    assert r.status_code == 200
+    # 999 is a synthetic value only the fake's stub returns. Hitting
+    # it through the response proves the DI override flowed all the
+    # way to ``_compute_stats`` instead of the cache short-circuiting
+    # to a stale or default-store value.
+    assert r.json()["papers"] == 999
+
+
+def test_stats_cache_warm_path(client):
+    """Two consecutive calls within the same 5-min bucket reuse the
+    cached payload — confirmed by the second call NOT calling
+    ``query_sql`` again."""
+    c, fake_store, _ = client
+    _reset_stats_cache()
+    calls = {"n": 0}
+
+    def counting(sql: str, params: tuple | None = None):
+        calls["n"] += 1
+        if sql.startswith("SELECT COUNT(*) AS n FROM papers"):
+            return [{"n": 1}]
+        return []
+
+    fake_store.query_sql = counting
+    c.get("/api/stats")
+    first = calls["n"]
+    c.get("/api/stats")
+    assert calls["n"] == first  # cache hit, no further SQL
+
+
+# ---------------------------------------------------------------------------
+# /api/track
+# ---------------------------------------------------------------------------
+
+
+def test_track_noop_without_turso_env(client, monkeypatch):
+    """Default test environment has no TURSO_* — track must be a
+    no-op so test runs don't accidentally mutate a real DB."""
+    c, _, _ = client
+    monkeypatch.delenv("TURSO_DATABASE_URL", raising=False)
+    monkeypatch.delenv("TURSO_AUTH_TOKEN", raising=False)
+    # Reset writer cell — a previous test may have populated it.
+    from api.index import _WRITER_CELL
+
+    _WRITER_CELL.pop("client", None)
+
+    r = c.post("/api/track", json={"event": "view_home"})
+    assert r.status_code == 200
+    assert r.json() == {"status": "noop"}
+
+
+def test_track_rejects_unknown_event(client):
+    c, _, _ = client
+    r = c.post("/api/track", json={"event": "drop_table_users"})
+    assert r.status_code == 422
+
+
+def test_track_accepts_view_explain_concept(client):
+    """The post-review fix added ``view_explain_concept`` to the
+    Literal — guard against accidental removal."""
+    c, _, _ = client
+    r = c.post("/api/track", json={"event": "view_explain_concept", "query": "gqa"})
+    assert r.status_code == 200
+
+
+def test_track_rejects_oversized_query(client):
+    c, _, _ = client
+    r = c.post("/api/track", json={"event": "search", "query": "x" * 500})
+    assert r.status_code == 422
+
+
+def test_track_origin_allowlist_blocks_cross_origin(client, monkeypatch):
+    """When ``LENS_TRACK_ORIGINS`` is set, a request without a matching
+    Origin/Referer is silently ignored (returns ``status: ignored``)."""
+    c, _, _ = client
+    monkeypatch.setenv("LENS_TRACK_ORIGINS", "https://lens.example")
+    r = c.post(
+        "/api/track",
+        json={"event": "view_home"},
+        headers={"origin": "https://evil.example"},
+    )
+    assert r.status_code == 200
+    assert r.json() == {"status": "ignored"}
+
+
+def test_track_origin_allowlist_admits_listed_origin(client, monkeypatch):
+    c, _, _ = client
+    monkeypatch.setenv("LENS_TRACK_ORIGINS", "https://lens.example")
+    monkeypatch.delenv("TURSO_DATABASE_URL", raising=False)
+    monkeypatch.delenv("TURSO_AUTH_TOKEN", raising=False)
+    from api.index import _WRITER_CELL
+
+    _WRITER_CELL.pop("client", None)
+
+    r = c.post(
+        "/api/track",
+        json={"event": "view_home"},
+        headers={"origin": "https://lens.example"},
+    )
+    assert r.status_code == 200
+    # Origin OK → fall through to writer; writer is None in tests → noop.
+    assert r.json() == {"status": "noop"}
+
+
+def test_hash_query_is_truncated_sha256():
+    """Privacy contract: 16 hex chars, lowercase-and-trim normalized."""
+    from api.index import _hash_query
+
+    assert _hash_query(None) is None
+    assert _hash_query("") is None
+    a = _hash_query("Transformer Attention")
+    b = _hash_query("  transformer attention  ")
+    assert a == b  # case + whitespace insensitive
+    assert a is not None and len(a) == 16
+    assert all(ch in "0123456789abcdef" for ch in a)
