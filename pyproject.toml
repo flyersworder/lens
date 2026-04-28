@@ -44,8 +44,32 @@ turso = ["libsql-client>=0.3.0"]
 # and cloud embeddings, so installing torch + CUDA there blows the
 # 500 MB bundle cap (last attempt: 7137 MB unzipped, mostly PyTorch
 # CUDA bindings).
-local = ["sentence-transformers>=5.3.0", "sqlite-vec>=0.1.7"]
-web = ["lens-research[turso]", "fastapi>=0.115"]
+# Split out from the original ``local`` extra so a developer can run
+# the local FastAPI runtime against ``LensStore`` (sqlite-vec) WITHOUT
+# pulling in sentence-transformers + torch. Reasoning: torch is ~400
+# MB resident and is not needed when ``embeddings.provider: cloud``
+# is configured (the default for web-tier work). Local extraction or
+# offline embedding still requires the full ``local-embed`` extra.
+local-store = ["sqlite-vec>=0.1.7"]
+local-embed = [
+    "lens-research[local-store]",
+    "sentence-transformers>=5.3.0",
+]
+# Back-compat alias — existing scripts / docs / Makefile targets that
+# pass ``--extra local`` keep working with full torch+sentence-transformers.
+# New callers should pick the narrowest extra they actually need.
+local = ["lens-research[local-embed]"]
+
+# `web` is the install Vercel runs in production. Vercel's FastAPI
+# auto-detection invokes the ASGI ``app`` directly — uvicorn is NOT
+# part of the production runtime and lives in `serve` (local dev
+# probe / smoke tests) instead. Keeping it out of `web` shaves a
+# small amount of bundle size and keeps the dependency story honest.
+web = [
+    "lens-research[turso]",
+    "fastapi>=0.115",
+]
+serve = ["lens-research[web]", "uvicorn>=0.30"]
 
 [project.scripts]
 lens = "lens.cli:app"
