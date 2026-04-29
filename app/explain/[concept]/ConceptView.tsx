@@ -120,7 +120,23 @@ export function ConceptView({ decoded }: Props) {
 
       {data && (
         <>
-          <section className="prose prose-invert prose-zinc max-w-none rounded-lg border border-ink-line bg-ink-soft/60 p-6 text-sm leading-relaxed text-zinc-200">
+          <section
+            className={[
+              "prose prose-invert prose-zinc max-w-none",
+              "prose-headings:font-semibold prose-headings:text-white prose-headings:tracking-tight",
+              "prose-h1:text-3xl prose-h1:mt-6 prose-h1:mb-3",
+              "prose-h2:text-2xl prose-h2:mt-7 prose-h2:mb-3 prose-h2:border-b prose-h2:border-ink-line prose-h2:pb-2",
+              "prose-h3:text-xl prose-h3:mt-5 prose-h3:mb-2",
+              "prose-h4:text-lg prose-h4:mt-4 prose-h4:mb-2",
+              "prose-p:my-3 prose-p:text-zinc-200",
+              "prose-strong:text-white prose-em:text-zinc-100",
+              "prose-code:text-accent-soft prose-code:before:content-none prose-code:after:content-none prose-code:rounded prose-code:bg-ink-soft prose-code:px-1 prose-code:py-0.5",
+              "prose-li:my-1",
+              "prose-table:text-sm",
+              "prose-a:text-accent hover:prose-a:underline",
+              "rounded-lg border border-ink-line bg-ink-soft/60 p-6 leading-relaxed",
+            ].join(" ")}
+          >
             {s.narrative ? (
               <ReactMarkdown remarkPlugins={[remarkGfm]}>
                 {s.narrative}

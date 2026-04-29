@@ -65,6 +65,16 @@ export const search = (q: string, limit = 10) =>
 
 export const stats = () => jget<Stats>("/api/stats");
 
+export type UsageSummary = {
+  events: Array<{ event: string; count: number }>;
+  total: number;
+  first_seen: number | null;
+  last_seen: number | null;
+};
+
+export const usageSummary = () =>
+  jget<UsageSummary>("/api/usage-summary");
+
 export const analyze = (req: AnalyzeRequest) =>
   jpost<Record<string, unknown>>("/api/analyze", req);
 

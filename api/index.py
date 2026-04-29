@@ -627,3 +627,55 @@ def track_endpoint(req: TrackRequest, request: Request) -> dict[str, str]:
         logger.exception("track: insert failed event=%s", req.event)
         return {"status": "error"}
     return {"status": "ok"}
+
+
+# 60-second TTL cache for usage-summary aggregation. Same pattern as
+# /api/stats: cheap but cuts the libsql round-trip for repeat hits.
+_USAGE_SUMMARY_TTL_SECONDS = 60
+_usage_cache: dict[str, Any] = {"bucket": -1, "value": None}
+
+
+@app.get("/api/usage-summary")
+def usage_summary_endpoint() -> dict[str, Any]:
+    """Aggregate counts per event type from ``usage_events``.
+
+    Read path uses the same libsql client as the write path. Returns
+    ``{"events": [], "total": 0}`` when tracking isn't configured (no
+    ``TURSO_*`` env) or the table is empty, so the public ``/usage``
+    page can render uniformly without special-casing those states.
+    """
+    bucket = int(time.time() // _USAGE_SUMMARY_TTL_SECONDS)
+    if _usage_cache.get("bucket") == bucket and _usage_cache.get("value") is not None:
+        return _usage_cache["value"]
+
+    writer = _get_writer()
+    if writer is None:
+        value = {"events": [], "total": 0, "first_seen": None, "last_seen": None}
+        _usage_cache["bucket"] = bucket
+        _usage_cache["value"] = value
+        return value
+
+    try:
+        rows = writer.execute(
+            "SELECT event, COUNT(*) AS n FROM usage_events GROUP BY event ORDER BY n DESC"
+        ).rows
+        events = [{"event": str(r[0]), "count": int(r[1])} for r in rows]
+        total = sum(e["count"] for e in events)
+        bounds = writer.execute(
+            "SELECT MIN(ts) AS first_ts, MAX(ts) AS last_ts FROM usage_events"
+        ).rows
+        first_seen = int(bounds[0][0]) if bounds and bounds[0][0] is not None else None
+        last_seen = int(bounds[0][1]) if bounds and bounds[0][1] is not None else None
+    except Exception:
+        logger.exception("usage-summary: aggregation failed")
+        return {"events": [], "total": 0, "first_seen": None, "last_seen": None}
+
+    value = {
+        "events": events,
+        "total": total,
+        "first_seen": first_seen,
+        "last_seen": last_seen,
+    }
+    _usage_cache["bucket"] = bucket
+    _usage_cache["value"] = value
+    return value
