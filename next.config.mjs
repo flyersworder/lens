@@ -9,18 +9,17 @@ const nextConfig = {
   // Silence "multiple lockfiles" warning — pin Turbopack's root to
   // this repo, not the parent home directory's stray package-lock.json.
   turbopack: { root: __dirname },
-  // Trim the build so we don't try to bundle the Python/data tree.
-  // Vercel's Next.js builder respects this; local `next build` does too.
-  outputFileTracingExcludes: {
-    "*": [
-      "src/**",
-      "tests/**",
-      "scripts/**",
-      "docs/**",
-      "api/**",
-      ".venv/**",
-    ],
-  },
+  // No outputFileTracingExcludes here — earlier we tried excluding
+  // "api/**" / "src/**" etc. to keep Python files out of the Next.js
+  // function bundle, but Next.js 16's glob matcher applies the
+  // pattern anywhere in the path, not just relative to the project
+  // root. "api/**" was matching `next/dist/compiled/@opentelemetry/api`
+  // and dropping it from the dynamic-route bundle, causing every
+  // /explain/[concept] request to 500 with
+  //   Cannot find module 'next/dist/compiled/@opentelemetry/api'
+  // Next.js's tracer doesn't pick up Python files anyway, so the
+  // exclude was unnecessary. If bundle size becomes an issue later,
+  // use precise paths (e.g. "./api/**") rather than bare globs.
   // Locally (both `next dev` and `next start`), proxy /api/* to a
   // sibling uvicorn process. On Vercel, the platform auto-detects
   // api/*.py as serverless functions on the same domain — so we
