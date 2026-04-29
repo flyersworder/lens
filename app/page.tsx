@@ -88,25 +88,11 @@ export default function HomePage() {
               const arxivUrl = r.arxiv_id
                 ? `https://arxiv.org/abs/${r.arxiv_id}`
                 : null;
-              return (
-                <li
-                  key={r.paper_id}
-                  className="rounded-lg border border-ink-line bg-ink-soft/60 p-5 transition hover:border-accent/50"
-                >
+              const Inner = (
+                <>
                   <div className="flex items-baseline justify-between gap-4">
-                    <h3 className="text-base font-medium text-white">
-                      {arxivUrl ? (
-                        <a
-                          href={arxivUrl}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="hover:text-accent-soft"
-                        >
-                          {r.title}
-                        </a>
-                      ) : (
-                        r.title
-                      )}
+                    <h3 className="text-base font-medium text-white group-hover:text-accent-soft">
+                      {r.title}
                     </h3>
                     <span className="shrink-0 font-mono text-xs text-zinc-500">
                       {year}
@@ -121,6 +107,24 @@ export default function HomePage() {
                     <p className="mt-3 text-sm text-zinc-300">
                       {r.abstract_snippet}
                     </p>
+                  )}
+                </>
+              );
+              return (
+                <li key={r.paper_id}>
+                  {arxivUrl ? (
+                    <a
+                      href={arxivUrl}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="group block rounded-lg border border-ink-line bg-ink-soft/60 p-5 transition hover:border-accent/60 hover:bg-ink-soft/80"
+                    >
+                      {Inner}
+                    </a>
+                  ) : (
+                    <div className="block rounded-lg border border-ink-line bg-ink-soft/60 p-5">
+                      {Inner}
+                    </div>
                   )}
                 </li>
               );
