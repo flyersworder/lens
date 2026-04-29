@@ -33,28 +33,79 @@ const MODES: Array<{
   },
 ];
 
+// Tradeoff mode: serve/analyzer.py:analyze
 type Principle = {
-  // backend (serve/analyzer.py:analyze) emits `principle_id`, but architecture
-  // and agentic variants may emit `id`. Accept either.
   principle_id?: string;
-  id?: string;
   name?: string;
-  description?: string;
   score?: number;
   count?: number;
   avg_confidence?: number;
   paper_ids?: string[];
 };
 
+// Architecture mode: serve/analyzer.py:analyze_architecture
+type Variant = {
+  variant_name: string;
+  slot?: string;
+  properties?: string;
+  paper_ids?: string[];
+};
+
+// Agentic mode: serve/analyzer.py:analyze_agentic
+type Pattern = {
+  pattern_name: string;
+  category?: string;
+  structure?: string;
+  use_case?: string;
+  components?: string[];
+  paper_ids?: string[];
+};
+
 type AnalyzeResponse = {
+  query?: string;
   improving?: string;
   worsening?: string;
   principles?: Principle[];
-  // architecture / agentic variants return structurally similar shapes;
-  // we render any "principles" / "candidates" array we find.
-  candidates?: Principle[];
-  [k: string]: unknown;
+  slot?: string;
+  variants?: Variant[];
+  category?: string;
+  patterns?: Pattern[];
 };
+
+const EMPTY_COPY: Record<AnalysisType, string> = {
+  tradeoff:
+    "No principles indexed for this tradeoff. Try rephrasing — LLM classification varies between runs.",
+  architecture:
+    "No architecture variants found for this request. Try rephrasing — LLM slot resolution varies between runs.",
+  agentic:
+    "No agentic patterns found for this request. Try rephrasing — LLM category resolution varies between runs.",
+};
+
+function MetaLine({ items }: { items: string[] }) {
+  if (items.length === 0) return null;
+  return <p className="mt-1 text-xs text-zinc-500">{items.join(" · ")}</p>;
+}
+
+function PaperRefs({ ids }: { ids?: string[] }) {
+  if (!ids?.length) return null;
+  return (
+    <p className="mt-2 font-mono text-[11px] text-zinc-500">
+      {ids.map((id, i) => (
+        <span key={id}>
+          {i > 0 && " · "}
+          <a
+            className="hover:text-accent hover:underline"
+            href={`https://arxiv.org/abs/${id}`}
+            target="_blank"
+            rel="noreferrer"
+          >
+            arXiv:{id}
+          </a>
+        </span>
+      ))}
+    </p>
+  );
+}
 
 export default function AnalyzePage() {
   const [type, setType] = useState<AnalysisType>("tradeoff");
@@ -81,7 +132,22 @@ export default function AnalyzePage() {
     }
   }
 
-  const items = data?.principles ?? data?.candidates ?? [];
+  function selectMode(next: AnalysisType) {
+    if (next === type) return;
+    setType(next);
+    setData(null);
+    setErr(null);
+    setLastQ("");
+  }
+
+  const principles = data?.principles ?? [];
+  const variants = data?.variants ?? [];
+  const patterns = data?.patterns ?? [];
+  const isEmpty =
+    data !== null &&
+    principles.length === 0 &&
+    variants.length === 0 &&
+    patterns.length === 0;
 
   return (
     <div className="space-y-8">
@@ -101,13 +167,7 @@ export default function AnalyzePage() {
               <button
                 key={id}
                 type="button"
-                onClick={() => {
-                  if (id === type) return;
-                  setType(id);
-                  setData(null);
-                  setErr(null);
-                  setLastQ("");
-                }}
+                onClick={() => selectMode(id)}
                 className={`rounded-lg border p-4 text-left transition ${
                   type === id
                     ? "border-accent bg-accent/15 text-white"
@@ -121,7 +181,11 @@ export default function AnalyzePage() {
           </div>
         </div>
 
+        {/* `key={type}` forces SearchBox to remount on mode switch so its
+        internal `q` state resets — clearing the previous query alongside
+        the result panel. */}
         <SearchBox
+          key={type}
           placeholder={MODES.find((m) => m.id === type)!.placeholder}
           cta="Analyze"
           onSubmit={run}
@@ -137,7 +201,8 @@ export default function AnalyzePage() {
             Result · <span className="font-mono normal-case">{lastQ}</span>
           </h2>
 
-          {(data.improving || data.worsening) && (
+          {/* Tradeoff: improving / worsening pair + ranked principles. */}
+          {type === "tradeoff" && (data.improving || data.worsening) && (
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
               {data.improving && (
                 <div className="rounded-lg border border-emerald-500/30 bg-emerald-500/5 p-4">
@@ -158,61 +223,127 @@ export default function AnalyzePage() {
             </div>
           )}
 
-          <ul className="space-y-3">
-            {items.map((p, i) => {
-              const pid = p.principle_id ?? p.id;
-              const meta: string[] = [];
-              if (typeof p.count === "number")
-                meta.push(`${p.count} tradeoff${p.count === 1 ? "" : "s"}`);
-              if (typeof p.avg_confidence === "number")
-                meta.push(`conf ${p.avg_confidence.toFixed(2)}`);
-              if (p.paper_ids?.length)
-                meta.push(`${p.paper_ids.length} paper${p.paper_ids.length === 1 ? "" : "s"}`);
-              return (
+          {type === "tradeoff" && principles.length > 0 && (
+            <ul className="space-y-3">
+              {principles.map((p, i) => {
+                const pid = p.principle_id;
+                const meta: string[] = [];
+                if (typeof p.count === "number")
+                  meta.push(`${p.count} tradeoff${p.count === 1 ? "" : "s"}`);
+                if (typeof p.avg_confidence === "number")
+                  meta.push(`conf ${p.avg_confidence.toFixed(2)}`);
+                if (p.paper_ids?.length)
+                  meta.push(
+                    `${p.paper_ids.length} paper${p.paper_ids.length === 1 ? "" : "s"}`,
+                  );
+                return (
+                  <li
+                    key={pid ?? i}
+                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
+                  >
+                    <div className="flex items-baseline justify-between gap-4">
+                      <h3 className="text-base font-medium text-white">
+                        {p.name ?? pid ?? `Candidate ${i + 1}`}
+                      </h3>
+                      {typeof p.score === "number" && (
+                        <span className="font-mono text-xs text-accent">
+                          {p.score.toFixed(2)}
+                        </span>
+                      )}
+                    </div>
+                    <MetaLine items={meta} />
+                    {pid && (
+                      <a
+                        className="mt-3 inline-block text-xs text-accent hover:underline"
+                        href={`/explain/${encodeURIComponent(pid)}`}
+                      >
+                        explain →
+                      </a>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
+          )}
+
+          {/* Architecture: slot header + list of variants. */}
+          {type === "architecture" && data.slot && (
+            <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
+              <div className="text-xs uppercase tracking-widest text-accent">
+                Slot
+              </div>
+              <div className="mt-1 text-white">{data.slot}</div>
+            </div>
+          )}
+
+          {type === "architecture" && variants.length > 0 && (
+            <ul className="space-y-3">
+              {variants.map((v, i) => (
                 <li
-                  key={pid ?? i}
+                  key={`${v.variant_name}-${i}`}
                   className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
                 >
-                  <div className="flex items-baseline justify-between gap-4">
-                    <h3 className="text-base font-medium text-white">
-                      {p.name ?? pid ?? `Candidate ${i + 1}`}
-                    </h3>
-                    {typeof p.score === "number" && (
-                      <span className="font-mono text-xs text-accent">
-                        {p.score.toFixed(2)}
-                      </span>
-                    )}
-                  </div>
-                  {p.description && (
-                    <p className="mt-2 text-sm text-zinc-300">{p.description}</p>
+                  <h3 className="text-base font-medium text-white">
+                    {v.variant_name}
+                  </h3>
+                  {v.properties && (
+                    <p className="mt-2 text-sm text-zinc-300">{v.properties}</p>
                   )}
-                  {meta.length > 0 && (
-                    <p className="mt-1 text-xs text-zinc-500">{meta.join(" · ")}</p>
-                  )}
-                  {pid && (
-                    <a
-                      className="mt-3 inline-block text-xs text-accent hover:underline"
-                      href={`/explain/${encodeURIComponent(pid)}`}
-                    >
-                      explain →
-                    </a>
-                  )}
+                  <PaperRefs ids={v.paper_ids} />
                 </li>
-              );
-            })}
-          </ul>
+              ))}
+            </ul>
+          )}
 
-          {items.length === 0 && (
+          {/* Agentic: category header + list of patterns. */}
+          {type === "agentic" && data.category && (
+            <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
+              <div className="text-xs uppercase tracking-widest text-accent">
+                Category
+              </div>
+              <div className="mt-1 text-white">{data.category}</div>
+            </div>
+          )}
+
+          {type === "agentic" && patterns.length > 0 && (
+            <ul className="space-y-3">
+              {patterns.map((p, i) => (
+                <li
+                  key={`${p.pattern_name}-${i}`}
+                  className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
+                >
+                  <h3 className="text-base font-medium text-white">
+                    {p.pattern_name}
+                  </h3>
+                  {p.use_case && (
+                    <p className="mt-1 text-xs uppercase tracking-widest text-zinc-500">
+                      {p.use_case}
+                    </p>
+                  )}
+                  {p.structure && (
+                    <p className="mt-2 text-sm text-zinc-300">{p.structure}</p>
+                  )}
+                  {p.components && p.components.length > 0 && (
+                    <div className="mt-3 flex flex-wrap gap-1.5">
+                      {p.components.map((c) => (
+                        <span
+                          key={c}
+                          className="rounded-full border border-ink-line bg-ink-soft px-2 py-0.5 text-[11px] text-zinc-300"
+                        >
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  <PaperRefs ids={p.paper_ids} />
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {isEmpty && (
             <div className="rounded-lg border border-ink-line bg-ink-soft/60 p-4 text-sm text-zinc-400">
-              No principles indexed for this tradeoff
-              {data.improving && data.worsening && (
-                <>
-                  {" "}(
-                  <span className="font-mono">{data.improving}</span> →{" "}
-                  <span className="font-mono">{data.worsening}</span>)
-                </>
-              )}
-              . Try rephrasing — LLM classification varies between runs.
+              {EMPTY_COPY[type]}
             </div>
           )}
         </section>
