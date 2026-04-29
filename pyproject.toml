@@ -73,6 +73,12 @@ serve = ["lens-research[web]", "uvicorn>=0.30"]
 
 [project.scripts]
 lens = "lens.cli:app"
+# Vercel's FastAPI auto-detection looks for a ``[project.scripts] app``
+# entry as the ASGI entrypoint when the file is at a non-standard
+# location (we keep it at api/index.py for local dev / tests). Same
+# pattern as the Flask example in
+# https://vercel.com/docs/frameworks/backend/flask
+app = "api.index:app"
 
 [project.urls]
 Homepage = "https://github.com/flyersworder/lens"
