@@ -89,7 +89,7 @@ packages = ["src/lens"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-# Add repo root to pythonpath so `from backend.index import ...` works in
+# Add repo root to pythonpath so `from api.index import ...` works in
 # tests without sys.path hackery (api/ is a sibling of src/, not under it).
 pythonpath = [".", "src"]
 markers = [

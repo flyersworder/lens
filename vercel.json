@@ -3,9 +3,9 @@
   "installCommand": "npm install --no-audit --no-fund && uv sync --frozen --extra web --no-dev --no-editable",
   "buildCommand": "npm run build",
   "functions": {
-    "backend/index.py": { "maxDuration": 60 }
+    "api/index.py": { "maxDuration": 60 }
   },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/backend/index" }
+    { "source": "/api/(.*)", "destination": "/api/index" }
   ]
 }

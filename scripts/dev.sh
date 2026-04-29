@@ -159,7 +159,7 @@ fi
 
 # --- start uvicorn (no torch — see [local-store] extra in pyproject) -
 uv run --frozen --extra local-store --extra serve \
-  uvicorn backend.index:app --host 127.0.0.1 --port "$API_PORT" --log-level info \
+  uvicorn api.index:app --host 127.0.0.1 --port "$API_PORT" --log-level info \
   >"$API_LOG" 2>&1 &
 API_PID=$!
 
