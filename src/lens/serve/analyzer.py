@@ -149,14 +149,75 @@ def _build_category_identify_prompt(query: str, category_names: list[str]) -> st
     )
 
 
+def _build_vocab_links_index(
+    store: ReadableStore,
+) -> tuple[dict[str, dict[str, Any]], dict[str, int]]:
+    """Index for cross-linking variants/patterns/components to vocabulary.
+
+    Returns (name_index, princ_tradeoff_counts) where:
+
+    * ``name_index`` maps lowercased vocab name → its row, used for
+      fuzzy matching of free-text strings (e.g. "FlashAttention" → the
+      "Flash Attention" principle).
+    * ``princ_tradeoff_counts`` maps principle_id → number of matrix
+      cells citing it, used to surface "involved in N tradeoffs" badges.
+    """
+    rows = store.query("vocabulary")
+    name_index = {r["name"].lower(): r for r in rows}
+    cells = store.query("matrix_cells")
+    counts: dict[str, int] = {}
+    for c in cells:
+        pid = c["principle_id"]
+        counts[pid] = counts.get(pid, 0) + 1
+    return name_index, counts
+
+
+def _find_vocab_link(name: str, name_index: dict[str, dict[str, Any]]) -> dict[str, Any] | None:
+    """Best-effort match free-text ``name`` to a vocabulary entry.
+
+    Tries exact (case-insensitive) match first, then falls back to a
+    longest-substring match in either direction. The 5-char minimum
+    avoids matching trivial shared substrings like "the" or "tool".
+    """
+    norm = name.lower().strip()
+    if norm in name_index:
+        return name_index[norm]
+    best: tuple[int, dict[str, Any]] | None = None
+    for key, row in name_index.items():
+        if len(key) < 5:
+            continue
+        if key in norm or norm in key:
+            length = min(len(key), len(norm))
+            if best is None or length > best[0]:
+                best = (length, row)
+    return best[1] if best else None
+
+
+def _earliest_date(paper_ids: list[str], paper_dates: dict[str, str]) -> str | None:
+    """Return the earliest non-epoch date among ``paper_ids``."""
+    dates = [
+        paper_dates[p]
+        for p in paper_ids
+        if p in paper_dates and paper_dates[p] and paper_dates[p] != "1970-01-01"
+    ]
+    return min(dates) if dates else None
+
+
 async def analyze_architecture(
     query: str,
     store: ReadableStore,
     llm_client: LLMClient,
 ) -> dict[str, Any]:
-    """Analyze a query about transformer architecture and return matching variants."""
+    """Analyze a query about transformer architecture and return matching variants.
+
+    Variants are date-sorted (oldest first → genealogy view) and
+    cross-linked to vocabulary entries when their name matches a known
+    principle/parameter/arch_slot — surfacing "explain →" + tradeoff
+    counts in the UI.
+    """
     slots = store.query("vocabulary", "kind = ?", ("arch_slot",))
     slot_names = [s["name"] for s in slots]
+    slot_id_by_name = {s["name"].lower(): s["id"] for s in slots}
 
     identified_slot: str | None = None
     if slot_names:
@@ -173,6 +234,9 @@ async def analyze_architecture(
     if identified_slot:
         extractions = [e for e in extractions if e["component_slot"] == identified_slot]
 
+    name_index, princ_counts = _build_vocab_links_index(store)
+    paper_dates = {p["paper_id"]: p["date"] for p in store.query("papers")}
+
     by_name: dict[str, dict[str, Any]] = {}
     for row in extractions:
         name = row["variant_name"]
@@ -181,11 +245,36 @@ async def analyze_architecture(
                 "variant_name": name,
                 "slot": row["component_slot"],
                 "properties": row.get("key_properties", ""),
+                "replaces": row.get("replaces") or None,
                 "paper_ids": [],
             }
         by_name[name]["paper_ids"].append(row["paper_id"])
+        # Keep the first non-empty `replaces` value across rows.
+        if not by_name[name]["replaces"] and row.get("replaces"):
+            by_name[name]["replaces"] = row["replaces"]
 
-    return {"query": query, "slot": identified_slot, "variants": list(by_name.values())}
+    variants: list[dict[str, Any]] = []
+    for v in by_name.values():
+        v["earliest_date"] = _earliest_date(v["paper_ids"], paper_dates)
+        link = _find_vocab_link(v["variant_name"], name_index)
+        if link:
+            v["vocab_id"] = link["id"]
+            v["vocab_kind"] = link["kind"]
+            if link["kind"] == "principle":
+                v["tradeoff_count"] = princ_counts.get(link["id"], 0)
+        variants.append(v)
+
+    # Sort by date ascending — None dates sink to the bottom.
+    variants.sort(key=lambda x: x.get("earliest_date") or "9999-99-99")
+
+    slot_vocab_id = slot_id_by_name.get(identified_slot.lower()) if identified_slot else None
+
+    return {
+        "query": query,
+        "slot": identified_slot,
+        "slot_id": slot_vocab_id,
+        "variants": variants,
+    }
 
 
 async def analyze_agentic(
@@ -193,9 +282,16 @@ async def analyze_agentic(
     store: ReadableStore,
     llm_client: LLMClient,
 ) -> dict[str, Any]:
-    """Analyze a query about agentic design patterns and return matching patterns."""
+    """Analyze a query about agentic design patterns.
+
+    Patterns are date-sorted and components are resolved against the
+    full vocabulary — when a component string matches a known
+    parameter/principle/arch_slot, the UI renders it as a clickable
+    link to the explain page for that concept.
+    """
     categories = store.query("vocabulary", "kind = ?", ("agentic_category",))
     cat_names = [c["name"] for c in categories]
+    cat_id_by_name = {c["name"].lower(): c["id"] for c in categories}
 
     identified_category: str | None = None
     if cat_names:
@@ -212,6 +308,9 @@ async def analyze_agentic(
     if identified_category:
         extractions = [e for e in extractions if e.get("category") == identified_category]
 
+    name_index, _ = _build_vocab_links_index(store)
+    paper_dates = {p["paper_id"]: p["date"] for p in store.query("papers")}
+
     by_name: dict[str, dict[str, Any]] = {}
     for row in extractions:
         name = row["pattern_name"]
@@ -221,13 +320,41 @@ async def analyze_agentic(
                 "category": row.get("category", ""),
                 "structure": row.get("structure", ""),
                 "use_case": row.get("use_case", ""),
-                "components": row.get("components", []),
+                "components": list(row.get("components") or []),
                 "paper_ids": [],
             }
         by_name[name]["paper_ids"].append(row["paper_id"])
 
+    patterns: list[dict[str, Any]] = []
+    for p in by_name.values():
+        p["earliest_date"] = _earliest_date(p["paper_ids"], paper_dates)
+        # Resolve each component string to a vocab entry where possible.
+        # Plain strings are kept as `{name, vocab_id: null, vocab_kind: null}`
+        # so the frontend has a uniform shape.
+        resolved_components: list[dict[str, Any]] = []
+        for comp in p["components"]:
+            if not isinstance(comp, str):
+                continue
+            link = _find_vocab_link(comp, name_index)
+            resolved_components.append(
+                {
+                    "name": comp,
+                    "vocab_id": link["id"] if link else None,
+                    "vocab_kind": link["kind"] if link else None,
+                }
+            )
+        p["components"] = resolved_components
+        patterns.append(p)
+
+    patterns.sort(key=lambda x: x.get("earliest_date") or "9999-99-99")
+
+    category_vocab_id = (
+        cat_id_by_name.get(identified_category.lower()) if identified_category else None
+    )
+
     return {
         "query": query,
         "category": identified_category,
-        "patterns": list(by_name.values()),
+        "category_id": category_vocab_id,
+        "patterns": patterns,
     }

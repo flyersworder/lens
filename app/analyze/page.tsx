@@ -48,17 +48,28 @@ type Variant = {
   variant_name: string;
   slot?: string;
   properties?: string;
+  replaces?: string | null;
   paper_ids?: string[];
+  earliest_date?: string | null;
+  vocab_id?: string;
+  vocab_kind?: string;
+  tradeoff_count?: number;
 };
 
 // Agentic mode: serve/analyzer.py:analyze_agentic
+type ResolvedComponent = {
+  name: string;
+  vocab_id: string | null;
+  vocab_kind: string | null;
+};
 type Pattern = {
   pattern_name: string;
   category?: string;
   structure?: string;
   use_case?: string;
-  components?: string[];
+  components?: ResolvedComponent[];
   paper_ids?: string[];
+  earliest_date?: string | null;
 };
 
 type AnalyzeResponse = {
@@ -67,10 +78,17 @@ type AnalyzeResponse = {
   worsening?: string;
   principles?: Principle[];
   slot?: string;
+  slot_id?: string | null;
   variants?: Variant[];
   category?: string;
+  category_id?: string | null;
   patterns?: Pattern[];
 };
+
+function yearOf(date: string | null | undefined): string | null {
+  if (!date || date === "1970-01-01") return null;
+  return date.slice(0, 4);
+}
 
 const EMPTY_COPY: Record<AnalysisType, string> = {
   tradeoff:
@@ -266,78 +284,166 @@ export default function AnalyzePage() {
             </ul>
           )}
 
-          {/* Architecture: slot header + list of variants. */}
+          {/* Architecture: slot header + date-sorted variants with cross-links. */}
           {type === "architecture" && data.slot && (
             <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
               <div className="text-xs uppercase tracking-widest text-accent">
                 Slot
               </div>
-              <div className="mt-1 text-white">{data.slot}</div>
+              <div className="mt-1 text-white">
+                {data.slot_id ? (
+                  <a
+                    href={`/explain/${encodeURIComponent(data.slot_id)}`}
+                    className="hover:underline"
+                  >
+                    {data.slot}
+                  </a>
+                ) : (
+                  data.slot
+                )}
+              </div>
+              {variants.length > 0 && (
+                <p className="mt-2 text-xs text-zinc-400">
+                  {variants.length} variant{variants.length === 1 ? "" : "s"} ·
+                  ordered by year of first appearance
+                </p>
+              )}
             </div>
           )}
 
           {type === "architecture" && variants.length > 0 && (
             <ul className="space-y-3">
-              {variants.map((v, i) => (
-                <li
-                  key={`${v.variant_name}-${i}`}
-                  className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
-                >
-                  <h3 className="text-base font-medium text-white">
-                    {v.variant_name}
-                  </h3>
-                  {v.properties && (
-                    <p className="mt-2 text-sm text-zinc-300">{v.properties}</p>
-                  )}
-                  <PaperRefs ids={v.paper_ids} />
-                </li>
-              ))}
+              {variants.map((v, i) => {
+                const year = yearOf(v.earliest_date);
+                return (
+                  <li
+                    key={`${v.variant_name}-${i}`}
+                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
+                  >
+                    <div className="flex items-baseline justify-between gap-4">
+                      <h3 className="text-base font-medium text-white">
+                        {v.variant_name}
+                      </h3>
+                      {year && (
+                        <span className="shrink-0 font-mono text-xs text-zinc-500">
+                          {year}
+                        </span>
+                      )}
+                    </div>
+                    {v.replaces && (
+                      <p className="mt-1 text-xs text-zinc-500">
+                        ← replaces{" "}
+                        <span className="text-zinc-300">{v.replaces}</span>
+                      </p>
+                    )}
+                    {v.properties && (
+                      <p className="mt-2 text-sm text-zinc-300">{v.properties}</p>
+                    )}
+                    {(v.vocab_id || typeof v.tradeoff_count === "number") && (
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs">
+                        {typeof v.tradeoff_count === "number" && v.tradeoff_count > 0 && (
+                          <span className="text-zinc-500">
+                            involved in {v.tradeoff_count} tradeoff
+                            {v.tradeoff_count === 1 ? "" : "s"}
+                          </span>
+                        )}
+                        {v.vocab_id && (
+                          <a
+                            className="text-accent hover:underline"
+                            href={`/explain/${encodeURIComponent(v.vocab_id)}`}
+                          >
+                            explain →
+                          </a>
+                        )}
+                      </div>
+                    )}
+                    <PaperRefs ids={v.paper_ids} />
+                  </li>
+                );
+              })}
             </ul>
           )}
 
-          {/* Agentic: category header + list of patterns. */}
+          {/* Agentic: category header + date-sorted patterns with linked components. */}
           {type === "agentic" && data.category && (
             <div className="rounded-lg border border-accent/30 bg-accent/5 p-4">
               <div className="text-xs uppercase tracking-widest text-accent">
                 Category
               </div>
-              <div className="mt-1 text-white">{data.category}</div>
+              <div className="mt-1 text-white">
+                {data.category_id ? (
+                  <a
+                    href={`/explain/${encodeURIComponent(data.category_id)}`}
+                    className="hover:underline"
+                  >
+                    {data.category}
+                  </a>
+                ) : (
+                  data.category
+                )}
+              </div>
+              {patterns.length > 0 && (
+                <p className="mt-2 text-xs text-zinc-400">
+                  {patterns.length} pattern{patterns.length === 1 ? "" : "s"} ·
+                  ordered by year of first appearance
+                </p>
+              )}
             </div>
           )}
 
           {type === "agentic" && patterns.length > 0 && (
             <ul className="space-y-3">
-              {patterns.map((p, i) => (
-                <li
-                  key={`${p.pattern_name}-${i}`}
-                  className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
-                >
-                  <h3 className="text-base font-medium text-white">
-                    {p.pattern_name}
-                  </h3>
-                  {p.use_case && (
-                    <p className="mt-1 text-xs uppercase tracking-widest text-zinc-500">
-                      {p.use_case}
-                    </p>
-                  )}
-                  {p.structure && (
-                    <p className="mt-2 text-sm text-zinc-300">{p.structure}</p>
-                  )}
-                  {p.components && p.components.length > 0 && (
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {p.components.map((c) => (
-                        <span
-                          key={c}
-                          className="rounded-full border border-ink-line bg-ink-soft px-2 py-0.5 text-[11px] text-zinc-300"
-                        >
-                          {c}
+              {patterns.map((p, i) => {
+                const year = yearOf(p.earliest_date);
+                return (
+                  <li
+                    key={`${p.pattern_name}-${i}`}
+                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
+                  >
+                    <div className="flex items-baseline justify-between gap-4">
+                      <h3 className="text-base font-medium text-white">
+                        {p.pattern_name}
+                      </h3>
+                      {year && (
+                        <span className="shrink-0 font-mono text-xs text-zinc-500">
+                          {year}
                         </span>
-                      ))}
+                      )}
                     </div>
-                  )}
-                  <PaperRefs ids={p.paper_ids} />
-                </li>
-              ))}
+                    {p.use_case && (
+                      <p className="mt-1 text-xs uppercase tracking-widest text-zinc-500">
+                        {p.use_case}
+                      </p>
+                    )}
+                    {p.structure && (
+                      <p className="mt-2 text-sm text-zinc-300">{p.structure}</p>
+                    )}
+                    {p.components && p.components.length > 0 && (
+                      <div className="mt-3 flex flex-wrap gap-1.5">
+                        {p.components.map((c, ci) =>
+                          c.vocab_id ? (
+                            <a
+                              key={`${c.name}-${ci}`}
+                              href={`/explain/${encodeURIComponent(c.vocab_id)}`}
+                              className="rounded-full border border-accent/40 bg-accent/10 px-2 py-0.5 text-[11px] text-accent-soft hover:border-accent hover:text-white"
+                            >
+                              {c.name}
+                            </a>
+                          ) : (
+                            <span
+                              key={`${c.name}-${ci}`}
+                              className="rounded-full border border-ink-line bg-ink-soft px-2 py-0.5 text-[11px] text-zinc-300"
+                            >
+                              {c.name}
+                            </span>
+                          ),
+                        )}
+                      </div>
+                    )}
+                    <PaperRefs ids={p.paper_ids} />
+                  </li>
+                );
+              })}
             </ul>
           )}
 
