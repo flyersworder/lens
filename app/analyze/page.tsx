@@ -7,6 +7,32 @@ import { SearchBox } from "../components/SearchBox";
 
 type AnalysisType = "tradeoff" | "architecture" | "agentic";
 
+const MODES: Array<{
+  id: AnalysisType;
+  label: string;
+  blurb: string;
+  placeholder: string;
+}> = [
+  {
+    id: "tradeoff",
+    label: "Tradeoff",
+    blurb: "Improve one parameter without breaking another.",
+    placeholder: "e.g. reduce inference latency without hurting accuracy",
+  },
+  {
+    id: "architecture",
+    label: "Architecture",
+    blurb: "Find candidate designs for a system requirement.",
+    placeholder: "e.g. retrieval-augmented chatbot with citations",
+  },
+  {
+    id: "agentic",
+    label: "Agentic",
+    blurb: "Map an LLM-agent design pattern to your problem.",
+    placeholder: "e.g. multi-agent code review pipeline",
+  },
+];
+
 type Principle = {
   // backend (serve/analyzer.py:analyze) emits `principle_id`, but architecture
   // and agentic variants may emit `id`. Accept either.
@@ -66,33 +92,37 @@ export default function AnalyzePage() {
           design pattern. Results are LLM-generated and grounded in the corpus.
         </p>
 
-        <div className="flex flex-wrap gap-2 text-xs">
-          {(["tradeoff", "architecture", "agentic"] as AnalysisType[]).map(
-            (t) => (
+        <div className="space-y-2">
+          <p className="text-xs uppercase tracking-widest text-zinc-500">
+            Pick a mode
+          </p>
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            {MODES.map(({ id, label, blurb }) => (
               <button
-                key={t}
+                key={id}
                 type="button"
-                onClick={() => setType(t)}
-                className={`rounded-full border px-3 py-1 transition ${
-                  type === t
-                    ? "border-accent bg-accent/20 text-white"
-                    : "border-ink-line text-zinc-400 hover:border-accent/60"
+                onClick={() => {
+                  if (id === type) return;
+                  setType(id);
+                  setData(null);
+                  setErr(null);
+                  setLastQ("");
+                }}
+                className={`rounded-lg border p-4 text-left transition ${
+                  type === id
+                    ? "border-accent bg-accent/15 text-white"
+                    : "border-ink-line bg-ink-soft/40 text-zinc-300 hover:border-accent/60 hover:bg-ink-soft/70"
                 }`}
               >
-                {t}
+                <div className="text-base font-medium capitalize">{label}</div>
+                <div className="mt-1 text-xs text-zinc-400">{blurb}</div>
               </button>
-            ),
-          )}
+            ))}
+          </div>
         </div>
 
         <SearchBox
-          placeholder={
-            type === "tradeoff"
-              ? "e.g. reduce inference latency without hurting accuracy"
-              : type === "architecture"
-                ? "e.g. retrieval-augmented chatbot with citations"
-                : "e.g. multi-agent code review pipeline"
-          }
+          placeholder={MODES.find((m) => m.id === type)!.placeholder}
           cta="Analyze"
           onSubmit={run}
           busy={busy}
