@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import {
   explainStream,
   track,
@@ -118,8 +120,12 @@ export function ConceptView({ decoded }: Props) {
 
       {data && (
         <>
-          <section className="prose prose-invert prose-zinc max-w-none whitespace-pre-wrap rounded-lg border border-ink-line bg-ink-soft/60 p-6 text-sm leading-relaxed text-zinc-200">
-            {s.narrative || (
+          <section className="prose prose-invert prose-zinc max-w-none rounded-lg border border-ink-line bg-ink-soft/60 p-6 text-sm leading-relaxed text-zinc-200">
+            {s.narrative ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                {s.narrative}
+              </ReactMarkdown>
+            ) : (
               <span className="text-zinc-500">Synthesizing…</span>
             )}
             {s.status === "streaming" && (
