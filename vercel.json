@@ -1,12 +1,5 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "framework": "nextjs",
   "installCommand": "npm install --no-audit --no-fund && uv sync --frozen --extra web --no-dev --no-editable",
-  "buildCommand": "npm run build",
-  "functions": {
-    "api/index.py": { "maxDuration": 60 }
-  },
-  "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
-  ]
+  "buildCommand": "npm run build"
 }
