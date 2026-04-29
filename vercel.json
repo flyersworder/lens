@@ -2,10 +2,7 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "installCommand": "npm install --no-audit --no-fund && uv sync --frozen --extra web --no-dev --no-editable",
   "buildCommand": "npm run build",
-  "functions": {
-    "api/index.py": { "maxDuration": 60 }
-  },
   "rewrites": [
-    { "source": "/api/(.*)", "destination": "/api/index" }
+    { "source": "/api/:path*", "destination": "https://lens-api-chi.vercel.app/api/:path*" }
   ]
 }
