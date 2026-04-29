@@ -24,7 +24,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-# `from backend.index import ...` works because pyproject.toml's
+# `from api.index import ...` works because pyproject.toml's
 # [tool.pytest.ini_options] pythonpath includes the repo root.
 
 
@@ -32,7 +32,7 @@ import pytest
 def client():
     """Importing inside the fixture so module-level globals are fresh."""
     pytest.importorskip("fastapi")
-    from backend.index import (
+    from api.index import (
         app,
         get_embed_kwargs,
         get_llm,
@@ -108,7 +108,7 @@ def test_analyze_tradeoff_returns_serve_result(client, monkeypatch):
         assert llm is fake_llm
         return {"query": query, "improving": "accuracy", "principles": []}
 
-    monkeypatch.setattr("backend.index.analyze", fake_analyze)
+    monkeypatch.setattr("api.index.analyze", fake_analyze)
 
     r = c.post("/api/analyze", json={"query": "reduce hallucination"})
     assert r.status_code == 200
@@ -126,7 +126,7 @@ def test_analyze_dispatches_to_architecture(client, monkeypatch):
         called["query"] = query
         return {"slot": "attention", "variants": []}
 
-    monkeypatch.setattr("backend.index.analyze_architecture", fake_arch)
+    monkeypatch.setattr("api.index.analyze_architecture", fake_arch)
     r = c.post("/api/analyze", json={"query": "long context", "type": "architecture"})
     assert r.status_code == 200
     assert called["query"] == "long context"
@@ -142,7 +142,7 @@ def test_analyze_dispatches_to_agentic(client, monkeypatch):
         called["query"] = query
         return {"category": "react", "patterns": []}
 
-    monkeypatch.setattr("backend.index.analyze_agentic", fake_agentic)
+    monkeypatch.setattr("api.index.analyze_agentic", fake_agentic)
     r = c.post("/api/analyze", json={"query": "tool use", "type": "agentic"})
     assert r.status_code == 200
     assert called["query"] == "tool use"
@@ -154,7 +154,7 @@ def test_analyze_returns_500_on_serve_exception(client, monkeypatch):
     async def boom(query, store, llm):
         raise RuntimeError("kaboom-internal-token-xyz")
 
-    monkeypatch.setattr("backend.index.analyze", boom)
+    monkeypatch.setattr("api.index.analyze", boom)
     r = c.post("/api/analyze", json={"query": "x"})
     assert r.status_code == 500
     # Detail must be generic — never leaks the internal exception
@@ -180,7 +180,7 @@ def test_explain_returns_null_when_no_candidates(client, monkeypatch):
     async def fake_explain(query, store, llm, focus=None, embedding_kwargs=None):
         return None
 
-    monkeypatch.setattr("backend.index.explain", fake_explain)
+    monkeypatch.setattr("api.index.explain", fake_explain)
     r = c.post("/api/explain", json={"query": "obscure"})
     assert r.status_code == 200
     assert r.json() == {"result": None}
@@ -199,7 +199,7 @@ def test_explain_serializes_result_via_pydantic(client, monkeypatch):
     async def fake_explain(query, store, llm, focus=None, embedding_kwargs=None):
         return fake_result
 
-    monkeypatch.setattr("backend.index.explain", fake_explain)
+    monkeypatch.setattr("api.index.explain", fake_explain)
     r = c.post("/api/explain", json={"query": "attention"})
     assert r.status_code == 200
     body = r.json()
@@ -214,7 +214,7 @@ def test_explain_passes_focus_through(client, monkeypatch):
         received["focus"] = focus
         return None
 
-    monkeypatch.setattr("backend.index.explain", fake_explain)
+    monkeypatch.setattr("api.index.explain", fake_explain)
     c.post("/api/explain", json={"query": "MoE", "focus": "tradeoffs"})
     assert received["focus"] == "tradeoffs"
 
@@ -230,7 +230,7 @@ def test_search_with_query(client, monkeypatch):
     def fake_search(store, query=None, **kwargs):
         return [{"paper_id": "p1", "title": "t1"}]
 
-    monkeypatch.setattr("backend.index.serve_search_papers", fake_search)
+    monkeypatch.setattr("api.index.serve_search_papers", fake_search)
     r = c.get("/api/search", params={"q": "transformer"})
     assert r.status_code == 200
     body = r.json()
@@ -246,7 +246,7 @@ def test_search_with_filters_only(client, monkeypatch):
         received.update(kwargs)
         return []
 
-    monkeypatch.setattr("backend.index.serve_search_papers", fake_search)
+    monkeypatch.setattr("api.index.serve_search_papers", fake_search)
     r = c.get(
         "/api/search",
         params={"author": "Vaswani", "venue": "NeurIPS", "limit": 5},
@@ -288,7 +288,7 @@ def test_search_accepts_iso_date(client, monkeypatch):
     def fake_search(store, **kwargs):
         return []
 
-    monkeypatch.setattr("backend.index.serve_search_papers", fake_search)
+    monkeypatch.setattr("api.index.serve_search_papers", fake_search)
     r = c.get("/api/search", params={"after": "2024-01-01", "before": "2026-12-31"})
     assert r.status_code == 200
 
@@ -317,7 +317,7 @@ def _stub_kind_query_sql(rows_by_sql: dict[str, list[dict[str, Any]]]):
 def _reset_stats_cache():
     """Stats has a module-level TTL cache. Reset between cases so an
     earlier test doesn't pin a stale value into a later one."""
-    from backend.index import _stats_cache
+    from api.index import _stats_cache
 
     _stats_cache.pop("key", None)
     _stats_cache.pop("value", None)
@@ -432,7 +432,7 @@ def test_track_noop_without_turso_env(client, monkeypatch):
     monkeypatch.delenv("TURSO_DATABASE_URL", raising=False)
     monkeypatch.delenv("TURSO_AUTH_TOKEN", raising=False)
     # Reset writer cell — a previous test may have populated it.
-    from backend.index import _WRITER_CELL
+    from api.index import _WRITER_CELL
 
     _WRITER_CELL.pop("client", None)
 
@@ -480,7 +480,7 @@ def test_track_origin_allowlist_admits_listed_origin(client, monkeypatch):
     monkeypatch.setenv("LENS_TRACK_ORIGINS", "https://lens.example")
     monkeypatch.delenv("TURSO_DATABASE_URL", raising=False)
     monkeypatch.delenv("TURSO_AUTH_TOKEN", raising=False)
-    from backend.index import _WRITER_CELL
+    from api.index import _WRITER_CELL
 
     _WRITER_CELL.pop("client", None)
 
@@ -496,7 +496,7 @@ def test_track_origin_allowlist_admits_listed_origin(client, monkeypatch):
 
 def test_hash_query_is_truncated_sha256():
     """Privacy contract: 16 hex chars, lowercase-and-trim normalized."""
-    from backend.index import _hash_query
+    from api.index import _hash_query
 
     assert _hash_query(None) is None
     assert _hash_query("") is None
