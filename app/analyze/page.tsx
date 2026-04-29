@@ -8,10 +8,16 @@ import { SearchBox } from "../components/SearchBox";
 type AnalysisType = "tradeoff" | "architecture" | "agentic";
 
 type Principle = {
+  // backend (serve/analyzer.py:analyze) emits `principle_id`, but architecture
+  // and agentic variants may emit `id`. Accept either.
+  principle_id?: string;
   id?: string;
   name?: string;
   description?: string;
   score?: number;
+  count?: number;
+  avg_confidence?: number;
+  paper_ids?: string[];
 };
 
 type AnalyzeResponse = {
@@ -123,45 +129,61 @@ export default function AnalyzePage() {
           )}
 
           <ul className="space-y-3">
-            {items.map((p, i) => (
-              <li
-                key={p.id ?? i}
-                className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
-              >
-                <div className="flex items-baseline justify-between gap-4">
-                  <h3 className="text-base font-medium text-white">
-                    {p.name ?? p.id ?? `Candidate ${i + 1}`}
-                  </h3>
-                  {typeof p.score === "number" && (
-                    <span className="font-mono text-xs text-accent">
-                      {p.score.toFixed(2)}
-                    </span>
+            {items.map((p, i) => {
+              const pid = p.principle_id ?? p.id;
+              const meta: string[] = [];
+              if (typeof p.count === "number")
+                meta.push(`${p.count} tradeoff${p.count === 1 ? "" : "s"}`);
+              if (typeof p.avg_confidence === "number")
+                meta.push(`conf ${p.avg_confidence.toFixed(2)}`);
+              if (p.paper_ids?.length)
+                meta.push(`${p.paper_ids.length} paper${p.paper_ids.length === 1 ? "" : "s"}`);
+              return (
+                <li
+                  key={pid ?? i}
+                  className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
+                >
+                  <div className="flex items-baseline justify-between gap-4">
+                    <h3 className="text-base font-medium text-white">
+                      {p.name ?? pid ?? `Candidate ${i + 1}`}
+                    </h3>
+                    {typeof p.score === "number" && (
+                      <span className="font-mono text-xs text-accent">
+                        {p.score.toFixed(2)}
+                      </span>
+                    )}
+                  </div>
+                  {p.description && (
+                    <p className="mt-2 text-sm text-zinc-300">{p.description}</p>
                   )}
-                </div>
-                {p.description && (
-                  <p className="mt-2 text-sm text-zinc-300">{p.description}</p>
-                )}
-                {p.id && (
-                  <a
-                    className="mt-3 inline-block text-xs text-accent hover:underline"
-                    href={`/explain/${encodeURIComponent(p.id)}`}
-                  >
-                    explain →
-                  </a>
-                )}
-              </li>
-            ))}
+                  {meta.length > 0 && (
+                    <p className="mt-1 text-xs text-zinc-500">{meta.join(" · ")}</p>
+                  )}
+                  {pid && (
+                    <a
+                      className="mt-3 inline-block text-xs text-accent hover:underline"
+                      href={`/explain/${encodeURIComponent(pid)}`}
+                    >
+                      explain →
+                    </a>
+                  )}
+                </li>
+              );
+            })}
           </ul>
 
           {items.length === 0 && (
-            <details className="rounded-lg border border-ink-line bg-ink-soft/60 p-4 text-sm">
-              <summary className="cursor-pointer text-zinc-400">
-                Raw response
-              </summary>
-              <pre className="mt-3 overflow-x-auto text-xs text-zinc-300">
-                {JSON.stringify(data, null, 2)}
-              </pre>
-            </details>
+            <div className="rounded-lg border border-ink-line bg-ink-soft/60 p-4 text-sm text-zinc-400">
+              No principles indexed for this tradeoff
+              {data.improving && data.worsening && (
+                <>
+                  {" "}(
+                  <span className="font-mono">{data.improving}</span> →{" "}
+                  <span className="font-mono">{data.worsening}</span>)
+                </>
+              )}
+              . Try rephrasing — LLM classification varies between runs.
+            </div>
           )}
         </section>
       )}

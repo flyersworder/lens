@@ -9,6 +9,7 @@ LLM pick the best interpretation given the user's query.
 from __future__ import annotations
 
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any
 
 from lens.llm.client import LLMClient
@@ -441,3 +442,78 @@ async def explain(
         paper_refs=[],
         alternatives=alternatives,
     )
+
+
+async def explain_stream(
+    query: str,
+    store: ReadableStore,
+    llm_client: LLMClient,
+    focus: str | None = None,
+    embedding_kwargs: dict[str, Any] | None = None,
+) -> AsyncGenerator[dict[str, Any], None]:
+    """Streaming variant of :func:`explain`.
+
+    Yields one ``{"t": "meta", ...}`` event with everything the page can
+    render before the LLM call, then a stream of ``{"t": "token", "v":
+    "..."}`` deltas as the synthesis arrives. Yields a single
+    ``{"t": "empty"}`` instead of "meta" when the corpus has no
+    candidate, so the page can show a "no match" state without waiting.
+    """
+    candidates = find_candidates(query, store, top_k=3, embedding_kwargs=embedding_kwargs)
+    if not candidates:
+        yield {"t": "empty"}
+        return
+
+    walks = [
+        graph_walk(resolved_type=c["kind"], resolved_id=c["id"], store=store) for c in candidates
+    ]
+
+    if len(candidates) == 1:
+        selected_idx = 0
+    else:
+        summaries = [_summarize_walk(w) for w in walks]
+        selection_prompt = _build_selection_prompt(query, summaries)
+        try:
+            response = await llm_client.complete([{"role": "user", "content": selection_prompt}])
+            choice = response.strip().strip(".")
+            selected_idx = int(choice) - 1
+            if selected_idx < 0 or selected_idx >= len(candidates):
+                selected_idx = 0
+        except Exception:
+            logger.warning("LLM selection failed, using first candidate")
+            selected_idx = 0
+
+    selected = candidates[selected_idx]
+    walk = walks[selected_idx]
+
+    alternatives = [
+        {
+            "resolved_type": c["kind"],
+            "resolved_id": c["id"],
+            "resolved_name": c["name"],
+        }
+        for c in candidates
+        if c["id"] != selected["id"]
+    ]
+
+    yield {
+        "t": "meta",
+        "resolved_type": selected["kind"],
+        "resolved_id": selected["id"],
+        "resolved_name": selected["name"],
+        "tradeoffs": walk.get("tradeoffs", []),
+        "connections": walk.get("connections", []),
+        "evolution": [],
+        "paper_refs": [],
+        "alternatives": alternatives,
+    }
+
+    prompt = _build_synthesis_prompt(walk, focus=focus)
+    try:
+        async for delta in llm_client.stream([{"role": "user", "content": prompt}]):
+            yield {"t": "token", "v": delta}
+    except Exception:
+        logger.warning("LLM streaming synthesis failed for %s", query)
+        fallback = walk.get("identity", {}).get("description", "")
+        if fallback:
+            yield {"t": "token", "v": fallback}

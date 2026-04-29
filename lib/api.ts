@@ -68,8 +68,60 @@ export const stats = () => jget<Stats>("/api/stats");
 export const analyze = (req: AnalyzeRequest) =>
   jpost<Record<string, unknown>>("/api/analyze", req);
 
-export const explain = (req: ExplainRequest) =>
-  jpost<{ result: Record<string, unknown> | null }>("/api/explain", req);
+// /api/explain returns an NDJSON stream — one JSON object per line —
+// not a single JSON envelope. See `explainStream` below.
+
+export type ExplainEventMeta = {
+  t: "meta";
+  resolved_type: string;
+  resolved_id: string;
+  resolved_name: string;
+  tradeoffs?: Array<Record<string, unknown>>;
+  connections?: string[];
+  paper_refs?: string[];
+  evolution?: string[];
+  alternatives?: Array<Record<string, unknown>>;
+};
+export type ExplainEventToken = { t: "token"; v: string };
+export type ExplainEventEmpty = { t: "empty" };
+export type ExplainEventError = { t: "error"; msg: string };
+export type ExplainEvent =
+  | ExplainEventMeta
+  | ExplainEventToken
+  | ExplainEventEmpty
+  | ExplainEventError;
+
+export async function* explainStream(
+  req: ExplainRequest,
+  signal?: AbortSignal,
+): AsyncGenerator<ExplainEvent> {
+  const res = await fetch(`${BASE}/api/explain`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(req),
+    signal,
+    cache: "no-store",
+  });
+  if (!res.ok || !res.body) throw new Error(`/api/explain → ${res.status}`);
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { value, done } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    let nl = buf.indexOf("\n");
+    while (nl !== -1) {
+      const line = buf.slice(0, nl).trim();
+      buf = buf.slice(nl + 1);
+      if (line) yield JSON.parse(line) as ExplainEvent;
+      nl = buf.indexOf("\n");
+    }
+  }
+  const tail = buf.trim();
+  if (tail) yield JSON.parse(tail) as ExplainEvent;
+}
 
 // ----------------------------- tracking -------------------------------- //
 //

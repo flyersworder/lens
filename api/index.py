@@ -42,10 +42,12 @@ from __future__ import annotations
 
 import contextlib
 import hashlib
+import json
 import logging
 import os
 import re
 import time
+from collections.abc import AsyncGenerator
 from functools import lru_cache
 from importlib.metadata import PackageNotFoundError
 from importlib.metadata import version as _pkg_version
@@ -54,6 +56,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import Depends, FastAPI, HTTPException, Query, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
 from lens.llm.client import LLMClient
@@ -62,7 +65,7 @@ from lens.serve.analyzer import (
     analyze_agentic,
     analyze_architecture,
 )
-from lens.serve.explainer import explain
+from lens.serve.explainer import explain_stream
 from lens.serve.explorer import search_papers as serve_search_papers
 from lens.store.protocols import ReadableStore
 
@@ -416,25 +419,43 @@ async def explain_endpoint(
     store: StoreDep,
     llm: LLMDep,
     embed_kwargs: EmbedKwargsDep,
-) -> dict[str, Any]:
-    """Disambiguate a concept and synthesize an explanation.
+) -> StreamingResponse:
+    """Stream a concept explanation as NDJSON.
 
-    Returns ``{"result": null}`` when the corpus has no candidate; the
-    frontend should render a "no match" state rather than a 404.
+    Each line is one JSON object with discriminator ``t``:
+
+    * ``{"t": "meta", ...}`` once, after candidate resolution + graph walk.
+    * ``{"t": "token", "v": "..."}`` many, one per LLM delta.
+    * ``{"t": "empty"}`` once when the corpus has no candidate (in
+      place of "meta"); the page renders a "no match" state.
+    * ``{"t": "error", "msg": "..."}`` on internal failure.
+
+    No JSON envelope — clients read line-by-line. ``X-Accel-Buffering:
+    no`` keeps Vercel's edge proxy from holding the chunked body.
     """
-    try:
-        result = await explain(
-            req.query,
-            store,
-            llm,
-            focus=req.focus,
-            embedding_kwargs=embed_kwargs,
-        )
-    except Exception as e:
-        logger.exception("explain failed for query=%r", req.query)
-        raise HTTPException(status_code=500, detail="explain failed") from e
 
-    return {"result": result.model_dump() if result is not None else None}
+    async def gen() -> AsyncGenerator[bytes, None]:
+        try:
+            async for event in explain_stream(
+                req.query,
+                store,
+                llm,
+                focus=req.focus,
+                embedding_kwargs=embed_kwargs,
+            ):
+                yield (json.dumps(event) + "\n").encode("utf-8")
+        except Exception:
+            logger.exception("explain stream failed for query=%r", req.query)
+            yield (json.dumps({"t": "error", "msg": "explain failed"}) + "\n").encode("utf-8")
+
+    return StreamingResponse(
+        gen(),
+        media_type="application/x-ndjson",
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 def _validate_date_param(name: str, value: str | None) -> None:

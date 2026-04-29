@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from collections.abc import AsyncGenerator
 from typing import Any, cast
 
 import openai
@@ -158,3 +159,88 @@ class LLMClient:
                 "This may indicate content filtering or an unsupported response type."
             )
         return content
+
+    async def stream(
+        self,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> AsyncGenerator[str, None]:
+        """Yield completion content deltas as the model produces them.
+
+        429s during the *open-stream* phase get the same exponential
+        backoff as :meth:`complete`. Once the stream has started yielding
+        bytes a mid-iteration error is surfaced to the caller — retrying
+        from scratch would emit duplicate tokens.
+        """
+        self._require_backend()
+
+        last_error: Exception | None = None
+        backoff = INITIAL_BACKOFF
+
+        for attempt in range(MAX_RETRIES + 1):
+            yielded = False
+            try:
+                async for delta in self._stream_llm(messages, **kwargs):
+                    yielded = True
+                    yield delta
+                return
+            except Exception as e:
+                if not yielded and self._is_rate_limit(e) and attempt < MAX_RETRIES:
+                    last_error = e
+                    logger.info(
+                        "Rate limited (attempt %d/%d), waiting %ds...",
+                        attempt + 1,
+                        MAX_RETRIES,
+                        backoff,
+                    )
+                    await asyncio.sleep(backoff)
+                    backoff = min(backoff * 2, MAX_BACKOFF)
+                    continue
+                raise
+
+        assert last_error is not None  # noqa: S101
+        raise last_error
+
+    async def _stream_llm(
+        self,
+        messages: list[dict[str, str]],
+        **kwargs: Any,
+    ) -> AsyncGenerator[str, None]:
+        """One streaming attempt, no retries. Yields content deltas only;
+        empty deltas (role-only chunks, finish_reason chunks) are skipped.
+        """
+        if HAS_LITELLM:
+            llm_kwargs: dict[str, Any] = {}
+            if self.api_base:
+                llm_kwargs["api_base"] = self.api_base
+            if self.api_key:
+                llm_kwargs["api_key"] = self.api_key
+            response = await litellm.acompletion(
+                model=self.model,
+                messages=messages,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                stream=True,
+                **llm_kwargs,
+                **kwargs,
+            )
+            async for chunk in response:
+                delta = getattr(chunk.choices[0].delta, "content", None)
+                if delta:
+                    yield delta
+        else:
+            from openai.types.chat import ChatCompletionMessageParam
+
+            client = self._get_openai_client()
+            typed_messages = cast(list[ChatCompletionMessageParam], messages)
+            stream = await client.chat.completions.create(
+                model=self.model,
+                messages=typed_messages,
+                temperature=self.temperature,
+                max_tokens=self.max_tokens,
+                stream=True,
+            )
+            async for chunk in stream:
+                delta = chunk.choices[0].delta.content
+                if delta:
+                    yield delta

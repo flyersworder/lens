@@ -19,6 +19,7 @@ What's exercised here:
 
 from __future__ import annotations
 
+import json
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock
 
@@ -174,49 +175,71 @@ def test_analyze_rejects_whitespace_only_query(client):
 # ---------------------------------------------------------------------------
 
 
-def test_explain_returns_null_when_no_candidates(client, monkeypatch):
+def _parse_ndjson(body: str) -> list[dict[str, Any]]:
+    return [json.loads(line) for line in body.strip().splitlines() if line.strip()]
+
+
+def test_explain_streams_empty_when_no_candidates(client, monkeypatch):
     c, _, _ = client
 
-    async def fake_explain(query, store, llm, focus=None, embedding_kwargs=None):
-        return None
+    async def fake_stream(query, store, llm, focus=None, embedding_kwargs=None):
+        yield {"t": "empty"}
 
-    monkeypatch.setattr("api.index.explain", fake_explain)
+    monkeypatch.setattr("api.index.explain_stream", fake_stream)
     r = c.post("/api/explain", json={"query": "obscure"})
     assert r.status_code == 200
-    assert r.json() == {"result": None}
+    assert r.headers["content-type"].startswith("application/x-ndjson")
+    assert _parse_ndjson(r.text) == [{"t": "empty"}]
 
 
-def test_explain_serializes_result_via_pydantic(client, monkeypatch):
+def test_explain_streams_meta_then_tokens(client, monkeypatch):
     c, _, _ = client
 
-    fake_result = MagicMock()
-    fake_result.model_dump.return_value = {
-        "resolved_type": "principle",
-        "resolved_id": "attention",
-        "narrative": "Attention is...",
-    }
+    async def fake_stream(query, store, llm, focus=None, embedding_kwargs=None):
+        yield {
+            "t": "meta",
+            "resolved_type": "principle",
+            "resolved_id": "attention",
+            "resolved_name": "Attention",
+        }
+        yield {"t": "token", "v": "Hello "}
+        yield {"t": "token", "v": "world."}
 
-    async def fake_explain(query, store, llm, focus=None, embedding_kwargs=None):
-        return fake_result
-
-    monkeypatch.setattr("api.index.explain", fake_explain)
+    monkeypatch.setattr("api.index.explain_stream", fake_stream)
     r = c.post("/api/explain", json={"query": "attention"})
     assert r.status_code == 200
-    body = r.json()
-    assert body["result"]["resolved_id"] == "attention"
+    events = _parse_ndjson(r.text)
+    assert events[0]["t"] == "meta"
+    assert events[0]["resolved_id"] == "attention"
+    assert events[1] == {"t": "token", "v": "Hello "}
+    assert events[2] == {"t": "token", "v": "world."}
 
 
 def test_explain_passes_focus_through(client, monkeypatch):
     c, _, _ = client
     received: dict[str, Any] = {}
 
-    async def fake_explain(query, store, llm, focus=None, embedding_kwargs=None):
+    async def fake_stream(query, store, llm, focus=None, embedding_kwargs=None):
         received["focus"] = focus
-        return None
+        yield {"t": "empty"}
 
-    monkeypatch.setattr("api.index.explain", fake_explain)
+    monkeypatch.setattr("api.index.explain_stream", fake_stream)
     c.post("/api/explain", json={"query": "MoE", "focus": "tradeoffs"})
     assert received["focus"] == "tradeoffs"
+
+
+def test_explain_emits_error_event_on_exception(client, monkeypatch):
+    c, _, _ = client
+
+    async def fake_stream(query, store, llm, focus=None, embedding_kwargs=None):
+        raise RuntimeError("boom")
+        yield  # unreachable; makes this a generator function
+
+    monkeypatch.setattr("api.index.explain_stream", fake_stream)
+    r = c.post("/api/explain", json={"query": "x"})
+    assert r.status_code == 200
+    events = _parse_ndjson(r.text)
+    assert events == [{"t": "error", "msg": "explain failed"}]
 
 
 # ---------------------------------------------------------------------------

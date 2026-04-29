@@ -1,26 +1,32 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { explain, track } from "@/lib/api";
+import {
+  explainStream,
+  track,
+  type ExplainEventMeta,
+} from "@/lib/api";
 
-type ExplainResult = {
-  resolved_type: string;
-  resolved_id: string;
-  resolved_name: string;
+type Status = "loading" | "streaming" | "done" | "empty" | "error";
+
+type State = {
+  meta: ExplainEventMeta | null;
   narrative: string;
-  evolution?: string[];
-  tradeoffs?: Array<Record<string, unknown>>;
-  connections?: string[];
-  paper_refs?: string[];
-  alternatives?: Array<Record<string, unknown>>;
+  status: Status;
+  error: string | null;
+};
+
+const INITIAL: State = {
+  meta: null,
+  narrative: "",
+  status: "loading",
+  error: null,
 };
 
 type Props = { decoded: string };
 
 export function ConceptView({ decoded }: Props) {
-  const [data, setData] = useState<ExplainResult | null>(null);
-  const [busy, setBusy] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  const [s, setS] = useState<State>(INITIAL);
 
   // Strict Mode runs effects twice on first mount in dev. The ref
   // de-dupes by `decoded`, so the same concept fires telemetry +
@@ -30,24 +36,46 @@ export function ConceptView({ decoded }: Props) {
   useEffect(() => {
     if (lastFetchKey.current === decoded) return;
     lastFetchKey.current = decoded;
-    // Two events on purpose:
-    //   * view_explain_concept — fires on every concept-page load,
-    //     including failures. Use this for "how often is the concept
-    //     route hit at all".
-    //   * explain — fires only on a successful resolution. Use this
-    //     to compute resolution success rate (= explain / view_explain_concept).
-    // The /explain index page emits "view_explain" separately, so
-    // landing-page traffic stays distinct from concept-page traffic.
+
+    const ctrl = new AbortController();
+    setS(INITIAL);
     track("view_explain_concept", decoded);
-    setBusy(true);
-    explain({ query: decoded })
-      .then((r) => {
-        setData((r.result as ExplainResult | null) ?? null);
-        track("explain", decoded);
-      })
-      .catch((e) => setErr(e instanceof Error ? e.message : String(e)))
-      .finally(() => setBusy(false));
+
+    (async () => {
+      let sawMeta = false;
+      try {
+        for await (const ev of explainStream({ query: decoded }, ctrl.signal)) {
+          if (ev.t === "meta") {
+            sawMeta = true;
+            setS((p) => ({ ...p, meta: ev, status: "streaming" }));
+          } else if (ev.t === "token") {
+            setS((p) => ({ ...p, narrative: p.narrative + ev.v }));
+          } else if (ev.t === "empty") {
+            setS((p) => ({ ...p, status: "empty" }));
+            return;
+          } else if (ev.t === "error") {
+            setS((p) => ({ ...p, status: "error", error: ev.msg }));
+            return;
+          }
+        }
+        if (sawMeta) {
+          setS((p) => ({ ...p, status: "done" }));
+          track("explain", decoded);
+        }
+      } catch (e) {
+        if ((e as { name?: string })?.name === "AbortError") return;
+        setS((p) => ({
+          ...p,
+          status: "error",
+          error: e instanceof Error ? e.message : String(e),
+        }));
+      }
+    })();
+
+    return () => ctrl.abort();
   }, [decoded]);
+
+  const data = s.meta;
 
   return (
     <div className="space-y-8">
@@ -69,35 +97,35 @@ export function ConceptView({ decoded }: Props) {
         )}
       </section>
 
-      {busy && <p className="text-sm text-zinc-500">Resolving and synthesizing…</p>}
-      {err && <p className="text-sm text-red-400">Error: {err}</p>}
-
-      {!busy && !data && !err && (
+      {s.status === "loading" && (
+        <p className="text-sm text-zinc-500">
+          Resolving candidates… synthesis can take 30–60s.
+        </p>
+      )}
+      {s.status === "error" && (
+        <p className="text-sm text-red-400">Error: {s.error}</p>
+      )}
+      {s.status === "empty" && (
         <div className="rounded-lg border border-ink-line bg-ink-soft/60 p-6 text-zinc-300">
           No match for <span className="font-mono">{decoded}</span>. Try a
           related term, or{" "}
-          <a className="text-accent hover:underline" href="/">search papers</a>.
+          <a className="text-accent hover:underline" href="/">
+            search papers
+          </a>
+          .
         </div>
       )}
 
       {data && (
         <>
           <section className="prose prose-invert prose-zinc max-w-none whitespace-pre-wrap rounded-lg border border-ink-line bg-ink-soft/60 p-6 text-sm leading-relaxed text-zinc-200">
-            {data.narrative}
+            {s.narrative || (
+              <span className="text-zinc-500">Synthesizing…</span>
+            )}
+            {s.status === "streaming" && (
+              <span className="ml-1 inline-block h-3 w-1.5 animate-pulse bg-accent align-middle" />
+            )}
           </section>
-
-          {data.evolution && data.evolution.length > 0 && (
-            <section>
-              <h2 className="mb-3 text-sm uppercase tracking-widest text-zinc-500">
-                Evolution
-              </h2>
-              <ol className="space-y-2 border-l border-ink-line pl-5 text-sm">
-                {data.evolution.map((e, i) => (
-                  <li key={i} className="text-zinc-300">{e}</li>
-                ))}
-              </ol>
-            </section>
-          )}
 
           {data.connections && data.connections.length > 0 && (
             <section>
