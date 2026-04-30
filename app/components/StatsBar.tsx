@@ -41,18 +41,18 @@ export function StatsBar() {
     <div
       role="region"
       aria-label="Corpus statistics"
-      className="flex flex-wrap gap-x-8 gap-y-2 border-t border-ink-line/70 pt-6 text-xs uppercase tracking-wider text-zinc-500"
+      className="flex flex-wrap gap-x-5 gap-y-2 sm:gap-x-8 border-t border-ink-line/70 pt-6 text-xs uppercase tracking-wider text-zinc-500"
     >
       {cells.map(([label, value]) => (
         <div key={label} className="flex items-baseline gap-2">
-          <span className="font-mono text-base text-white normal-case tracking-normal">
+          <span className="font-mono text-sm sm:text-base text-white normal-case tracking-normal">
             {value}
           </span>
           <span>{label}</span>
         </div>
       ))}
       {data?.taxonomy_version != null && (
-        <div className="ml-auto flex items-baseline gap-2">
+        <div className="flex items-baseline gap-2 sm:ml-auto">
           <span className="font-mono text-zinc-300 normal-case tracking-normal">
             v{data.taxonomy_version}
           </span>

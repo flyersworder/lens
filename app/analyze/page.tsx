@@ -170,8 +170,8 @@ export default function AnalyzePage() {
   return (
     <div className="space-y-8">
       <section className="space-y-4">
-        <h1 className="text-3xl font-semibold tracking-tight">Analyze</h1>
-        <p className="max-w-2xl text-zinc-400">
+        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Analyze</h1>
+        <p className="max-w-2xl text-sm sm:text-base text-zinc-400">
           Resolve a tradeoff, surface candidate architectures, or map an agentic
           design pattern. Results are LLM-generated and grounded in the corpus.
         </p>
@@ -186,7 +186,7 @@ export default function AnalyzePage() {
                 key={id}
                 type="button"
                 onClick={() => selectMode(id)}
-                className={`rounded-lg border p-4 text-left transition ${
+                className={`rounded-lg border p-3 sm:p-4 text-left transition ${
                   type === id
                     ? "border-accent bg-accent/15 text-white"
                     : "border-ink-line bg-ink-soft/40 text-zinc-300 hover:border-accent/60 hover:bg-ink-soft/70"
@@ -257,7 +257,7 @@ export default function AnalyzePage() {
                 return (
                   <li
                     key={pid ?? i}
-                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
+                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-4 sm:p-5"
                   >
                     <div className="flex items-baseline justify-between gap-4">
                       <h3 className="text-base font-medium text-white">
@@ -318,7 +318,7 @@ export default function AnalyzePage() {
                 return (
                   <li
                     key={`${v.variant_name}-${i}`}
-                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
+                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-4 sm:p-5"
                   >
                     <div className="flex items-baseline justify-between gap-4">
                       <h3 className="text-base font-medium text-white">
@@ -398,7 +398,7 @@ export default function AnalyzePage() {
                 return (
                   <li
                     key={`${p.pattern_name}-${i}`}
-                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-5"
+                    className="rounded-lg border border-ink-line bg-ink-soft/60 p-4 sm:p-5"
                   >
                     <div className="flex items-baseline justify-between gap-4">
                       <h3 className="text-base font-medium text-white">

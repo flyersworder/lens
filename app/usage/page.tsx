@@ -31,8 +31,8 @@ export default function UsagePage() {
   return (
     <div className="space-y-8">
       <section className="space-y-3">
-        <h1 className="text-3xl font-semibold tracking-tight">Usage</h1>
-        <p className="max-w-2xl text-zinc-400">
+        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Usage</h1>
+        <p className="max-w-2xl text-sm sm:text-base text-zinc-400">
           Aggregate counts of feature interactions, recorded since the
           public deployment went live. Queries are SHA-256-hashed before
           storage — only the event type and timestamp are kept in the

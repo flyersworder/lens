@@ -30,12 +30,12 @@ export default function HomePage() {
   }
 
   return (
-    <div className="space-y-12">
-      <section className="space-y-6 pt-8">
-        <h1 className="text-4xl font-semibold tracking-tight md:text-5xl">
+    <div className="space-y-8 sm:space-y-12">
+      <section className="space-y-6 pt-4 sm:pt-8">
+        <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl md:text-5xl">
           Navigate the LLM&nbsp;engineering literature.
         </h1>
-        <p className="max-w-2xl text-base text-zinc-400 md:text-lg">
+        <p className="max-w-2xl text-sm text-zinc-400 sm:text-base md:text-lg">
           LENS extracts parameters, principles, and tradeoffs from a curated
           corpus, then lets you query them with hybrid keyword + vector search,
           structured tradeoff resolution, and concept explanations grounded in
@@ -117,12 +117,12 @@ export default function HomePage() {
                       href={arxivUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="group block rounded-lg border border-ink-line bg-ink-soft/60 p-5 transition hover:border-accent/60 hover:bg-ink-soft/80"
+                      className="group block rounded-lg border border-ink-line bg-ink-soft/60 p-4 sm:p-5 transition hover:border-accent/60 hover:bg-ink-soft/80"
                     >
                       {Inner}
                     </a>
                   ) : (
-                    <div className="block rounded-lg border border-ink-line bg-ink-soft/60 p-5">
+                    <div className="block rounded-lg border border-ink-line bg-ink-soft/60 p-4 sm:p-5">
                       {Inner}
                     </div>
                   )}

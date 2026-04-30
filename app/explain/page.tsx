@@ -11,8 +11,8 @@ export default function ExplainIndex() {
   return (
     <div className="space-y-8">
       <section className="space-y-4">
-        <h1 className="text-3xl font-semibold tracking-tight">Explain a concept</h1>
-        <p className="max-w-2xl text-zinc-400">
+        <h1 className="text-2xl sm:text-3xl font-semibold tracking-tight">Explain a concept</h1>
+        <p className="max-w-2xl text-sm sm:text-base text-zinc-400">
           Type any concept (architecture slot, principle, parameter). LENS
           disambiguates against the vocabulary and synthesizes a narrative
           backed by source papers.
