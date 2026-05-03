@@ -1,6 +1,6 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "npm install --no-audit --no-fund && uv sync --frozen --extra web --no-dev --no-editable",
+  "installCommand": "npm install --no-audit --no-fund",
   "buildCommand": "npm run build",
   "rewrites": [
     { "source": "/api/:path*", "destination": "https://lens-api-chi.vercel.app/api/:path*" }
