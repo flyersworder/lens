@@ -8,12 +8,50 @@ Architecture for shipping LENS as a public read-only website on a free tier, usi
 
 ---
 
+## Deployment topology (2026-05-03)
+
+ADR D4 ("single deploy") is **superseded**. Combining Next.js + Python in one Vercel project blew the 500 MB unzipped function bundle cap; multiple workarounds were attempted and none held. The deploy is now split into two Vercel projects in the same `flyersworders-projects` team:
+
+| Project | Vercel ID | Config file | Deploys what |
+|---|---|---|---|
+| `lens` | `prj_ga9XFH4y8Q5jheH5zxlw4SkB9h4e` | `vercel.json` | Next.js frontend; `/api/*` rewrites to the `lens-api` host |
+| `lens-api` | `prj_1C1cnBnJZpy7U8qoNfZAqkeWYGYM` | `vercel.api.json` | Python FastAPI in `api/index.py` |
+
+Both projects link from the same repo root. The Vercel CLI selects one or the other via `VERCEL_PROJECT_ID` + `--local-config` — there is no longer a `.vercel/` swap dance.
+
+**CI deploys via `.github/workflows/deploy-vercel.yml`** on every push to `main`:
+
+1. Deploy `lens-api` → `https://lens-api-chi.vercel.app`
+2. Smoke-test `GET /api/health` (6 retries, 5 s apart, to ride out cold-start)
+3. Deploy `lens` → `https://lens-fawn.vercel.app`
+
+Backend-first ordering is mandatory: the web project's `vercel.json` pins `/api/*` to `https://lens-api-chi.vercel.app`, so a contract-changing web deploy would talk to a stale API if the order were reversed. A failed health check halts the web deploy, leaving the user-facing alias on the previous good build.
+
+Required GitHub Secrets: `VERCEL_TOKEN`. Org/project IDs are inlined in the workflow (not secret).
+
+To deploy manually from a laptop, link the right project before running `vercel deploy`:
+
+```sh
+# API
+VERCEL_PROJECT_ID=prj_1C1cnBnJZpy7U8qoNfZAqkeWYGYM \
+VERCEL_ORG_ID=team_aWx4s8YoVMOWVPeo3S8FO2RD \
+  vercel deploy --prod --local-config=vercel.api.json
+
+# Web
+VERCEL_PROJECT_ID=prj_ga9XFH4y8Q5jheH5zxlw4SkB9h4e \
+VERCEL_ORG_ID=team_aWx4s8YoVMOWVPeo3S8FO2RD \
+  vercel deploy --prod
+```
+
+---
+
 ## Live state snapshot (2026-04-26)
 
 | Component | Where it lives | Notes |
 |---|---|---|
-| **Public URL** | `https://lens-fawn.vercel.app` | Production alias on Vercel Hobby (`flyersworders-projects/lens`) |
-| **Endpoints** | `/api/health`, `/api/search`, `/api/analyze`, `/api/explain`, `/api/stats`, `/api/track` | Defined in `api/index.py`. `stats` aggregates corpus counts (5-min in-process cache); `track` writes a row into `usage_events` on Turso (lazy DDL, no-op when `TURSO_*` is unset). |
+| **Public URL (web)** | `https://lens-fawn.vercel.app` | Production alias on Vercel Hobby (`flyersworders-projects/lens`). Rewrites `/api/*` to the API project. |
+| **Public URL (API)** | `https://lens-api-chi.vercel.app` | Separate Vercel project (`flyersworders-projects/lens-api`). See [Deployment topology](#deployment-topology-2026-05-03). |
+| **Endpoints** | `/api/health`, `/api/search`, `/api/analyze`, `/api/explain`, `/api/stats`, `/api/track` | Defined in `api/index.py`, served by the `lens-api` project. `stats` aggregates corpus counts (5-min in-process cache); `track` writes a row into `usage_events` on Turso (lazy DDL, no-op when `TURSO_*` is unset). |
 | **Frontend** | Next.js 16 App Router at repo root (`app/`, `lib/`) | Three pages — `/` (search + landing), `/analyze`, `/explain/[concept]` — plus a global `StatsBar`. Uses Tailwind; no shadcn registry. Tracks views + submissions via `lib/api.ts#track()` (sendBeacon). |
 | **Database (prod)** | Turso `lens-prod` (`libsql://lens-prod-flyersworder.aws-eu-west-1.turso.io`) | Live API source. 77 papers, 82 vocab, 65 matrix cells, 80 tradeoff extractions; embeddings now 1536-dim `text-embedding-3-small` (matches runtime query space — no truncation). |
 | **Database (dev)** | Turso `lens-dev` (`libsql://lens-dev-flyersworder.aws-eu-west-1.turso.io`) | Used by `tests/test_turso_store.py` and the Phase 1 publish workflow; safe to wipe. Same corpus snapshot, same 1536-dim embeddings. |
@@ -190,7 +228,7 @@ These are the architectural commitments confirmed 2026-04-26 after spike validat
 | **D1** | Embedding model (build + runtime) | `openai/text-embedding-3-small` (1536-dim) via OpenRouter | Battle-tested, ecosystem-friendly, ~$0 at LENS scale, compatible with future pgvector if we migrate to Neon. |
 | **D2** | Request-time LLM | `deepseek/deepseek-v4-flash` ($0.14/M in, $0.28/M out) | New April 2026 release, 5.4× cheaper output than Gemini 3.1 Flash Lite Preview, 1M context, MoE 284B/13B-active, ~$2.10/mo at projected volume — well under $5/mo cap. |
 | **D3** | Response cache | 24-hour TTL, key = `endpoint + query.lower().strip()` | Coarse but predictable; bounded staleness; lets caching actually pay. |
-| **D4** | Repository structure | Monorepo, single deploy: Next.js at root + `api/*.py` auto-detected by Vercel | Atomic versioning, one deploy, what Vercel docs assume. |
+| **D4** | Repository structure | ~~Monorepo, single deploy: Next.js at root + `api/*.py` auto-detected by Vercel~~ — **superseded 2026-05-03**: split into two Vercel projects (`lens` web + `lens-api` Python). The Python bundle exceeded the 500 MB cap when bundled with Next.js artifacts; combined deploys could not be made to fit. See [Deployment topology](#deployment-topology-2026-05-03). | Atomic versioning, one deploy, what Vercel docs assume. |
 | **D5** | Local-vs-Turso `Store` mode | Dual-backend: existing `Store` (sqlite-vec) for CLI/build/tests; new `TursoStore` (libSQL native) for Vercel runtime | Spike confirmed `file:` URLs lack libSQL vector functions; dual-backend isolates Turso-specific code and keeps tests offline. |
 
 ---

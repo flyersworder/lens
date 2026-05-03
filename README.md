@@ -21,7 +21,11 @@ Inspired by [TRIZ](https://en.wikipedia.org/wiki/TRIZ) methodology — but with 
 
 **Core pipeline implemented.** All three knowledge structures are functional: contradiction matrix, architecture catalog (property-based comparison), and agentic pattern catalog (emergent categories). Full monitor pipeline: acquire → enrich → extract → build → ideate.
 
+**Live demo:** [lens-fawn.vercel.app](https://lens-fawn.vercel.app/) — public read-only site backed by the same Python services (search, analyze, explain) that power the CLI.
+
 See [docs/architecture.md](docs/architecture.md) for the full architecture doc.
+
+See [docs/web-deployment.md](docs/web-deployment.md) for the public-web deployment architecture (Turso + Vercel + GitHub Actions).
 
 ## Quick Start
 

@@ -37,7 +37,7 @@ htmlcov/
 
 # Worktrees
 .worktrees/
-.vercel
+.vercel*
 
 # Next.js / Node
 node_modules/

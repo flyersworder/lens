@@ -1,0 +1,76 @@
+name: Deploy to Vercel
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Backend ships first (web rewrites /api/* to it). Web ships only if the
+# new API answers /api/health. Concurrency stops a fast follow-up push from
+# racing an in-flight deploy mid-promotion.
+concurrency:
+  group: deploy-vercel-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  VERCEL_ORG_ID: team_aWx4s8YoVMOWVPeo3S8FO2RD
+  VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+
+jobs:
+  deploy-api:
+    name: Deploy lens-api (production)
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_1C1cnBnJZpy7U8qoNfZAqkeWYGYM
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Vercel CLI
+        run: npm i -g vercel@latest
+      - name: Pull project (production)
+        run: vercel pull --yes --environment=production --local-config=vercel.api.json
+      - name: Build
+        run: vercel build --prod --local-config=vercel.api.json
+      - name: Deploy
+        run: vercel deploy --prebuilt --prod --local-config=vercel.api.json
+
+  smoke-test-api:
+    name: Smoke-test lens-api
+    needs: deploy-api
+    runs-on: ubuntu-latest
+    steps:
+      - name: GET /api/health (with retry for warmup)
+        run: |
+          set -u
+          for attempt in 1 2 3 4 5 6; do
+            code=$(curl -fsS -o /tmp/body -w '%{http_code}' --max-time 30 \
+              https://lens-api-chi.vercel.app/api/health || echo "000")
+            echo "attempt $attempt -> $code"
+            if [ "$code" = "200" ]; then
+              cat /tmp/body
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "API health check failed after 6 attempts"
+          [ -f /tmp/body ] && cat /tmp/body
+          exit 1
+
+  deploy-web:
+    name: Deploy lens (production)
+    needs: smoke-test-api
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_PROJECT_ID: prj_ga9XFH4y8Q5jheH5zxlw4SkB9h4e
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - name: Install Vercel CLI
+        run: npm i -g vercel@latest
+      - name: Pull project (production)
+        run: vercel pull --yes --environment=production
+      - name: Build
+        run: vercel build --prod
+      - name: Deploy
+        run: vercel deploy --prebuilt --prod
