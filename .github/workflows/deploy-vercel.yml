@@ -73,6 +73,21 @@ jobs:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
       - name: Install Vercel CLI
         run: npm i -g vercel@latest
+      # Stop Vercel auto-detecting the Python sources at root and trying
+      # to bundle them with the Next.js output. The API ships from the
+      # separate lens-api project; web only needs the JS bits. Written on
+      # the runner only — never committed.
+      - name: Hide Python sources from web project
+        run: |
+          cat > .vercelignore <<'EOF'
+          api/
+          src/
+          tests/
+          scripts/
+          pyproject.toml
+          uv.lock
+          requirements.txt
+          EOF
       - name: Pull project (production)
         run: vercel pull --yes --environment=production
       - name: Build
