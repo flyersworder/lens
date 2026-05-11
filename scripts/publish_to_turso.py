@@ -289,7 +289,44 @@ def create_remote_schema(
     logger.info("created remote schema (tables, FTS)")
 
 
-def create_remote_indexes(client: libsql_client.ClientSync) -> None:
+def _exec_via_pipeline(url: str, auth_token: str, sql: str) -> dict:
+    """POST a single SQL statement to Turso's /v2/pipeline endpoint and
+    return the typed result entry.
+
+    Bypasses libsql-client because version 0.3.1 (latest) raises
+    ``KeyError: 'result'`` on the typed-error response shape that Hrana 3
+    uses (``{"type": "error", "error": {...}}``) — the actual server
+    error message is swallowed. We POST directly so we can inspect the
+    typed entry and surface the underlying message.
+
+    Returns the inner result dict for ``type == "ok"`` or raises
+    ``RuntimeError`` with the server's message for ``type == "error"``.
+    """
+    import httpx
+
+    base = _normalize_url(url).rstrip("/")
+    body = {
+        "requests": [
+            {"type": "execute", "stmt": {"sql": sql}},
+            {"type": "close"},
+        ]
+    }
+    headers = {"Authorization": f"Bearer {auth_token}"}
+    # Long timeout: index builds can take a while on a populated table.
+    with httpx.Client(timeout=httpx.Timeout(600.0)) as http:
+        r = http.post(f"{base}/v2/pipeline", json=body, headers=headers)
+    r.raise_for_status()
+    data = r.json()
+    entry = data["results"][0]
+    if entry.get("type") == "error":
+        err = entry.get("error", {})
+        msg = err.get("message", "<no message>")
+        code = err.get("code", "<no code>")
+        raise RuntimeError(f"libSQL error ({code}) on `{sql[:80]}...`: {msg}")
+    return entry.get("response", {})
+
+
+def create_remote_indexes(url: str, auth_token: str) -> None:
     """Create the libSQL vector indexes after bulk copy + embedding attach.
 
     Deferred from schema creation: building each index once over the final
@@ -297,9 +334,14 @@ def create_remote_indexes(client: libsql_client.ClientSync) -> None:
     reindex cost on every INSERT (step 3) and UPDATE (step 4). This avoids
     the >5min wall on Turso's HTTP transport that previously aborted
     ``attach_embeddings`` for the vocabulary table.
+
+    Issued via the raw ``/v2/pipeline`` endpoint instead of libsql-client
+    because the client (0.3.1) raises ``KeyError: 'result'`` on the
+    typed-error response shape that libSQL uses for SQL errors, swallowing
+    the actual error message.
     """
     for ddl in INDEX_DDL:
-        client.execute(ddl)
+        _exec_via_pipeline(url, auth_token, ddl)
     logger.info("created vector indexes (papers_emb_idx, vocabulary_emb_idx)")
 
 
@@ -518,7 +560,7 @@ def publish(
             attach_embeddings(local, client, table, key_col, embedding_dim=embedding_dim)
 
         logger.info("step 5/6: creating vector indexes")
-        create_remote_indexes(client)
+        create_remote_indexes(target_url, target_auth_token)
 
         logger.info("step 6/6: rebuilding FTS5 + verifying")
         rebuild_fts(client)
