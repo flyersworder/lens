@@ -35,7 +35,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-litellm = ["litellm>=1.83.7"]
+litellm = ["litellm>=1.83.10"]
 deepxiv = ["deepxiv-sdk>=0.2.5"]
 turso = ["libsql-client>=0.3.0"]
 # The `local` extra carries the heavy ML dependencies that the local
@@ -115,9 +115,13 @@ dev = [
 #   - requests: arxiv pins requests~=2.32.0; need >=2.33.0 for CVE-2026-25645
 #   - python-dotenv: litellm>=1.83.7 pins python-dotenv==1.0.1; we need >=1.2.2
 #     to stay on a CVE-patched release. load_dotenv() API is stable across these.
+#   - urllib3: transitive (requests/openai/httpx chain); need >=2.7.0 to
+#     close GHSA-mf9v-mfxr-j63j (decompression-bomb bypass) and
+#     GHSA-qccp-gfcp-xxvc (header forwarding in proxied redirects).
 override-dependencies = [
     "requests>=2.33.0",
     "python-dotenv>=1.2.2",
+    "urllib3>=2.7.0",
 ]
 
 [tool.ruff]
