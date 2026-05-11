@@ -32,6 +32,7 @@ that the *next* publish run will overwrite cleanly.
 from __future__ import annotations
 
 import argparse
+import asyncio
 import logging
 import os
 import sqlite3
@@ -42,6 +43,27 @@ from pathlib import Path
 import libsql_client
 
 from lens.store.models import EMBEDDING_DIM
+
+# Transport-level exceptions that justify a retry of `client.batch(...)`.
+# Deliberately *narrow*: server-returned errors (libsql_client.LibsqlError,
+# schema/constraint violations) must surface immediately — retrying them
+# would mask real bugs as transient flakes. aiohttp lives behind
+# libsql_client's HTTP transport; import lazily so this script still
+# works on the websocket transport.
+_RETRYABLE_EXCEPTIONS: tuple[type[BaseException], ...] = (
+    TimeoutError,
+    asyncio.TimeoutError,
+    ConnectionError,
+)
+try:
+    import aiohttp  # noqa: F401
+
+    _RETRYABLE_EXCEPTIONS = _RETRYABLE_EXCEPTIONS + (
+        aiohttp.ClientConnectionError,
+        aiohttp.ServerTimeoutError,
+    )
+except ImportError:
+    pass
 
 logger = logging.getLogger("publish_to_turso")
 
@@ -261,6 +283,46 @@ def create_remote_schema(
     logger.info("created remote schema (tables, FTS, indexes)")
 
 
+def _batch_with_retry(
+    client: libsql_client.ClientSync,
+    statements: list[libsql_client.Statement],
+    *,
+    op: str,
+    max_attempts: int = 4,
+    base_delay: float = 2.0,
+) -> None:
+    """Run ``client.batch(statements)`` with bounded retry on transport flakes.
+
+    libsql-client routes HTTP requests through aiohttp, whose default
+    ``ClientSession`` total timeout is 300 s. A single slow ``v1/batch``
+    POST therefore aborts the whole publish (root cause of the
+    2026-05-11 weekly-monitor failure). We retry only on transport-level
+    exceptions — ``TimeoutError``, ``ConnectionError``, and aiohttp's
+    connection/timeout variants — never on server-returned errors like
+    ``libsql_client.LibsqlError`` (those are deterministic and must
+    surface immediately).
+
+    Exponential backoff: base_delay * 2**(attempt-1), i.e. 2 s, 4 s, 8 s.
+    """
+    for attempt in range(1, max_attempts + 1):
+        try:
+            client.batch(statements)  # ty: ignore[invalid-argument-type]
+            return
+        except _RETRYABLE_EXCEPTIONS as exc:
+            if attempt >= max_attempts:
+                logger.error(
+                    f"  {op}: transport error on attempt {attempt}/{max_attempts}, "
+                    f"giving up: {type(exc).__name__}: {exc}"
+                )
+                raise
+            delay = base_delay * (2 ** (attempt - 1))
+            logger.warning(
+                f"  {op}: transport error on attempt {attempt}/{max_attempts} "
+                f"({type(exc).__name__}: {exc}); retrying in {delay:.0f}s"
+            )
+            time.sleep(delay)
+
+
 def copy_table(
     local: sqlite3.Connection,
     client: libsql_client.ClientSync,
@@ -300,7 +362,7 @@ def copy_table(
     for i in range(0, len(rows), batch_size):
         chunk = rows[i : i + batch_size]
         statements = [libsql_client.Statement(insert_sql, list(row)) for row in chunk]
-        client.batch(statements)  # ty: ignore[invalid-argument-type]
+        _batch_with_retry(client, statements, op=f"copy {table}")
         total += len(chunk)
     logger.info(f"  {table}: {total} rows copied")
     return total
@@ -362,7 +424,7 @@ def attach_embeddings(
         statements = [
             libsql_client.Statement(update_sql, [row["embedding"], row[key_col]]) for row in chunk
         ]
-        client.batch(statements)  # ty: ignore[invalid-argument-type]
+        _batch_with_retry(client, statements, op=f"attach {table}.embedding")
         total += len(chunk)
     logger.info(f"  {table}.embedding: {total} embeddings attached")
     return total
