@@ -94,9 +94,25 @@ EMBEDDING_TABLES: dict[str, str] = {
 # table cascades to its shadow tables (papers_fts_data, _idx, _config,
 # _docsize, _content) — verified against live Turso 2026-04 — so we
 # don't need to enumerate them.
+#
+# DiskANN-backed vector indexes (libsql_vector_idx) DO need their shadow
+# state dropped explicitly. `DROP INDEX` on a libsql_vector_idx index
+# does not reliably remove its `<idx>_shadow` / `<idx>_shadow_idx`
+# tables when the index lifecycle was interrupted mid-publish — and a
+# stale `<idx>_shadow` makes the next `CREATE INDEX` fail with
+# "vector index: unable to initialize diskann" (root cause of the
+# 2026-05-11 20:08 failure). Source: tursodatabase/libsql
+# vectordiskann.c, where diskAnnCreateIndex issues
+# `CREATE TABLE IF NOT EXISTS <idx>_shadow ...` — IF NOT EXISTS hides
+# a schema mismatch on a stale shadow. `libsql_vector_meta_shadow` is
+# the global metadata table; safe to drop because the publish owns the
+# entire vector-index space for this DB.
 DROP_STATEMENTS: list[str] = [
     "DROP INDEX IF EXISTS papers_emb_idx",
     "DROP INDEX IF EXISTS vocabulary_emb_idx",
+    "DROP TABLE IF EXISTS papers_emb_idx_shadow",
+    "DROP TABLE IF EXISTS vocabulary_emb_idx_shadow",
+    "DROP TABLE IF EXISTS libsql_vector_meta_shadow",
     "DROP TABLE IF EXISTS papers_fts",
     "DROP TABLE IF EXISTS vocabulary_fts",
     *[f"DROP TABLE IF EXISTS {t}" for t in TABLES_TO_COPY],
