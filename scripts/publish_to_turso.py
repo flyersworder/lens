@@ -109,6 +109,12 @@ FTS_DDL: list[str] = [
     "name, description, kind, content=vocabulary, content_rowid=rowid)",
 ]
 
+# Vector indexes are created AFTER bulk copy + embedding attach, not during
+# schema creation. libSQL's libsql_vector_idx maintains the index incrementally
+# on every INSERT/UPDATE — that turned vocabulary's single UPDATE batch into a
+# >5min request on Turso (root cause of the 2026-05-11 18:15 failure). Building
+# the index once over the final dataset is a single bulk operation that fits
+# comfortably under the HTTP timeout. See `create_remote_indexes`.
 INDEX_DDL: list[str] = [
     "CREATE INDEX papers_emb_idx ON papers (libsql_vector_idx(embedding))",
     "CREATE INDEX vocabulary_emb_idx ON vocabulary (libsql_vector_idx(embedding))",
@@ -278,9 +284,23 @@ def create_remote_schema(
 
     for ddl in FTS_DDL:
         client.execute(ddl)
+    # Vector indexes are created later by ``create_remote_indexes`` — see
+    # the comment on ``INDEX_DDL`` for why we don't build them here.
+    logger.info("created remote schema (tables, FTS)")
+
+
+def create_remote_indexes(client: libsql_client.ClientSync) -> None:
+    """Create the libSQL vector indexes after bulk copy + embedding attach.
+
+    Deferred from schema creation: building each index once over the final
+    dataset is a single bulk operation, instead of paying incremental
+    reindex cost on every INSERT (step 3) and UPDATE (step 4). This avoids
+    the >5min wall on Turso's HTTP transport that previously aborted
+    ``attach_embeddings`` for the vocabulary table.
+    """
     for ddl in INDEX_DDL:
         client.execute(ddl)
-    logger.info("created remote schema (tables, FTS, indexes)")
+    logger.info("created vector indexes (papers_emb_idx, vocabulary_emb_idx)")
 
 
 def _batch_with_retry(
@@ -483,21 +503,24 @@ def publish(
 
     started = time.monotonic()
     try:
-        logger.info("step 1/5: dropping existing remote schema")
+        logger.info("step 1/6: dropping existing remote schema")
         drop_remote_schema(client)
 
-        logger.info("step 2/5: creating remote schema")
+        logger.info("step 2/6: creating remote schema (tables + FTS)")
         create_remote_schema(local, client, embedding_dim)
 
-        logger.info("step 3/5: copying tables")
+        logger.info("step 3/6: copying tables")
         for table in TABLES_TO_COPY:
             copy_table(local, client, table)
 
-        logger.info("step 4/5: attaching embeddings")
+        logger.info("step 4/6: attaching embeddings")
         for table, key_col in EMBEDDING_TABLES.items():
             attach_embeddings(local, client, table, key_col, embedding_dim=embedding_dim)
 
-        logger.info("step 5/5: rebuilding FTS5 + verifying")
+        logger.info("step 5/6: creating vector indexes")
+        create_remote_indexes(client)
+
+        logger.info("step 6/6: rebuilding FTS5 + verifying")
         rebuild_fts(client)
         if not verify_counts(local, client):
             sys.exit("error: row counts did not match between local and remote")
