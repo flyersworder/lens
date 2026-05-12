@@ -95,29 +95,14 @@ EMBEDDING_TABLES: dict[str, str] = {
 # _docsize, _content) — verified against live Turso 2026-04 — so we
 # don't need to enumerate them.
 #
-# DiskANN-backed vector indexes (libsql_vector_idx) need their per-index
-# shadow tables dropped explicitly. `DROP INDEX` on a libsql_vector_idx
-# index does not reliably remove its `<idx>_shadow` / `<idx>_shadow_idx`
-# tables when the index lifecycle was interrupted mid-publish — and a
-# stale `<idx>_shadow` makes the next `CREATE INDEX` fail with
-# "vector index: unable to initialize diskann" (root cause of the
-# 2026-05-11 20:08 failure). Source: tursodatabase/libsql
-# vectordiskann.c, where diskAnnCreateIndex issues
-# `CREATE TABLE IF NOT EXISTS <idx>_shadow ...` — IF NOT EXISTS hides
-# a schema mismatch on a stale shadow.
-#
-# IMPORTANT: do NOT drop `libsql_vector_meta_shadow`. It is libSQL's
-# DB-wide vector-index metadata table; dropping it triggers
-# "vector index: failed to init meta table: database is locked" on the
-# next CREATE INDEX (run 25714754392, 2026-05-12 05:18). Stale rows in
-# it for the same index name are handled gracefully via the
-# SQLITE_CONSTRAINT branch of diskAnnCreateIndex, so leaving it alone
-# is both correct and safer.
+# Vector indexes are recreated on the empty table during `create_remote_schema`
+# (see `INDEX_DDL`). With CREATE INDEX issued before any rows exist, the
+# per-index shadow tables are built fresh from scratch, so we don't need
+# the explicit `DROP TABLE <idx>_shadow` cleanup that the brief deferred-index
+# experiment required (see PR #33 / 2026-05-11).
 DROP_STATEMENTS: list[str] = [
     "DROP INDEX IF EXISTS papers_emb_idx",
     "DROP INDEX IF EXISTS vocabulary_emb_idx",
-    "DROP TABLE IF EXISTS papers_emb_idx_shadow",
-    "DROP TABLE IF EXISTS vocabulary_emb_idx_shadow",
     "DROP TABLE IF EXISTS papers_fts",
     "DROP TABLE IF EXISTS vocabulary_fts",
     *[f"DROP TABLE IF EXISTS {t}" for t in TABLES_TO_COPY],
@@ -130,12 +115,22 @@ FTS_DDL: list[str] = [
     "name, description, kind, content=vocabulary, content_rowid=rowid)",
 ]
 
-# Vector indexes are created AFTER bulk copy + embedding attach, not during
-# schema creation. libSQL's libsql_vector_idx maintains the index incrementally
-# on every INSERT/UPDATE — that turned vocabulary's single UPDATE batch into a
-# >5min request on Turso (root cause of the 2026-05-11 18:15 failure). Building
-# the index once over the final dataset is a single bulk operation that fits
-# comfortably under the HTTP timeout. See `create_remote_indexes`.
+# Vector indexes are created during schema creation on EMPTY tables.
+# `CREATE INDEX libsql_vector_idx(...)` on an empty table is essentially
+# metadata-only (instant) and sidesteps two problems we hit when trying
+# to build the index after bulk load:
+#
+#   1. "vector index: unable to initialize diskann" when partial shadow
+#      tables from a previous failed publish prevented re-creation
+#      (run 25693891227 / PR #33).
+#   2. "vector index: failed to init meta table: database is locked"
+#      from a server-side concurrency issue when CREATE INDEX fired
+#      immediately after a large attach_embeddings UPDATE (runs
+#      25714754392 / 25715211972 / PR #36).
+#
+# The trade-off — incremental index maintenance on INSERT/UPDATE — is
+# managed by keeping `copy_table` / `attach_embeddings` batch sizes
+# small enough that each batch finishes well under the 5-min HTTP wall.
 INDEX_DDL: list[str] = [
     "CREATE INDEX papers_emb_idx ON papers (libsql_vector_idx(embedding))",
     "CREATE INDEX vocabulary_emb_idx ON vocabulary (libsql_vector_idx(embedding))",
@@ -305,65 +300,9 @@ def create_remote_schema(
 
     for ddl in FTS_DDL:
         client.execute(ddl)
-    # Vector indexes are created later by ``create_remote_indexes`` — see
-    # the comment on ``INDEX_DDL`` for why we don't build them here.
-    logger.info("created remote schema (tables, FTS)")
-
-
-def _exec_via_pipeline(url: str, auth_token: str, sql: str) -> dict:
-    """POST a single SQL statement to Turso's /v2/pipeline endpoint and
-    return the typed result entry.
-
-    Bypasses libsql-client because version 0.3.1 (latest) raises
-    ``KeyError: 'result'`` on the typed-error response shape that Hrana 3
-    uses (``{"type": "error", "error": {...}}``) — the actual server
-    error message is swallowed. We POST directly so we can inspect the
-    typed entry and surface the underlying message.
-
-    Returns the inner result dict for ``type == "ok"`` or raises
-    ``RuntimeError`` with the server's message for ``type == "error"``.
-    """
-    import httpx
-
-    base = _normalize_url(url).rstrip("/")
-    body = {
-        "requests": [
-            {"type": "execute", "stmt": {"sql": sql}},
-            {"type": "close"},
-        ]
-    }
-    headers = {"Authorization": f"Bearer {auth_token}"}
-    # Long timeout: index builds can take a while on a populated table.
-    with httpx.Client(timeout=httpx.Timeout(600.0)) as http:
-        r = http.post(f"{base}/v2/pipeline", json=body, headers=headers)
-    r.raise_for_status()
-    data = r.json()
-    entry = data["results"][0]
-    if entry.get("type") == "error":
-        err = entry.get("error", {})
-        msg = err.get("message", "<no message>")
-        code = err.get("code", "<no code>")
-        raise RuntimeError(f"libSQL error ({code}) on `{sql[:80]}...`: {msg}")
-    return entry.get("response", {})
-
-
-def create_remote_indexes(url: str, auth_token: str) -> None:
-    """Create the libSQL vector indexes after bulk copy + embedding attach.
-
-    Deferred from schema creation: building each index once over the final
-    dataset is a single bulk operation, instead of paying incremental
-    reindex cost on every INSERT (step 3) and UPDATE (step 4). This avoids
-    the >5min wall on Turso's HTTP transport that previously aborted
-    ``attach_embeddings`` for the vocabulary table.
-
-    Issued via the raw ``/v2/pipeline`` endpoint instead of libsql-client
-    because the client (0.3.1) raises ``KeyError: 'result'`` on the
-    typed-error response shape that libSQL uses for SQL errors, swallowing
-    the actual error message.
-    """
     for ddl in INDEX_DDL:
-        _exec_via_pipeline(url, auth_token, ddl)
-    logger.info("created vector indexes (papers_emb_idx, vocabulary_emb_idx)")
+        client.execute(ddl)
+    logger.info("created remote schema (tables, FTS, indexes)")
 
 
 def _batch_with_retry(
@@ -411,12 +350,19 @@ def copy_table(
     client: libsql_client.ClientSync,
     table: str,
     *,
-    batch_size: int = 200,
+    batch_size: int = 20,
 ) -> int:
     """Bulk-copy rows from local ``table`` to remote, returning row count.
 
     Uses ``client.batch`` for efficient round-trips and respects libSQL's
     request-size cap by chunking at ``batch_size``.
+
+    ``batch_size`` is small (20) because both ``papers`` and ``vocabulary``
+    have a libsql_vector_idx index on ``embedding`` from
+    ``create_remote_schema`` — every INSERT pays an incremental
+    reindex cost, so keeping per-batch transactions small keeps each
+    request well under the 5-min HTTP timeout that wedged vocabulary
+    UPDATE in run 25686552927 (2026-05-11).
     """
     cols = _column_names(local, table)
     # Local schema never has an `embedding` column — embeddings live in
@@ -458,7 +404,7 @@ def attach_embeddings(
     key_col: str,
     *,
     embedding_dim: int,
-    batch_size: int = 200,
+    batch_size: int = 20,
 ) -> int:
     """Pull embeddings from local ``{table}_vec`` and UPDATE remote rows.
 
@@ -566,24 +512,21 @@ def publish(
 
     started = time.monotonic()
     try:
-        logger.info("step 1/6: dropping existing remote schema")
+        logger.info("step 1/5: dropping existing remote schema")
         drop_remote_schema(client)
 
-        logger.info("step 2/6: creating remote schema (tables + FTS)")
+        logger.info("step 2/5: creating remote schema (tables, FTS, indexes)")
         create_remote_schema(local, client, embedding_dim)
 
-        logger.info("step 3/6: copying tables")
+        logger.info("step 3/5: copying tables")
         for table in TABLES_TO_COPY:
             copy_table(local, client, table)
 
-        logger.info("step 4/6: attaching embeddings")
+        logger.info("step 4/5: attaching embeddings")
         for table, key_col in EMBEDDING_TABLES.items():
             attach_embeddings(local, client, table, key_col, embedding_dim=embedding_dim)
 
-        logger.info("step 5/6: creating vector indexes")
-        create_remote_indexes(target_url, target_auth_token)
-
-        logger.info("step 6/6: rebuilding FTS5 + verifying")
+        logger.info("step 5/5: rebuilding FTS5 + verifying")
         rebuild_fts(client)
         if not verify_counts(local, client):
             sys.exit("error: row counts did not match between local and remote")
