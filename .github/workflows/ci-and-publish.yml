@@ -28,7 +28,10 @@ jobs:
           cache-dependency-glob: "pyproject.toml"
       - run: uv python install 3.12
       - run: uv sync --all-extras --dev --frozen
-      - run: uv run pytest
+      # Deselect integration tests — they hit live external hosts (e.g.
+      # data.rag.ac.cn via deepxiv-sdk) and make CI hostage to third-party
+      # uptime. Run them locally/on-demand with `uv run pytest -m integration`.
+      - run: uv run pytest -m "not integration"
 
   security:
     runs-on: ubuntu-latest
