@@ -26,7 +26,7 @@ jobs:
     env:
       VERCEL_PROJECT_ID: prj_1C1cnBnJZpy7U8qoNfZAqkeWYGYM
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       # uv + Python: vercel build runs the api project's installCommand
       # (`uv sync ...`) on the runner, so uv must be on PATH. The hosted
       # Vercel builders ship uv preinstalled; this CI runner doesn't.
@@ -70,7 +70,7 @@ jobs:
     env:
       VERCEL_PROJECT_ID: prj_ga9XFH4y8Q5jheH5zxlw4SkB9h4e
     steps:
-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
       - name: Install Vercel CLI
         run: npm i -g vercel@latest
       # Stop Vercel auto-detecting the Python sources at root and trying
