@@ -16,9 +16,17 @@ updates:
     open-pull-requests-limit: 10
     labels:
       - "dependencies"
-    # Group minor/patch updates to reduce PR noise
+    # Group minor/patch version bumps AND all security updates into single PRs.
+    # The `security` CI job scans the whole uv.lock, so bundling security
+    # updates lets one PR clear every advisory at once instead of each
+    # individual bump failing on the others still being vulnerable.
     groups:
       minor-and-patch:
+        applies-to: version-updates
         update-types:
           - "minor"
           - "patch"
+      security:
+        applies-to: security-updates
+        patterns:
+          - "*"

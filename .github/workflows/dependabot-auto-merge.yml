@@ -1,0 +1,84 @@
+name: Dependabot auto-merge
+
+# Self-contained auto-merge for dependabot PRs. Fires after the CI workflow
+# finishes; if it succeeded (both `test` and `security` jobs green) the PR is
+# squash-merged. Major version bumps are held for manual review.
+#
+# Why workflow_run (not pull_request): a workflow_run job runs in the base-repo
+# context with a writable GITHUB_TOKEN, unlike the read-only token dependabot's
+# own PR-triggered runs receive. No branch-protection rules or the repo
+# "Allow auto-merge" setting are required. Uses only the gh CLI — no
+# third-party actions to pin or trust.
+#
+# Must live on the default branch to trigger (a workflow_run requirement).
+#
+# Security: untrusted workflow_run fields (head_sha, head_branch) are passed
+# only as quoted env vars / jq --arg values, never interpolated into a shell
+# or jq program. The author gate is an exact match against dependabot's login,
+# so a PR from any non-dependabot account is never merged.
+
+on:
+  workflow_run:
+    workflows: ["Python CI and Publish to PyPI"]
+    types: [completed]
+
+permissions:
+  contents: write # squash-merge + delete branch
+  pull-requests: write # comment on held PRs
+
+jobs:
+  auto-merge:
+    runs-on: ubuntu-latest
+    # Only act on a green CI run that came from a pull request.
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.event == 'pull_request'
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      REPO: ${{ github.repository }}
+      HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
+      HEAD_BRANCH: ${{ github.event.workflow_run.head_branch }}
+    steps:
+      - name: Resolve the dependabot PR for this run
+        id: pr
+        run: |
+          # Match the open PR whose head branch + commit produced this CI run,
+          # authored by dependabot. Exact login match (REST returns
+          # "app/dependabot"); HEAD_SHA passed as jq data via --arg.
+          num=$(gh pr list --repo "$REPO" --head "$HEAD_BRANCH" --state open \
+                  --json number,headRefOid,author \
+                | jq -r --arg sha "$HEAD_SHA" '
+                    map(select(
+                      .headRefOid == $sha and
+                      (.author.login == "app/dependabot" or .author.login == "dependabot[bot]")
+                    )) | .[0].number // empty')
+          if [ -z "$num" ]; then
+            echo "No open dependabot PR matching $HEAD_BRANCH@$HEAD_SHA — nothing to do."
+          else
+            echo "Found dependabot PR #$num."
+            echo "number=$num" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Merge (holding majors for manual review)
+        if: steps.pr.outputs.number != ''
+        env:
+          PR: ${{ steps.pr.outputs.number }}
+        run: |
+          # Dependabot embeds a per-dependency `update-type:` trailer in each
+          # commit message — present for grouped PRs too. Hold if any is major.
+          # Commit messages are untrusted, but are only pattern-matched here,
+          # never executed.
+          msgs=$(gh api "repos/$REPO/pulls/$PR/commits" --jq '.[].commit.message')
+          if printf '%s\n' "$msgs" | grep -q 'update-type: version-update:semver-major'; then
+            echo "PR #$PR contains a major version bump — holding for manual review."
+            # Comment once, so re-runs don't spam the PR.
+            seen=$(gh pr view "$PR" --repo "$REPO" --json comments \
+                     --jq '[.comments[] | select(.body | test("Auto-merge skipped"))] | length')
+            if [ "$seen" = "0" ]; then
+              gh pr comment "$PR" --repo "$REPO" \
+                --body "🔒 Auto-merge skipped: this PR includes a **major** version bump. Review and merge manually." || true
+            fi
+            exit 0
+          fi
+          echo "PR #$PR is patch/minor/security with green CI — squash-merging."
+          gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
