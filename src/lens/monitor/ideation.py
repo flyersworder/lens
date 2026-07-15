@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import UTC, datetime
 from typing import Any
@@ -9,6 +10,7 @@ from typing import Any
 import numpy as np
 
 from lens.store.store import LensStore
+from lens.taxonomy.vocabulary import _slugify
 
 logger = logging.getLogger(__name__)
 
@@ -290,55 +292,187 @@ def run_ideation(
     }
 
 
+IDEA_CARD_SYSTEM_PROMPT = (
+    "You are a research analyst. You are given a gap in an LLM-research "
+    "tradeoff matrix and a catalog of ideation patterns (reusable moves for "
+    "generating research ideas). Select the 1-2 patterns most applicable to "
+    "the gap and apply them to produce ONE concrete, falsifiable research idea. "
+    "Respond with a single JSON object and nothing else."
+)
+
+
+def _format_pattern_catalog(patterns: list[dict[str, Any]]) -> str:
+    return "\n".join(f"- {p['name']}: {p['description']}" for p in patterns)
+
+
+def _format_grounding(
+    gap: dict[str, Any],
+    vocab_by_id: dict[str, dict[str, Any]],
+) -> str:
+    lines: list[str] = []
+    for pid in gap.get("related_params", []):
+        v = vocab_by_id.get(pid)
+        if v:
+            lines.append(f"- parameter: {v['name']} — {v['description']}")
+    for pid in gap.get("related_principles", []):
+        v = vocab_by_id.get(pid)
+        if v:
+            lines.append(f"- principle: {v['name']} — {v['description']}")
+    return "\n".join(lines) if lines else "(no referenced vocabulary)"
+
+
+def _build_idea_card_messages(
+    gap: dict[str, Any],
+    vocab_by_id: dict[str, dict[str, Any]],
+    patterns: list[dict[str, Any]],
+) -> list[dict[str, str]]:
+    user = (
+        f"Gap: {gap['description']}\n"
+        f"Gap type: {gap['gap_type']}\n\n"
+        f"Referenced vocabulary:\n{_format_grounding(gap, vocab_by_id)}\n\n"
+        f"Ideation pattern catalog:\n{_format_pattern_catalog(patterns)}\n\n"
+        "Return a JSON object with keys: "
+        '"title" (<=15 words), '
+        '"patterns" (list of 1-2 pattern names copied verbatim from the catalog), '
+        '"hook" (1-2 sentences), '
+        '"mechanism" (how the chosen pattern applies to this gap, producing a concrete artifact), '
+        '"falsification" (a minimal experiment with a metric and a distinguishing prediction), '
+        '"differentiation" (list of strings: how this differs from the referenced principles), '
+        '"signature_terms" (list of 3-6 key terms), '
+        '"confidence" (0-1 float).'
+    )
+    return [
+        {"role": "system", "content": IDEA_CARD_SYSTEM_PROMPT},
+        {"role": "user", "content": user},
+    ]
+
+
+def _as_str_list(value: Any) -> list[str]:
+    if isinstance(value, list):
+        return [str(x) for x in value]
+    return [str(value)] if value else []
+
+
+def _parse_idea_card(text: str, valid_pattern_ids: set[str]) -> dict[str, Any] | None:
+    try:
+        data = json.loads(text)
+    except json.JSONDecodeError:
+        from json_repair import repair_json
+
+        try:
+            data = repair_json(text, return_objects=True)
+        except Exception:
+            return None
+    if not isinstance(data, dict):
+        return None
+    title = str(data.get("title", "")).strip()
+    if not title:
+        return None
+    pattern_ids = [
+        pid
+        for name in data.get("patterns", [])
+        if (pid := _slugify(str(name))) in valid_pattern_ids
+    ]
+    try:
+        confidence = float(data.get("confidence", 0.5) or 0.5)
+    except (TypeError, ValueError):
+        confidence = 0.5
+    return {
+        "title": title,
+        "pattern_ids": pattern_ids,
+        "hook": str(data.get("hook", "")).strip(),
+        "mechanism": str(data.get("mechanism", "")).strip(),
+        "falsification": str(data.get("falsification", "")).strip(),
+        "differentiation": _as_str_list(data.get("differentiation")),
+        "signature_terms": _as_str_list(data.get("signature_terms")),
+        "confidence": confidence,
+    }
+
+
 async def run_ideation_with_llm(
     store: LensStore,
     llm_client: Any,
     min_principles: int = 2,
     similarity_threshold: float = 0.75,
 ) -> dict[str, Any]:
-    """Run ideation then enrich gaps with LLM-generated hypotheses."""
+    """Run ideation, then generate a structured Idea Card per gap via the LLM."""
     report = run_ideation(
         store,
         min_principles=min_principles,
         similarity_threshold=similarity_threshold,
     )
 
+    vocab = store.query("vocabulary")
+    vocab_by_id = {v["id"]: v for v in vocab}
+    patterns = [v for v in vocab if v["kind"] == "ideation_pattern"]
+    valid_pattern_ids = {p["id"] for p in patterns}
+
+    if not patterns:
+        logger.info("No ideation_pattern vocabulary seeded; skipping idea-card generation")
+        report["idea_cards"] = []
+        return report
+
+    # Provenance: (improving, worsening) -> paper_ids backing that matrix cell.
+    cell_papers: dict[tuple[str, str], list[str]] = {}
+    for cell in store.query("matrix_cells"):
+        key = (cell["improving_param_id"], cell["worsening_param_id"])
+        bucket = cell_papers.setdefault(key, [])
+        for pid in cell.get("paper_ids", []):
+            if pid not in bucket:
+                bucket.append(pid)
+
+    card_rows = store.query_sql("SELECT MAX(id) AS max_id FROM idea_cards")
+    next_card_id = (int(card_rows[0]["max_id"]) + 1) if card_rows[0]["max_id"] is not None else 1
+
+    now = datetime.now(UTC)
+    all_cards: list[dict[str, Any]] = []
+
     for gap in report["gaps"]:
-        messages = [
-            {
-                "role": "system",
-                "content": (
-                    "You are a research analyst. Given a gap in a "
-                    "tradeoff matrix, propose a hypothesis for why "
-                    "this gap exists and how it might be resolved."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    f"Gap description: {gap['description']}\n"
-                    f"Gap type: {gap['gap_type']}\n"
-                    f"Score: {gap['score']:.2f}\n\n"
-                    "Propose a brief hypothesis."
-                ),
-            },
-        ]
+        messages = _build_idea_card_messages(gap, vocab_by_id, patterns)
         try:
-            hypothesis = await llm_client.complete(messages)
-            gap["llm_hypothesis"] = hypothesis
-
-            # Update the gap in DB
-            gap_id = int(gap["id"])
-            store.update(
-                "ideation_gaps",
-                "llm_hypothesis = ?",
-                "id = ?",
-                (hypothesis, gap_id),
-            )
+            text = await llm_client.complete(messages)
         except Exception:
-            logger.warning(
-                "LLM enrichment failed for gap %d",
-                gap.get("id", -1),
-            )
+            logger.warning("LLM idea-card generation failed for gap %d", gap.get("id", -1))
+            continue
 
+        card = _parse_idea_card(text, valid_pattern_ids)
+        if card is None:
+            logger.warning("Unusable idea-card JSON for gap %d", gap.get("id", -1))
+            continue
+
+        params = gap.get("related_params", [])
+        key = (params[0], params[1]) if len(params) >= 2 else None
+        paper_ids = cell_papers.get(key, []) if key else []
+
+        card_row = {
+            "id": next_card_id,
+            "gap_id": int(gap["id"]),
+            "report_id": int(gap["report_id"]),
+            "title": card["title"],
+            "pattern_ids": card["pattern_ids"],
+            "hook": card["hook"],
+            "mechanism": card["mechanism"],
+            "falsification": card["falsification"],
+            "differentiation": card["differentiation"],
+            "signature_terms": card["signature_terms"],
+            "paper_ids": paper_ids,
+            "confidence": card["confidence"],
+            "created_at": now,
+            "taxonomy_version": gap.get("taxonomy_version", 0),
+        }
+        store.add_rows("idea_cards", [card_row])
+        all_cards.append(card_row)
+        next_card_id += 1
+
+        # Back-compat: keep the free-text hypothesis column populated.
+        gap["llm_hypothesis"] = card["mechanism"]
+        store.update(
+            "ideation_gaps",
+            "llm_hypothesis = ?",
+            "id = ?",
+            (card["mechanism"], int(gap["id"])),
+        )
+
+    report["idea_cards"] = all_cards
+    logger.info("Ideation LLM: generated %d idea cards", len(all_cards))
     return report

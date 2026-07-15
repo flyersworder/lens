@@ -113,19 +113,52 @@ def test_run_ideation(ideation_store):
 
 
 @pytest.mark.asyncio
-async def test_run_ideation_with_llm(ideation_store):
+async def test_run_ideation_with_llm_generates_cards(ideation_store):
+    import json
+
     from lens.monitor.ideation import run_ideation_with_llm
 
     mock_client = AsyncMock()
-    mock_client.complete.return_value = (
-        "This gap suggests that quantization techniques "
-        "could be applied to throughput optimization."
+    mock_client.complete.return_value = json.dumps(
+        {
+            "title": "Quantization-aware throughput scheduling",
+            "patterns": ["Substitute the Operator or Representation"],
+            "hook": "Swap the decode operator to trade accuracy for latency.",
+            "mechanism": "Replace dense attention with a quantized kernel selected per layer.",
+            "falsification": "Measure tokens/sec vs perplexity on WikiText-103; "
+            "the quantized variant should raise throughput >20% at <1% perplexity loss.",
+            "differentiation": ["Unlike static quantization, adapts per-layer at decode time"],
+            "signature_terms": ["quantization", "throughput", "attention"],
+            "confidence": 0.7,
+        }
     )
 
-    report = await run_ideation_with_llm(
-        ideation_store,
-        mock_client,
-    )
+    report = await run_ideation_with_llm(ideation_store, mock_client)
+
+    cards = ideation_store.query("idea_cards")
+    assert len(cards) >= 1
+    assert report["idea_cards"]
+    c = cards[0]
+    assert c["title"] == "Quantization-aware throughput scheduling"
+    assert c["pattern_ids"] == ["substitute-the-operator-or-representation"]
+    assert c["signature_terms"] == ["quantization", "throughput", "attention"]
+    assert 0.0 <= c["confidence"] <= 1.0
+
+    # Back-compat: the originating gap's hypothesis is populated with the mechanism.
+    gaps = ideation_store.query("ideation_gaps")
+    assert any((g["llm_hypothesis"] or "").startswith("Replace dense attention") for g in gaps)
+
+
+@pytest.mark.asyncio
+async def test_run_ideation_with_llm_malformed_json_skips(ideation_store):
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = "not json at all {{{"
+
+    report = await run_ideation_with_llm(ideation_store, mock_client)
+
+    # No card is written, but the run still succeeds and gaps still exist.
+    assert ideation_store.query("idea_cards") == []
+    assert report["idea_cards"] == []
     assert report["gap_count"] >= 1
-    gaps_with_hyp = [g for g in report["gaps"] if g.get("llm_hypothesis")]
-    assert len(gaps_with_hyp) >= 1
