@@ -7,6 +7,12 @@ repos:
         args: [--fix]
       - id: ruff-format
 
+  # Type checking (Astral's ty)
+  - repo: https://github.com/astral-sh/ty-pre-commit
+    rev: v0.0.59
+    hooks:
+      - id: ty
+
   # File quality + security
   - repo: https://github.com/pre-commit/pre-commit-hooks
     rev: v6.0.0
@@ -31,14 +37,6 @@ repos:
   # Local hooks
   - repo: local
     hooks:
-      # Type checking (Astral's ty)
-      - id: ty-check
-        name: ty type check
-        entry: uvx ty check
-        language: system
-        types: [python]
-        pass_filenames: false
-
       # Fast unit tests
       - id: pytest-fast
         name: pytest (fast)
