@@ -124,15 +124,6 @@ override-dependencies = [
     "urllib3>=2.7.0",
 ]
 
-[tool.uv-secure.vulnerability_criteria]
-# Read by the `security` CI job (`uvx uv-secure uv.lock`).
-#   - GHSA-rrmf-rvhw-rf47: torch <= 2.12.0 memory corruption via
-#     torch.jit.script. LOW severity, no patched release exists (torch
-#     2.12.0 is latest), and LENS only consumes torch indirectly through
-#     sentence-transformers — it never JIT-scripts untrusted models.
-#     Revisit when an upstream fix ships.
-ignore_vulnerabilities = ["GHSA-rrmf-rvhw-rf47"]
-
 [tool.ruff]
 target-version = "py312"
 src = ["src"]
