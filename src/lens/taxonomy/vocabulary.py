@@ -226,6 +226,127 @@ SEED_VOCABULARY: list[dict[str, str]] = [
         "kind": "agentic_category",
         "description": "Patterns for generating, testing, and debugging code",
     },
+    # Ideation Patterns (reusable moves for generating research ideas;
+    # induced by ResearchStudio idea-spark from ~1,900 ICLR/ICML/NeurIPS papers)
+    {
+        "name": "Audit and Pivot an Assumption",
+        "kind": "ideation_pattern",
+        "description": (
+            "Identify a load-bearing assumption in prior work, show it fails in some "
+            "regime, and redesign around its negation."
+        ),
+    },
+    {
+        "name": "Substitute the Operator or Representation",
+        "kind": "ideation_pattern",
+        "description": (
+            "Replace a core operator (attention, convolution, tokenizer) or data "
+            "representation with a better-suited alternative while keeping the "
+            "surrounding system fixed."
+        ),
+    },
+    {
+        "name": "Liberate a Fixed Generative Component",
+        "kind": "ideation_pattern",
+        "description": (
+            "Take a component hard-coded or held fixed in prior work and make it "
+            "learned, generative, or adaptive."
+        ),
+    },
+    {
+        "name": "Design a Confound-Isolating Diagnostic",
+        "kind": "ideation_pattern",
+        "description": (
+            "Construct a controlled experiment or benchmark that isolates one factor to "
+            "explain an otherwise-confounded phenomenon."
+        ),
+    },
+    {
+        "name": "Unify Heterogeneous Inputs into One Space",
+        "kind": "ideation_pattern",
+        "description": (
+            "Map disparate modalities, tasks, or inputs into a single shared "
+            "representation so one method handles all of them."
+        ),
+    },
+    {
+        "name": "Reframe as a Solvable Object",
+        "kind": "ideation_pattern",
+        "description": (
+            "Recast an ill-posed or intractable problem as an instance of a "
+            "well-studied, solvable formulation."
+        ),
+    },
+    {
+        "name": "Manufacture the Supervisory Signal",
+        "kind": "ideation_pattern",
+        "description": (
+            "Invent a self-supervised or synthetic training signal where labels are "
+            "unavailable or costly."
+        ),
+    },
+    {
+        "name": "Encode Structure by Construction",
+        "kind": "ideation_pattern",
+        "description": (
+            "Bake a known invariance or prior (symmetry, sparsity, hierarchy) directly "
+            "into the architecture instead of learning it."
+        ),
+    },
+    {
+        "name": "Prove Equivalence to Unify",
+        "kind": "ideation_pattern",
+        "description": (
+            "Show two apparently distinct methods or objectives are mathematically "
+            "equivalent, then exploit the unification."
+        ),
+    },
+    {
+        "name": "Decompose for Differentiated Treatment",
+        "kind": "ideation_pattern",
+        "description": (
+            "Split a heterogeneous problem into sub-parts and apply a specialized method to each."
+        ),
+    },
+    {
+        "name": "Decompose and Delegate to Solvers",
+        "kind": "ideation_pattern",
+        "description": (
+            "Break a task into sub-tasks routed to specialized existing solvers, tools, or agents."
+        ),
+    },
+    {
+        "name": "Relax Discrete Search to Continuous",
+        "kind": "ideation_pattern",
+        "description": (
+            "Replace a discrete or combinatorial search with a differentiable continuous "
+            "relaxation to enable gradient optimization."
+        ),
+    },
+    {
+        "name": "Adapt by Conditioning, Not Retraining",
+        "kind": "ideation_pattern",
+        "description": (
+            "Achieve new behavior by conditioning inputs, prompts, or adapters instead "
+            "of retraining weights."
+        ),
+    },
+    {
+        "name": "Characterize a Limit, Then Surpass It",
+        "kind": "ideation_pattern",
+        "description": (
+            "Formally characterize a fundamental limit or bound of current methods, "
+            "then design a method that provably exceeds it."
+        ),
+    },
+    {
+        "name": "Design a Property-Targeting Pretext Objective",
+        "kind": "ideation_pattern",
+        "description": (
+            "Craft a pretraining objective specifically engineered to instill a "
+            "targeted downstream property."
+        ),
+    },
 ]
 
 

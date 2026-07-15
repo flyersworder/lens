@@ -86,10 +86,10 @@ def test_seed_vocabulary_has_expected_entries():
 def test_load_seed_vocabulary(tmp_path):
     store = LensStore(str(tmp_path / "test.db"))
     count = load_seed_vocabulary(store)
-    assert count == 40
+    assert count == 55
 
     rows = store.query("vocabulary")
-    assert len(rows) == 40
+    assert len(rows) == 55
     latency = [r for r in rows if r["id"] == "inference-latency"]
     assert len(latency) == 1
     assert latency[0]["name"] == "Inference Latency"
@@ -103,7 +103,7 @@ def test_load_seed_vocabulary_is_idempotent(tmp_path):
     count = load_seed_vocabulary(store)
     assert count == 0
     rows = store.query("vocabulary")
-    assert len(rows) == 40
+    assert len(rows) == 55
 
 
 def test_process_new_concepts_accepts_new_entries(tmp_path):
@@ -261,7 +261,7 @@ def test_end_to_end_all_extraction_types(tmp_path):
 
     store = LensStore(str(tmp_path / "test.db"))
     count = load_seed_vocabulary(store)
-    assert count == 40
+    assert count == 55
 
     # Tradeoff extraction
     store.add_rows(
@@ -338,3 +338,31 @@ def test_end_to_end_all_extraction_types(tmp_path):
     cells = store.query("matrix_cells")
     assert len(cells) == 1
     assert cells[0]["improving_param_id"] == "inference-latency"
+
+
+def test_seed_includes_ideation_patterns(tmp_path):
+    from lens.store.store import LensStore
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    store = LensStore(str(tmp_path / "t.db"))
+    load_seed_vocabulary(store)
+
+    patterns = store.query("vocabulary", "kind = ?", ("ideation_pattern",))
+    assert len(patterns) == 15
+    ids = {p["id"] for p in patterns}
+    assert "audit-and-pivot-an-assumption" in ids
+    assert "substitute-the-operator-or-representation" in ids
+
+
+def test_ideation_patterns_absent_from_sparse_cells(tmp_path):
+    from lens.monitor.ideation import find_sparse_cells
+    from lens.store.store import LensStore
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    store = LensStore(str(tmp_path / "t.db"))
+    load_seed_vocabulary(store)
+
+    gaps = find_sparse_cells(store, min_principles=1)
+    pattern_ids = {p["id"] for p in store.query("vocabulary", "kind = ?", ("ideation_pattern",))}
+    used = {g["improving_param_id"] for g in gaps} | {g["worsening_param_id"] for g in gaps}
+    assert used.isdisjoint(pattern_ids)
