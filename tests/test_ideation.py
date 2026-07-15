@@ -204,3 +204,42 @@ async def test_run_ideation_with_llm_complete_raises_skips(ideation_store):
 
     assert ideation_store.query("idea_cards") == []
     assert report["idea_cards"] == []
+
+
+@pytest.mark.asyncio
+async def test_cross_pollination_card_uses_principle_provenance(ideation_store):
+    """Cross-pollination cards should be attributed to the papers backing the
+    transferable principle, not the (empty) target matrix cell."""
+    import json
+
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = json.dumps(
+        {
+            "title": "Quantization-aware throughput scheduling",
+            "patterns": ["Substitute the Operator or Representation"],
+            "hook": "Swap the decode operator to trade accuracy for latency.",
+            "mechanism": "Replace dense attention with a quantized kernel selected per layer.",
+            "falsification": "Measure tokens/sec vs perplexity on WikiText-103; "
+            "the quantized variant should raise throughput >20% at <1% perplexity loss.",
+            "differentiation": ["Unlike static quantization, adapts per-layer at decode time"],
+            "signature_terms": ["quantization", "throughput", "attention"],
+            "confidence": 1.5,
+        }
+    )
+
+    await run_ideation_with_llm(ideation_store, mock_client)
+
+    gap_type_by_id = {g["id"]: g["gap_type"] for g in ideation_store.query("ideation_gaps")}
+    cards = ideation_store.query("idea_cards")
+    cross_pollination_cards = [
+        c for c in cards if gap_type_by_id.get(c["gap_id"]) == "cross_pollination"
+    ]
+
+    assert cross_pollination_cards
+    for card in cross_pollination_cards:
+        assert card["paper_ids"] == ["p1"]
+
+    # Finding 2: confidence is clamped to [0, 1] even when the LLM returns 1.5.
+    assert all(card["confidence"] == 1.0 for card in cards)

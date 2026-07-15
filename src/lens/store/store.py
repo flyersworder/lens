@@ -44,7 +44,7 @@ JSON_FIELDS: dict[str, set[str]] = {
     "event_log": {"detail"},
 }
 
-# SQL CREATE TABLE statements for all 9 regular tables.
+# SQL CREATE TABLE statements for all 11 regular tables.
 _TABLE_DDL = [
     """CREATE TABLE IF NOT EXISTS papers (
         paper_id TEXT PRIMARY KEY,

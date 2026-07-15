@@ -379,6 +379,7 @@ def _parse_idea_card(text: str, valid_pattern_ids: set[str]) -> dict[str, Any] |
         confidence = float(confidence_raw) if confidence_raw is not None else 0.5
     except (TypeError, ValueError):
         confidence = 0.5
+    confidence = max(0.0, min(1.0, confidence))
     return {
         "title": title,
         "pattern_ids": pattern_ids,
@@ -416,12 +417,17 @@ async def run_ideation_with_llm(
 
     # Provenance: (improving, worsening) -> paper_ids backing that matrix cell.
     cell_papers: dict[tuple[str, str], list[str]] = {}
+    # Provenance: principle_id -> paper_ids backing any cell that principle resolves.
+    principle_papers: dict[str, list[str]] = {}
     for cell in store.query("matrix_cells"):
         key = (cell["improving_param_id"], cell["worsening_param_id"])
         bucket = cell_papers.setdefault(key, [])
+        principle_bucket = principle_papers.setdefault(cell["principle_id"], [])
         for pid in cell.get("paper_ids", []):
             if pid not in bucket:
                 bucket.append(pid)
+            if pid not in principle_bucket:
+                principle_bucket.append(pid)
 
     card_rows = store.query_sql("SELECT MAX(id) AS max_id FROM idea_cards")
     next_card_id = (int(card_rows[0]["max_id"]) + 1) if card_rows[0]["max_id"] is not None else 1
@@ -444,7 +450,10 @@ async def run_ideation_with_llm(
 
         params = gap.get("related_params", [])
         key = (params[0], params[1]) if len(params) >= 2 else None
-        paper_ids = cell_papers.get(key, []) if key else []
+        if gap["gap_type"] == "cross_pollination" and gap.get("related_principles"):
+            paper_ids = principle_papers.get(gap["related_principles"][0], [])
+        else:
+            paper_ids = cell_papers.get(key, []) if key else []
 
         card_row = {
             "id": next_card_id,
