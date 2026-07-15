@@ -40,6 +40,7 @@ JSON_FIELDS: dict[str, set[str]] = {
     "agentic_extractions": {"components", "new_concepts"},
     "matrix_cells": {"paper_ids"},
     "ideation_gaps": {"related_params", "related_principles", "related_slots"},
+    "idea_cards": {"pattern_ids", "differentiation", "signature_terms", "paper_ids"},
     "event_log": {"detail"},
 }
 
@@ -141,6 +142,22 @@ _TABLE_DDL = [
         llm_hypothesis TEXT,
         created_at TEXT NOT NULL,
         taxonomy_version INTEGER NOT NULL
+    )""",
+    """CREATE TABLE IF NOT EXISTS idea_cards (
+        id INTEGER PRIMARY KEY,
+        gap_id INTEGER NOT NULL,
+        report_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        pattern_ids TEXT NOT NULL DEFAULT '[]',
+        hook TEXT NOT NULL DEFAULT '',
+        mechanism TEXT NOT NULL DEFAULT '',
+        falsification TEXT NOT NULL DEFAULT '',
+        differentiation TEXT NOT NULL DEFAULT '[]',
+        signature_terms TEXT NOT NULL DEFAULT '[]',
+        paper_ids TEXT NOT NULL DEFAULT '[]',
+        confidence REAL NOT NULL DEFAULT 0.0,
+        created_at TEXT NOT NULL,
+        taxonomy_version INTEGER NOT NULL DEFAULT 0
     )""",
     """CREATE TABLE IF NOT EXISTS event_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,

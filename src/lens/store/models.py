@@ -238,6 +238,25 @@ class IdeationReport(BaseModel):
     gap_count: int
 
 
+class IdeaCard(BaseModel):
+    """A structured, pattern-grounded idea generated for an ideation gap."""
+
+    id: int
+    gap_id: int
+    report_id: int
+    title: str
+    pattern_ids: list[str]
+    hook: str
+    mechanism: str
+    falsification: str
+    differentiation: list[str]
+    signature_terms: list[str]
+    paper_ids: list[str]
+    confidence: float
+    created_at: datetime
+    taxonomy_version: int
+
+
 # ---------------------------------------------------------------------------
 # Query response (not stored in DB)
 # ---------------------------------------------------------------------------

@@ -1,6 +1,6 @@
 """Tests for LensStore — SQLite + sqlite-vec backend."""
 
-from datetime import datetime
+from datetime import UTC, datetime
 
 from lens.store.models import EMBEDDING_DIM
 
@@ -503,3 +503,41 @@ def test_db_path_auto_appends_db(tmp_path):
 
     s = LensStore(str(tmp_path / "mystore"))
     assert s.db_path.endswith(".db")
+
+
+# ---- 13. idea_cards table roundtrip ----
+
+
+def test_idea_cards_table_roundtrip(tmp_path):
+    from lens.store.store import LensStore
+
+    store = LensStore(str(tmp_path / "t.db"))
+    store.init_tables()
+
+    row = {
+        "id": 1,
+        "gap_id": 5,
+        "report_id": 2,
+        "title": "Quantization-aware throughput scheduling",
+        "pattern_ids": ["substitute-the-operator-or-representation"],
+        "hook": "Swap the decode operator to trade accuracy for latency.",
+        "mechanism": "Replace dense attention with a quantized kernel.",
+        "falsification": "Measure tokens/sec vs perplexity on WikiText.",
+        "differentiation": ["Unlike static quantization, adapts per-layer"],
+        "signature_terms": ["quantization", "throughput", "attention"],
+        "paper_ids": ["p1"],
+        "confidence": 0.7,
+        "created_at": datetime.now(UTC),
+        "taxonomy_version": 0,
+    }
+    store.add_rows("idea_cards", [row])
+
+    got = store.query("idea_cards")
+    assert len(got) == 1
+    c = got[0]
+    assert c["title"] == "Quantization-aware throughput scheduling"
+    assert c["pattern_ids"] == ["substitute-the-operator-or-representation"]
+    assert c["differentiation"] == ["Unlike static quantization, adapts per-layer"]
+    assert c["signature_terms"] == ["quantization", "throughput", "attention"]
+    assert c["paper_ids"] == ["p1"]
+    assert c["confidence"] == 0.7
