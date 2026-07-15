@@ -28,7 +28,7 @@ This realizes the "scoop-check" Future Hook from the pattern-guided idea cards d
 New async function alongside the existing embedding fetch, reusing `fetch_with_retry` (which already backs off on HTTP errors incl. 429):
 
 - Endpoint: `https://api.semanticscholar.org/graph/v1/paper/search?query=<q>&limit=<n>&fields=title,abstract,year,citationCount,externalIds,url`
-- API key optional (`x-api-key` header when configured) — the free tier works without one but is rate-limited.
+- **Free (unauthenticated) tier** — no API key. The tier is rate-limited (~1 req/s, shared); `fetch_with_retry` already backs off with jitter on `429`, which is sufficient for this low-volume batch pass. Signature keeps an unused `api_key: str | None = None` for parity with the sibling `fetch_embedding`, but no caller sets it and no env var is read.
 - Returns a list of dicts: `{title, abstract, year, citations, arxiv_id, url}` (arxiv_id parsed from `externalIds.ArXiv` when present; `abstract`/`year` may be `None`).
 - **Never raises** — on timeout, rate-limit exhaustion, or malformed response, logs a warning and returns `[]`. Papers with no abstract are dropped (nothing to judge against).
 
@@ -43,12 +43,12 @@ New async function alongside the existing embedding fetch, reusing `fetch_with_r
 
 ## Component: `run_scoop_check` (`src/lens/knowledge/scoop_check.py`)
 
-`run_scoop_check(store, llm_client, limit=None, api_key=None, top_k=5) -> dict`
+`run_scoop_check(store, llm_client, limit=None, top_k=5) -> dict`
 
 Per card where `novelty_status = 'unchecked'` (optionally capped at `limit`, lowest `id` first):
 
 1. Build the query from `title` + `signature_terms` (space-joined).
-2. `prior_art = await search_semantic_scholar(query, limit=top_k, api_key=api_key)`.
+2. `prior_art = await search_semantic_scholar(query, limit=top_k)`.
    - If `prior_art` is empty (no results or API failure): leave the card `unchecked` and continue — it will be retried on the next run. (An empty result is ambiguous between "genuinely nothing" and "API hiccup"; not marking it avoids a false `novel`.)
 3. `verdict = await judge_novelty(card, prior_art, llm_client)`.
    - If `None` (unusable judge output): leave `unchecked`, continue.
@@ -76,7 +76,7 @@ New `lens scoop-check` command:
 - `_require_llm_config(config)` (needs the LLM judge).
 - Builds `LLMClient` like `analyze`/`explain`, opens the store.
 - `--limit N` to cap cards per run (default: all unchecked); `--top-k K` for retrieved papers.
-- S2 api key from `embeddings.api_key` / env is not reused; a dedicated `SEMANTIC_SCHOLAR_API_KEY` env is read if present, else unauthenticated.
+- Semantic Scholar is queried on the free (unauthenticated) tier — no key is read or required.
 - Prints a summary table (counts by verdict) and logs each `scooped`/`overlaps` card with its colliding paper.
 - Logs a `scoop_check` event via `log_event` for the event log.
 
