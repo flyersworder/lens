@@ -69,10 +69,14 @@ def find_candidates(
         except Exception:
             logger.warning("Vector search also failed")
 
-    # Deduplicate
+    # Deduplicate, excluding ideation_pattern entries: they are idea-generation
+    # moves used only by the ideate stage, not explainable matrix concepts, and
+    # graph_walk has no branch for them (would resolve as "Unknown").
     seen: set[str] = set()
     unique: list[dict[str, Any]] = []
     for c in candidates:
+        if c["kind"] == "ideation_pattern":
+            continue
         if c["id"] not in seen:
             seen.add(c["id"])
             unique.append(c)

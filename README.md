@@ -200,9 +200,9 @@ Layer 0: Papers (arxiv, DeepXiv, PDF, OpenAlex enrichment)
     ↓
 Layer 1: Raw Extractions (LLM-extracted tradeoffs, architecture, agentic patterns)
     ↓
-Layer 2: Taxonomy (unified vocabulary: parameters, principles, arch slots, agentic categories)
+Layer 2: Taxonomy (unified vocabulary: parameters, principles, arch slots, agentic categories, ideation patterns)
     ↓
-Layer 3: Knowledge Structures (contradiction matrix, ideation gaps)
+Layer 3: Knowledge Structures (contradiction matrix, ideation gaps, pattern-guided idea cards)
 ```
 
 Public API is synchronous; async internals are wrapped with `asyncio.run()`.

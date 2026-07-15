@@ -148,7 +148,7 @@ class VocabularyEntry(BaseModel):
 
     id: str
     name: str
-    kind: str  # "parameter", "principle", "arch_slot", or "agentic_category"
+    kind: str  # "parameter", "principle", "arch_slot", "agentic_category", or "ideation_pattern"
     description: str
     source: str  # "seed" or "extracted"
     first_seen: str
@@ -159,7 +159,7 @@ class VocabularyEntry(BaseModel):
     @field_validator("kind")
     @classmethod
     def _check_kind(cls, v: str) -> str:
-        valid = ("parameter", "principle", "arch_slot", "agentic_category")
+        valid = ("parameter", "principle", "arch_slot", "agentic_category", "ideation_pattern")
         if v not in valid:
             raise ValueError(f"kind must be one of {valid}, got '{v}'")
         return v
@@ -236,6 +236,25 @@ class IdeationReport(BaseModel):
     taxonomy_version: int
     paper_batch_size: int
     gap_count: int
+
+
+class IdeaCard(BaseModel):
+    """A structured, pattern-grounded idea generated for an ideation gap."""
+
+    id: int
+    gap_id: int
+    report_id: int
+    title: str
+    pattern_ids: list[str]
+    hook: str
+    mechanism: str
+    falsification: str
+    differentiation: list[str]
+    signature_terms: list[str]
+    paper_ids: list[str]
+    confidence: float
+    created_at: datetime
+    taxonomy_version: int
 
 
 # ---------------------------------------------------------------------------

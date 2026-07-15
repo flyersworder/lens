@@ -1,5 +1,32 @@
 # Changelog
 
+## 0.11.0 (2026-07-15)
+
+### Added
+- **Pattern-guided idea cards** — the LLM-enriched ideate stage now emits
+  structured, falsifiable Idea Cards instead of a free-text hypothesis.
+  For each structurally-discovered matrix gap it selects applicable
+  ideation pattern(s), grounds the gap in the vocabulary it references,
+  and generates one validated card via a single LLM call.
+  - **New `ideation_pattern` vocabulary kind** — 15 reusable "moves" for
+    generating research ideas (e.g. *Audit and Pivot an Assumption*,
+    *Substitute the Operator or Representation*), induced by Microsoft
+    ResearchStudio's idea-spark from ~1,900 ICLR/ICML/NeurIPS papers and
+    seeded in `taxonomy/vocabulary.py`. The kind is embedded like any
+    vocabulary and is excluded from the parameter-only tradeoff matrix.
+  - **New `idea_cards` table + `IdeaCard` model** — typed, queryable card
+    linked to its gap: `title`, `pattern_ids`, `hook`, `mechanism`,
+    `falsification`, `differentiation`, `signature_terms`, `paper_ids`,
+    `confidence`. `signature_terms` pre-wires a future novelty/scoop-check.
+  - **Cross-pollination provenance** — a card for a cross-pollination gap
+    cites the exact source matrix cell that motivated the transfer
+    (`source improving × worsening × principle`), not the (empty) target
+    parameter pair and not every cell the principle happens to resolve.
+  - Back-compat: structural gap-finding and the non-LLM ideate path are
+    unchanged; `IdeationGap.llm_hypothesis` is still populated (with the
+    card mechanism). Malformed/`null`/failed LLM responses skip only that
+    gap — the run still succeeds.
+
 ## 0.10.1 (2026-04-24)
 
 ### Security

@@ -154,6 +154,40 @@ def test_find_candidates_returns_multiple(explain_store):
     assert "Quantization Method" in names
 
 
+def test_find_candidates_excludes_ideation_patterns(explain_store):
+    """ideation_pattern entries are idea-generation moves with no graph_walk
+    branch, so they must never surface as explain candidates (Finding 7)."""
+    from lens.serve.explainer import find_candidates
+
+    explain_store.add_rows(
+        "vocabulary",
+        [
+            {
+                "id": "decompose-and-delegate-to-solvers",
+                "name": "Decompose and Delegate to Solvers",
+                "kind": "ideation_pattern",
+                "description": "Break a task into sub-tasks routed to specialized solvers",
+                "source": "seed",
+                "first_seen": "2026-01-01",
+                "paper_count": 0,
+                "avg_confidence": 0.0,
+                "embedding": [0.0, 0.0, 0.0, 0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 5),
+            },
+        ],
+    )
+    explain_store.rebuild_vocabulary_fts()
+
+    with patch("lens.serve.explainer.embed_strings") as mock_embed:
+        # Query vector points straight at the ideation pattern's embedding.
+        mock_embed.return_value = np.array(
+            [[0.0, 0.0, 0.0, 0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 5)]
+        )
+        candidates = find_candidates(query="decompose and delegate", store=explain_store, top_k=5)
+
+    assert "ideation_pattern" not in {c["kind"] for c in candidates}
+    assert "decompose-and-delegate-to-solvers" not in {c["id"] for c in candidates}
+
+
 def test_graph_walk_parameter(explain_store):
     from lens.serve.explainer import graph_walk
 
