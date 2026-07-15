@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.12.0 (2026-07-15)
+
+### Added
+- **Scoop-check — idea-card novelty verification** — a separate, idempotent
+  pass that checks each generated Idea Card against real prior art, so cards
+  that merely restate published work are flagged rather than presented as
+  novel. Motivated by a validation batch that found generated cards echoing
+  existing papers absent from the local corpus.
+  - **`search_semantic_scholar`** — new relevance search against the Semantic
+    Scholar `/paper/search` endpoint (free unauthenticated tier). Fail-soft:
+    returns `[]` on any error and drops abstract-less results.
+  - **LLM novelty judge** — reads a card plus the top retrieved abstracts and
+    returns `novel | overlaps | scooped`, the colliding paper(s), and a
+    rationale, distinguishing shared keywords from the same contribution.
+  - **Novelty columns on `idea_cards`** — `novelty_status`
+    (`unchecked | novel | overlaps | scooped`), `prior_art`, `novelty_note`,
+    `novelty_checked_at`, added via the migration path for existing DBs.
+  - **`lens scoop-check`** command (`--limit`, `--top-k`). Fully fail-soft and
+    idempotent: a card only leaves `unchecked` on a real verdict, so runs are
+    safe to repeat; empty prior art or a judge failure simply leaves the card
+    for the next run. Not wired into the scheduled monitor (keeps the external
+    API out of the unattended cron); run it deliberately after generating cards.
+
 ## 0.11.0 (2026-07-15)
 
 ### Added
