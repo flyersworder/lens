@@ -52,3 +52,20 @@ async def test_search_semantic_scholar_fails_soft(monkeypatch):
     monkeypatch.setattr(s2, "RATE_LIMIT_SECONDS", 0)
 
     assert await s2.search_semantic_scholar("anything") == []
+
+
+@pytest.mark.asyncio
+async def test_search_semantic_scholar_non_dict_body(monkeypatch):
+    import lens.acquire.semantic_scholar as s2
+
+    class FakeResp:
+        def json(self):
+            return None  # valid JSON, but not a dict
+
+    async def fake_fetch(client, url, headers=None):
+        return FakeResp()
+
+    monkeypatch.setattr(s2, "fetch_with_retry", fake_fetch)
+    monkeypatch.setattr(s2, "RATE_LIMIT_SECONDS", 0)
+
+    assert await s2.search_semantic_scholar("anything") == []

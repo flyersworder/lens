@@ -89,6 +89,10 @@ async def search_semantic_scholar(
         finally:
             await asyncio.sleep(RATE_LIMIT_SECONDS)
 
+    if not isinstance(data, dict):
+        logger.warning("Semantic Scholar returned a non-dict body for %r", query)
+        return []
+
     papers: list[dict[str, Any]] = []
     for item in data.get("data") or []:
         abstract = item.get("abstract")
