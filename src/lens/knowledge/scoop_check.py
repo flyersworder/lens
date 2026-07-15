@@ -1,4 +1,4 @@
-"""Scoop-check: verify idea-card novelty against Semantic Scholar prior art."""
+"""Scoop-check: verify idea-card novelty against OpenAlex prior art."""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import logging
 from datetime import UTC, datetime
 from typing import Any
 
-from lens.acquire.semantic_scholar import search_semantic_scholar
+from lens.acquire.openalex import search_openalex
 from lens.llm.utils import strip_code_fences
 from lens.store.store import LensStore
 
@@ -102,20 +102,22 @@ async def run_scoop_check(
     """
     cards = store.query("idea_cards", "novelty_status = ?", ("unchecked",))
     cards = sorted(cards, key=lambda c: c["id"])
-    if limit is not None:
-        cards = cards[:limit]
 
-    now = datetime.now(UTC).isoformat()
     counts = {"novel": 0, "overlaps": 0, "scooped": 0}
     checked = 0
 
     for card in cards:
+        # --limit caps the number of cards actually CHECKED (given a real
+        # verdict), not pre-sliced: persistently-failing cards don't consume
+        # the cap and can't starve higher-id cards from ever being reached.
+        if limit is not None and checked >= limit:
+            break
         terms = card.get("signature_terms") or []
         query = " ".join([card.get("title", ""), *terms]).strip()
         if not query:
             logger.info("Card %d has no title/terms to search; leaving unchecked", card["id"])
             continue
-        prior_art = await search_semantic_scholar(query, limit=top_k)
+        prior_art = await search_openalex(query, limit=top_k)
         if not prior_art:
             logger.info("No prior art for card %d; leaving unchecked", card["id"])
             continue
@@ -146,7 +148,7 @@ async def run_scoop_check(
                     verdict["verdict"],
                     json.dumps(stored_art),
                     note,
-                    now,
+                    datetime.now(UTC).isoformat(),
                     card["id"],
                 ),
             )

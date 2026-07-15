@@ -79,7 +79,7 @@ async def test_run_scoop_check_annotates_and_is_idempotent(store, monkeypatch):
     async def fake_search(query, limit=5):
         return [{"title": "Prior", "abstract": "a", "year": 2023, "url": "http://p"}]
 
-    monkeypatch.setattr(sc, "search_semantic_scholar", fake_search)
+    monkeypatch.setattr(sc, "search_openalex", fake_search)
 
     llm = AsyncMock()
     llm.complete.return_value = json.dumps(
@@ -110,7 +110,7 @@ async def test_run_scoop_check_leaves_unchecked_on_empty_prior_art(store, monkey
     async def empty_search(query, limit=5):
         return []
 
-    monkeypatch.setattr(sc, "search_semantic_scholar", empty_search)
+    monkeypatch.setattr(sc, "search_openalex", empty_search)
     llm = AsyncMock()
 
     summary = await run_scoop_check(store, llm)
@@ -129,7 +129,7 @@ async def test_run_scoop_check_survives_judge_crash(store, monkeypatch):
     async def fake_search(query, limit=5):
         return [{"title": "Prior", "abstract": "a", "year": 2023, "url": "http://p"}]
 
-    monkeypatch.setattr(sc, "search_semantic_scholar", fake_search)
+    monkeypatch.setattr(sc, "search_openalex", fake_search)
 
     llm = AsyncMock()
     llm.complete.return_value = None  # non-str -> strip_code_fences would crash
@@ -149,7 +149,7 @@ async def test_run_scoop_check_persists_colliding_papers(store, monkeypatch):
     async def fake_search(query, limit=5):
         return [{"title": "KVQuant", "abstract": "a", "year": 2024, "url": "http://p"}]
 
-    monkeypatch.setattr(sc, "search_semantic_scholar", fake_search)
+    monkeypatch.setattr(sc, "search_openalex", fake_search)
     llm = AsyncMock()
     llm.complete.return_value = json.dumps(
         {"verdict": "scooped", "colliding_papers": ["KVQuant"], "rationale": "same idea"}
@@ -175,10 +175,40 @@ async def test_run_scoop_check_skips_empty_query(store, monkeypatch):
         searched.append(query)
         return [{"title": "X", "abstract": "a", "year": 2024, "url": "u"}]
 
-    monkeypatch.setattr(sc, "search_semantic_scholar", fake_search)
+    monkeypatch.setattr(sc, "search_openalex", fake_search)
     llm = AsyncMock()
 
     summary = await run_scoop_check(store, llm)
-    assert searched == []  # no S2 call for the empty-query card
+    assert searched == []  # no search call for the empty-query card
     assert summary["checked"] == 0
     assert store.query("idea_cards")[0]["novelty_status"] == "unchecked"
+
+
+@pytest.mark.asyncio
+async def test_run_scoop_check_limit_skips_failing_cards(store, monkeypatch):
+    """--limit caps CHECKED cards, so a persistently-failing low-id card does
+    not consume the cap and starve higher-id cards (review finding)."""
+    import lens.knowledge.scoop_check as sc
+    from lens.knowledge.scoop_check import run_scoop_check
+
+    _seed_card(store, 1, ["starve"])  # lowest id, always returns no prior art
+    _seed_card(store, 2, ["quantization"])
+    _seed_card(store, 3, ["attention"])
+
+    async def fake_search(query, limit=5):
+        if "starve" in query:
+            return []
+        return [{"title": "Prior", "abstract": "a", "year": 2023, "url": "u"}]
+
+    monkeypatch.setattr(sc, "search_openalex", fake_search)
+    llm = AsyncMock()
+    llm.complete.return_value = json.dumps(
+        {"verdict": "scooped", "colliding_papers": ["Prior"], "rationale": "m"}
+    )
+
+    summary = await run_scoop_check(store, llm, limit=1)
+    assert summary["checked"] == 1  # the failing low-id card didn't consume the cap
+    by_id = {c["id"]: c["novelty_status"] for c in store.query("idea_cards")}
+    assert by_id[1] == "unchecked"  # failing card left for retry
+    assert by_id[2] == "scooped"  # next card reached and checked despite limit=1
+    assert by_id[3] == "unchecked"  # cap reached after one real check

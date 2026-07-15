@@ -1,5 +1,17 @@
 # Scoop-Check (Idea-Card Novelty Verification) Design
 
+> **Update (post-e2e, 2026-07-15):** the prior-art source is **OpenAlex**, not
+> Semantic Scholar. A live end-to-end test found the free unauthenticated S2
+> `/paper/search` tier returns `429` on every request. OpenAlex's works API is
+> reliable on the free polite pool (`mailto`) and returns highly relevant hits.
+> Read `search_semantic_scholar` below as `search_openalex`
+> (`src/lens/acquire/openalex.py`); the endpoint is
+> `https://api.openalex.org/works?search=<q>&per-page=<n>&mailto=<addr>` and
+> abstracts are reconstructed from `abstract_inverted_index`. Title-only works
+> are kept (a colliding paper without an abstract must still reach the judge),
+> and `--limit` caps *checked* cards rather than pre-slicing, so persistently
+> failing cards can't starve unreached ones.
+
 ## Overview
 
 The `0.11.0` ideate stage generates structured, falsifiable Idea Cards, but nothing verifies whether a card's idea is actually novel. A validation batch (2026-07-15) confirmed the risk: several generated cards restate published work (KVQuant, CALM/early-exit, process-reward step verification) that does **not** appear in LENS's local corpus, so they read as novel when they are not. Surfacing unverified cards would cost user trust.

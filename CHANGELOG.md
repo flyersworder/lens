@@ -8,9 +8,11 @@
   that merely restate published work are flagged rather than presented as
   novel. Motivated by a validation batch that found generated cards echoing
   existing papers absent from the local corpus.
-  - **`search_semantic_scholar`** — new relevance search against the Semantic
-    Scholar `/paper/search` endpoint (free unauthenticated tier). Fail-soft:
-    returns `[]` on any error and drops abstract-less results.
+  - **`search_openalex`** — new relevance search against the OpenAlex works
+    API (free polite pool via `mailto`; a live e2e found the unauthenticated
+    Semantic Scholar tier 429s every request, so OpenAlex is the source).
+    Fail-soft: returns `[]` on any error; keeps title-only works so a
+    colliding paper without an abstract is still visible to the judge.
   - **LLM novelty judge** — reads a card plus the top retrieved abstracts and
     returns `novel | overlaps | scooped`, the colliding paper(s), and a
     rationale, distinguishing shared keywords from the same contribution.

@@ -8,7 +8,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Any
-from urllib.parse import quote_plus
 
 import httpx
 
@@ -59,57 +58,6 @@ async def fetch_embedding(
             return None
         finally:
             await asyncio.sleep(RATE_LIMIT_SECONDS)
-
-
-async def search_semantic_scholar(
-    query: str,
-    limit: int = 5,
-    api_key: str | None = None,
-) -> list[dict[str, Any]]:
-    """Search Semantic Scholar for prior art matching a text query.
-
-    Free (unauthenticated) tier. Never raises — returns [] on timeout,
-    rate-limit exhaustion, or a malformed response. Papers without an
-    abstract are dropped (nothing to judge against).
-    """
-    fields = "title,abstract,year,citationCount,externalIds,url"
-    url = f"{S2_API_URL}/search?query={quote_plus(query)}&limit={limit}&fields={fields}"
-    headers = {}
-    if api_key:
-        headers["x-api-key"] = api_key
-
-    data: dict[str, Any] = {}
-    async with httpx.AsyncClient(timeout=60.0) as client:
-        try:
-            resp = await fetch_with_retry(client, url, headers=headers)
-            data = resp.json()
-        except Exception as e:
-            logger.warning("Semantic Scholar search failed for %r: %s", query, e)
-            return []
-        finally:
-            await asyncio.sleep(RATE_LIMIT_SECONDS)
-
-    if not isinstance(data, dict):
-        logger.warning("Semantic Scholar returned a non-dict body for %r", query)
-        return []
-
-    papers: list[dict[str, Any]] = []
-    for item in data.get("data") or []:
-        abstract = item.get("abstract")
-        if not abstract:
-            continue
-        ext = item.get("externalIds") or {}
-        papers.append(
-            {
-                "title": item.get("title") or "",
-                "abstract": abstract,
-                "year": item.get("year"),
-                "citations": item.get("citationCount") or 0,
-                "arxiv_id": ext.get("ArXiv", ""),
-                "url": item.get("url") or "",
-            }
-        )
-    return papers
 
 
 async def fetch_embeddings_batch(

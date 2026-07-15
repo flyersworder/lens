@@ -10,6 +10,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+from urllib.parse import quote_plus
 
 import httpx
 
@@ -19,6 +20,67 @@ logger = logging.getLogger(__name__)
 
 OPENALEX_API_URL = "https://api.openalex.org/works"
 DEFAULT_MAILTO = "lens-project@example.com"
+
+
+def _reconstruct_abstract(inverted_index: Any) -> str:
+    """Rebuild plain-text abstract from OpenAlex's abstract_inverted_index."""
+    if not inverted_index or not isinstance(inverted_index, dict):
+        return ""
+    positions: list[tuple[int, str]] = []
+    for word, idxs in inverted_index.items():
+        if isinstance(idxs, list):
+            positions.extend((i, word) for i in idxs)
+    positions.sort()
+    return " ".join(word for _, word in positions)
+
+
+async def search_openalex(
+    query: str,
+    limit: int = 5,
+    mailto: str = "",
+) -> list[dict[str, Any]]:
+    """Search OpenAlex for prior art matching a text query (polite free pool).
+
+    Never raises — returns [] on timeout / HTTP error / malformed body. Works
+    without a usable abstract are dropped (nothing to judge against).
+    """
+    effective_mailto = mailto or DEFAULT_MAILTO
+    fields = "title,abstract_inverted_index,publication_year,doi,id"
+    url = (
+        f"{OPENALEX_API_URL}?search={quote_plus(query)}"
+        f"&per-page={limit}&mailto={effective_mailto}&select={fields}"
+    )
+
+    data: dict[str, Any] = {}
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        try:
+            resp = await fetch_with_retry(client, url)
+            data = resp.json()
+        except Exception as e:
+            logger.warning("OpenAlex search failed for %r: %s", query, e)
+            return []
+
+    if not isinstance(data, dict):
+        return []
+
+    papers: list[dict[str, Any]] = []
+    for work in data.get("results") or []:
+        title = work.get("title") or ""
+        abstract = _reconstruct_abstract(work.get("abstract_inverted_index"))
+        # Keep title-only works: a colliding paper with no abstract is still
+        # visible to the judge by its title (dropping it risks a false "novel").
+        if not title and not abstract:
+            continue
+        papers.append(
+            {
+                "title": title,
+                "abstract": abstract,
+                "year": work.get("publication_year"),
+                "arxiv_id": _extract_arxiv_id_from_doi(work.get("doi")),
+                "url": work.get("doi") or work.get("id") or "",
+            }
+        )
+    return papers
 
 
 def _extract_arxiv_id_from_doi(doi: str | None) -> str | None:
