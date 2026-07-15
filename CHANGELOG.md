@@ -19,8 +19,9 @@
     `falsification`, `differentiation`, `signature_terms`, `paper_ids`,
     `confidence`. `signature_terms` pre-wires a future novelty/scoop-check.
   - **Cross-pollination provenance** — a card for a cross-pollination gap
-    attaches the papers backing the transferable *principle*, not the
-    (empty) target parameter pair.
+    cites the exact source matrix cell that motivated the transfer
+    (`source improving × worsening × principle`), not the (empty) target
+    parameter pair and not every cell the principle happens to resolve.
   - Back-compat: structural gap-finding and the non-LLM ideate path are
     unchanged; `IdeationGap.llm_hypothesis` is still populated (with the
     card mechanism). Malformed/`null`/failed LLM responses skip only that

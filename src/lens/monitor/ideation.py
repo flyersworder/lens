@@ -9,10 +9,15 @@ from typing import Any
 
 import numpy as np
 
+from lens.llm.utils import strip_code_fences
 from lens.store.store import LensStore
 from lens.taxonomy.vocabulary import _slugify
 
 logger = logging.getLogger(__name__)
+
+# Keys carried on in-memory gap dicts for downstream provenance but not
+# persisted as columns on the ``ideation_gaps`` table.
+_GAP_TRANSIENT_KEYS = frozenset({"source_improving_param_id", "source_worsening_param_id"})
 
 
 def find_sparse_cells(
@@ -260,13 +265,21 @@ def run_ideation(
             "llm_hypothesis": None,
             "created_at": now,
             "taxonomy_version": 0,
+            # In-memory only (not columns on ideation_gaps): the source cell
+            # that motivated the transfer, so idea-card provenance can cite the
+            # exact (source_improving, source_worsening, principle) matrix cell.
+            "source_improving_param_id": cand.get("source_improving_param_id"),
+            "source_worsening_param_id": cand.get("source_worsening_param_id"),
         }
         all_gaps.append(gap_record)
         next_gap_id += 1
 
-    # Persist gaps
+    # Persist gaps — strip in-memory-only keys that are not columns on the table.
     if all_gaps:
-        store.add_rows("ideation_gaps", all_gaps)
+        persist_rows = [
+            {k: v for k, v in gap.items() if k not in _GAP_TRANSIENT_KEYS} for gap in all_gaps
+        ]
+        store.add_rows("ideation_gaps", persist_rows)
 
     # Persist report
     report_record = {
@@ -350,10 +363,14 @@ def _build_idea_card_messages(
 def _as_str_list(value: Any) -> list[str]:
     if isinstance(value, list):
         return [str(x) for x in value]
-    return [str(value)] if value else []
+    if isinstance(value, str):
+        return [value] if value.strip() else []
+    # Ignore malformed shapes (e.g. a dict) rather than storing a Python repr.
+    return []
 
 
 def _parse_idea_card(text: str, valid_pattern_ids: set[str]) -> dict[str, Any] | None:
+    text = strip_code_fences(text)
     try:
         data = json.loads(text)
     except json.JSONDecodeError:
@@ -392,6 +409,41 @@ def _parse_idea_card(text: str, valid_pattern_ids: set[str]) -> dict[str, Any] |
     }
 
 
+def _set_gap_hypothesis(store: LensStore, gap: dict[str, Any], text: str) -> None:
+    """Persist a free-text hypothesis on a gap (back-compat), tolerating DB errors."""
+    gap_id = int(gap["id"])
+    try:
+        store.update("ideation_gaps", "llm_hypothesis = ?", "id = ?", (text, gap_id))
+        gap["llm_hypothesis"] = text
+    except Exception:
+        logger.warning("Failed to store hypothesis for gap %d", gap_id)
+
+
+def _card_paper_ids(
+    gap: dict[str, Any],
+    cell_papers: dict[tuple[str, str], list[str]],
+    triple_papers: dict[tuple[str, str, str], list[str]],
+) -> list[str]:
+    """Evidence papers for a gap's idea card.
+
+    Cross-pollination cards cite the exact source cell that motivated the
+    transfer — ``(source_improving, source_worsening, principle)`` — not the
+    (empty) target pair and not every cell the principle happens to resolve.
+    Sparse-cell cards cite the papers already sitting at the gap's pair.
+    """
+    if gap["gap_type"] == "cross_pollination":
+        src_imp = gap.get("source_improving_param_id")
+        src_wors = gap.get("source_worsening_param_id")
+        principles = gap.get("related_principles") or []
+        if src_imp and src_wors and principles:
+            return triple_papers.get((src_imp, src_wors, principles[0]), [])
+        return []
+    params = gap.get("related_params", [])
+    if len(params) >= 2:
+        return cell_papers.get((params[0], params[1]), [])
+    return []
+
+
 async def run_ideation_with_llm(
     store: LensStore,
     llm_client: Any,
@@ -411,23 +463,40 @@ async def run_ideation_with_llm(
     valid_pattern_ids = {p["id"] for p in patterns}
 
     if not patterns:
-        logger.info("No ideation_pattern vocabulary seeded; skipping idea-card generation")
+        # An existing (pre-0.11.0) or --skip-build database may not carry the
+        # ideation patterns yet. Seed them on demand rather than silently
+        # disabling all enrichment (load_seed_vocabulary is idempotent).
+        logger.warning(
+            "No ideation_pattern vocabulary present; seeding defaults before idea-card generation"
+        )
+        from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+        load_seed_vocabulary(store)
+        vocab = store.query("vocabulary")
+        vocab_by_id = {v["id"]: v for v in vocab}
+        patterns = [v for v in vocab if v["kind"] == "ideation_pattern"]
+        valid_pattern_ids = {p["id"] for p in patterns}
+
+    if not patterns:
+        logger.warning("No ideation_pattern vocabulary available; skipping idea-card generation")
         report["idea_cards"] = []
         return report
 
-    # Provenance: (improving, worsening) -> paper_ids backing that matrix cell.
+    # Provenance lookups from matrix cells:
+    #   cell_papers   : (improving, worsening)            -> papers (sparse-cell gaps)
+    #   triple_papers : (improving, worsening, principle) -> papers (cross-pollination source cell)
     cell_papers: dict[tuple[str, str], list[str]] = {}
-    # Provenance: principle_id -> paper_ids backing any cell that principle resolves.
-    principle_papers: dict[str, list[str]] = {}
+    triple_papers: dict[tuple[str, str, str], list[str]] = {}
     for cell in store.query("matrix_cells"):
-        key = (cell["improving_param_id"], cell["worsening_param_id"])
-        bucket = cell_papers.setdefault(key, [])
-        principle_bucket = principle_papers.setdefault(cell["principle_id"], [])
+        pair = (cell["improving_param_id"], cell["worsening_param_id"])
+        triple = (cell["improving_param_id"], cell["worsening_param_id"], cell["principle_id"])
+        pair_bucket = cell_papers.setdefault(pair, [])
+        triple_bucket = triple_papers.setdefault(triple, [])
         for pid in cell.get("paper_ids", []):
-            if pid not in bucket:
-                bucket.append(pid)
-            if pid not in principle_bucket:
-                principle_bucket.append(pid)
+            if pid not in pair_bucket:
+                pair_bucket.append(pid)
+            if pid not in triple_bucket:
+                triple_bucket.append(pid)
 
     card_rows = store.query_sql("SELECT MAX(id) AS max_id FROM idea_cards")
     next_card_id = (int(card_rows[0]["max_id"]) + 1) if card_rows[0]["max_id"] is not None else 1
@@ -436,28 +505,36 @@ async def run_ideation_with_llm(
     all_cards: list[dict[str, Any]] = []
 
     for gap in report["gaps"]:
+        gap_id = int(gap["id"])
         messages = _build_idea_card_messages(gap, vocab_by_id, patterns)
         try:
             text = await llm_client.complete(messages)
         except Exception:
-            logger.warning("LLM idea-card generation failed for gap %d", gap.get("id", -1))
+            logger.warning("LLM idea-card generation failed for gap %d", gap_id)
             continue
 
         card = _parse_idea_card(text, valid_pattern_ids)
-        if card is None:
-            logger.warning("Unusable idea-card JSON for gap %d", gap.get("id", -1))
-            continue
 
-        params = gap.get("related_params", [])
-        key = (params[0], params[1]) if len(params) >= 2 else None
-        if gap["gap_type"] == "cross_pollination" and gap.get("related_principles"):
-            paper_ids = principle_papers.get(gap["related_principles"][0], [])
-        else:
-            paper_ids = cell_papers.get(key, []) if key else []
+        # Graceful degradation: when we cannot build a properly pattern-grounded
+        # card, keep the LLM's output as a free-text hypothesis (pre-0.11.0
+        # behaviour) instead of dropping it entirely.
+        if card is None:
+            logger.warning("Unusable idea-card JSON for gap %d; keeping raw hypothesis", gap_id)
+            fallback = strip_code_fences(text).strip()
+            if fallback:
+                _set_gap_hypothesis(store, gap, fallback)
+            continue
+        if not card["pattern_ids"]:
+            logger.warning(
+                "Idea card for gap %d referenced no known pattern; keeping hypothesis only", gap_id
+            )
+            if card["mechanism"]:
+                _set_gap_hypothesis(store, gap, card["mechanism"])
+            continue
 
         card_row = {
             "id": next_card_id,
-            "gap_id": int(gap["id"]),
+            "gap_id": gap_id,
             "report_id": int(gap["report_id"]),
             "title": card["title"],
             "pattern_ids": card["pattern_ids"],
@@ -466,23 +543,23 @@ async def run_ideation_with_llm(
             "falsification": card["falsification"],
             "differentiation": card["differentiation"],
             "signature_terms": card["signature_terms"],
-            "paper_ids": paper_ids,
+            "paper_ids": _card_paper_ids(gap, cell_papers, triple_papers),
             "confidence": card["confidence"],
             "created_at": now,
             "taxonomy_version": gap.get("taxonomy_version", 0),
         }
-        store.add_rows("idea_cards", [card_row])
+        # Guard the writes so one gap's DB error is logged and skipped rather
+        # than aborting the whole run and discarding earlier cards.
+        try:
+            store.add_rows("idea_cards", [card_row])
+        except Exception:
+            logger.warning("Failed to persist idea card for gap %d", gap_id)
+            continue
         all_cards.append(card_row)
         next_card_id += 1
 
         # Back-compat: keep the free-text hypothesis column populated.
-        gap["llm_hypothesis"] = card["mechanism"]
-        store.update(
-            "ideation_gaps",
-            "llm_hypothesis = ?",
-            "id = ?",
-            (card["mechanism"], int(gap["id"])),
-        )
+        _set_gap_hypothesis(store, gap, card["mechanism"])
 
     report["idea_cards"] = all_cards
     logger.info("Ideation LLM: generated %d idea cards", len(all_cards))

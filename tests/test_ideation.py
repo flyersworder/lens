@@ -162,10 +162,16 @@ async def test_run_ideation_with_llm_malformed_json_skips(ideation_store):
     assert ideation_store.query("idea_cards") == []
     assert report["idea_cards"] == []
     assert report["gap_count"] >= 1
+    # Back-compat (Finding 4): unparseable prose is kept as the free-text
+    # hypothesis rather than dropped entirely.
+    gaps = ideation_store.query("ideation_gaps")
+    assert any((g["llm_hypothesis"] or "") == "not json at all {{{" for g in gaps)
 
 
 @pytest.mark.asyncio
-async def test_run_ideation_with_llm_null_patterns_does_not_crash(ideation_store):
+async def test_run_ideation_with_llm_unknown_pattern_keeps_hypothesis_only(ideation_store):
+    """A card whose patterns don't resolve to seeded ids is NOT persisted as a
+    pattern-guided card (Finding 5); its mechanism is kept as the hypothesis."""
     import json
 
     from lens.monitor.ideation import run_ideation_with_llm
@@ -174,7 +180,7 @@ async def test_run_ideation_with_llm_null_patterns_does_not_crash(ideation_store
     mock_client.complete.return_value = json.dumps(
         {
             "title": "X",
-            "patterns": None,
+            "patterns": None,  # unresolvable -> pattern_ids == []
             "hook": "h",
             "mechanism": "m",
             "falsification": "f",
@@ -186,11 +192,12 @@ async def test_run_ideation_with_llm_null_patterns_does_not_crash(ideation_store
 
     report = await run_ideation_with_llm(ideation_store, mock_client)
 
-    assert isinstance(report["idea_cards"], list)
-    cards = ideation_store.query("idea_cards")
-    assert len(cards) >= 1
-    for card in cards:
-        assert card["pattern_ids"] == []
+    # No pattern-less card is written, and the run still completes gracefully.
+    assert report["idea_cards"] == []
+    assert ideation_store.query("idea_cards") == []
+    # The mechanism is preserved as the gap's free-text hypothesis.
+    gaps = ideation_store.query("ideation_gaps")
+    assert any((g["llm_hypothesis"] or "") == "m" for g in gaps)
 
 
 @pytest.mark.asyncio
@@ -207,9 +214,9 @@ async def test_run_ideation_with_llm_complete_raises_skips(ideation_store):
 
 
 @pytest.mark.asyncio
-async def test_cross_pollination_card_uses_principle_provenance(ideation_store):
-    """Cross-pollination cards should be attributed to the papers backing the
-    transferable principle, not the (empty) target matrix cell."""
+async def test_cross_pollination_card_uses_source_cell_provenance(ideation_store):
+    """Cross-pollination cards should be attributed to the source cell that
+    motivated the transfer, not the (empty) target matrix cell."""
     import json
 
     from lens.monitor.ideation import run_ideation_with_llm
@@ -243,3 +250,120 @@ async def test_cross_pollination_card_uses_principle_provenance(ideation_store):
 
     # Finding 2: confidence is clamped to [0, 1] even when the LLM returns 1.5.
     assert all(card["confidence"] == 1.0 for card in cards)
+
+
+def _valid_card_json(**overrides):
+    import json
+
+    card = {
+        "title": "T",
+        "patterns": ["Substitute the Operator or Representation"],
+        "hook": "h",
+        "mechanism": "m",
+        "falsification": "f",
+        "differentiation": [],
+        "signature_terms": [],
+        "confidence": 0.5,
+    }
+    card.update(overrides)
+    return json.dumps(card)
+
+
+@pytest.mark.asyncio
+async def test_cross_pollination_provenance_excludes_other_principle_cells(ideation_store):
+    """Provenance is the exact source cell, not every cell the principle resolves."""
+    from lens.knowledge.matrix import build_matrix
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    # A second, unrelated Quantization cell (Model Size vs Training Cost, paper p2).
+    # Model Size has no embedding, so it yields no cross-pollination candidate; it
+    # only widens the set of papers backing the Quantization principle.
+    ideation_store.add_rows(
+        "tradeoff_extractions",
+        [
+            {
+                "paper_id": "p2",
+                "improves": "Model Size",
+                "worsens": "Training Cost",
+                "technique": "Quantization",
+                "context": "test",
+                "confidence": 0.9,
+                "evidence_quote": "test quote",
+                "new_concepts": {},
+            },
+        ],
+    )
+    build_matrix(ideation_store)
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = _valid_card_json()
+
+    await run_ideation_with_llm(ideation_store, mock_client)
+
+    gap_type_by_id = {g["id"]: g["gap_type"] for g in ideation_store.query("ideation_gaps")}
+    cross_cards = [
+        c
+        for c in ideation_store.query("idea_cards")
+        if gap_type_by_id.get(c["gap_id"]) == "cross_pollination"
+    ]
+    assert cross_cards
+    for card in cross_cards:
+        # Source cell (inference-latency, model-accuracy, quantization) -> ["p1"].
+        # p2's unrelated quantization cell must NOT leak into the provenance.
+        assert card["paper_ids"] == ["p1"]
+
+
+@pytest.mark.asyncio
+async def test_seeds_ideation_patterns_when_missing(ideation_store):
+    """A pre-0.11.0 DB with no ideation patterns is seeded on demand rather than
+    silently disabling all enrichment (Finding 1)."""
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    ideation_store.delete("vocabulary", "kind = ?", ("ideation_pattern",))
+    assert ideation_store.query("vocabulary", "kind = ?", ("ideation_pattern",)) == []
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = _valid_card_json()
+
+    report = await run_ideation_with_llm(ideation_store, mock_client)
+
+    assert len(ideation_store.query("vocabulary", "kind = ?", ("ideation_pattern",))) == 15
+    assert report["idea_cards"]
+
+
+@pytest.mark.asyncio
+async def test_db_write_failure_skips_gap_gracefully(ideation_store, monkeypatch):
+    """A DB error while persisting one card is logged and skipped, not fatal."""
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = _valid_card_json()
+
+    orig_add_rows = ideation_store.add_rows
+
+    def failing_add_rows(table, rows, **kwargs):
+        if table == "idea_cards":
+            raise RuntimeError("disk full")
+        return orig_add_rows(table, rows, **kwargs)
+
+    monkeypatch.setattr(ideation_store, "add_rows", failing_add_rows)
+
+    report = await run_ideation_with_llm(ideation_store, mock_client)
+    assert report["idea_cards"] == []
+
+
+@pytest.mark.asyncio
+async def test_differentiation_dict_is_dropped(ideation_store):
+    """A non-list differentiation (e.g. a dict) is dropped, not repr-stringified (Finding 6)."""
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = _valid_card_json(
+        differentiation={"vs_static": "adapts per layer"}
+    )
+
+    await run_ideation_with_llm(ideation_store, mock_client)
+    cards = ideation_store.query("idea_cards")
+    assert cards
+    for card in cards:
+        assert card["differentiation"] == []
