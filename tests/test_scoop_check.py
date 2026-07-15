@@ -137,3 +137,48 @@ async def test_run_scoop_check_survives_judge_crash(store, monkeypatch):
     summary = await run_scoop_check(store, llm)  # must not raise
     assert summary["checked"] == 0
     assert store.query("idea_cards")[0]["novelty_status"] == "unchecked"
+
+
+@pytest.mark.asyncio
+async def test_run_scoop_check_persists_colliding_papers(store, monkeypatch):
+    import lens.knowledge.scoop_check as sc
+    from lens.knowledge.scoop_check import run_scoop_check
+
+    _seed_card(store, 1, ["quantization"])
+
+    async def fake_search(query, limit=5):
+        return [{"title": "KVQuant", "abstract": "a", "year": 2024, "url": "http://p"}]
+
+    monkeypatch.setattr(sc, "search_semantic_scholar", fake_search)
+    llm = AsyncMock()
+    llm.complete.return_value = json.dumps(
+        {"verdict": "scooped", "colliding_papers": ["KVQuant"], "rationale": "same idea"}
+    )
+
+    await run_scoop_check(store, llm)
+    note = store.query("idea_cards")[0]["novelty_note"]
+    assert "KVQuant" in note  # colliding paper surfaced in the persisted note
+
+
+@pytest.mark.asyncio
+async def test_run_scoop_check_skips_empty_query(store, monkeypatch):
+    import lens.knowledge.scoop_check as sc
+    from lens.knowledge.scoop_check import run_scoop_check
+
+    # A card with no title and no signature_terms -> empty query.
+    _seed_card(store, 1, [])
+    store.update("idea_cards", "title = ?", "id = ?", ("", 1))
+
+    searched = []
+
+    async def fake_search(query, limit=5):
+        searched.append(query)
+        return [{"title": "X", "abstract": "a", "year": 2024, "url": "u"}]
+
+    monkeypatch.setattr(sc, "search_semantic_scholar", fake_search)
+    llm = AsyncMock()
+
+    summary = await run_scoop_check(store, llm)
+    assert searched == []  # no S2 call for the empty-query card
+    assert summary["checked"] == 0
+    assert store.query("idea_cards")[0]["novelty_status"] == "unchecked"

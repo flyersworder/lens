@@ -112,6 +112,9 @@ async def run_scoop_check(
     for card in cards:
         terms = card.get("signature_terms") or []
         query = " ".join([card.get("title", ""), *terms]).strip()
+        if not query:
+            logger.info("Card %d has no title/terms to search; leaving unchecked", card["id"])
+            continue
         prior_art = await search_semantic_scholar(query, limit=top_k)
         if not prior_art:
             logger.info("No prior art for card %d; leaving unchecked", card["id"])
@@ -130,6 +133,10 @@ async def run_scoop_check(
             {"title": p.get("title", ""), "url": p.get("url", ""), "year": p.get("year")}
             for p in prior_art
         ]
+        note = verdict["rationale"]
+        colliding = verdict.get("colliding_papers") or []
+        if colliding:
+            note = f"{note} (collides with: {', '.join(colliding)})".strip()
         try:
             store.update(
                 "idea_cards",
@@ -138,7 +145,7 @@ async def run_scoop_check(
                 (
                     verdict["verdict"],
                     json.dumps(stored_art),
-                    verdict["rationale"],
+                    note,
                     now,
                     card["id"],
                 ),
@@ -146,6 +153,8 @@ async def run_scoop_check(
         except Exception:
             logger.warning("Failed to persist novelty verdict for card %d", card["id"])
             continue
+        if verdict["verdict"] in ("scooped", "overlaps"):
+            logger.info("Card %d %s — collides with %s", card["id"], verdict["verdict"], colliding)
         counts[verdict["verdict"]] += 1
         checked += 1
 
