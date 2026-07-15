@@ -141,7 +141,7 @@ Generated cards are structurally sound but unverified for novelty; a validation 
 **Source decision.** The original Future Hook imagined a corpus hybrid-search, but the prior art that matters usually isn't in the local corpus, so scoop-check queries an *external* source. A live e2e found the free unauthenticated Semantic Scholar `/paper/search` tier returns `429` on every request; the shipped source is **OpenAlex** (free polite pool via `mailto`, reliable, relevant).
 
 **Flow** — for each card with `novelty_status = 'unchecked'`:
-1. `search_openalex(query, limit)` (`acquire/openalex.py`) by the card's `title` + `signature_terms`; abstracts reconstructed from `abstract_inverted_index`; fail-soft (returns `[]` on any error); keeps title-only works so a colliding paper without an abstract still reaches the judge.
+1. `_gather_prior_art` runs one `search_openalex` (`acquire/openalex.py`) **per signature term** and unions the results (a single combined query dilutes relevance into off-domain surveys). Each search is restricted to **recent Computer-science works** (`from_publication_date` + CS concept filter) with light pacing; abstracts reconstructed from `abstract_inverted_index`; fail-soft (`[]` on error); keeps title-only works so a colliding paper without an abstract still reaches the judge.
 2. `judge_novelty(card, prior_art, llm)` (`knowledge/scoop_check.py`) → `{verdict ∈ novel|overlaps|scooped, colliding_papers, rationale}`; parsed with `strip_code_fences` → `json.loads` → `json_repair`; unusable/out-of-enum output → `None`.
 3. Persist `novelty_status`, `prior_art` (JSON), `novelty_note` (rationale + colliding papers), `novelty_checked_at`.
 
@@ -151,7 +151,7 @@ Generated cards are structurally sound but unverified for novelty; a validation 
 
 **Surface.** `lens scoop-check` (`--limit`, `--top-k`). Keyless. No web/UI yet.
 
-**Known limitation.** Keyword-search recall depends on query quality — a jargon-heavy card can miss real prior art (e.g. an early-exit idea scored `novel` because OpenAlex didn't surface CALM). A future increment could broaden the query or add a second source.
+**Known limitation.** Recall still depends on query wording — a card whose closest prior art uses different terminology can score `novel` with only adjacent work shown. The per-term + CS/recency retrieval markedly improved this (it now catches e.g. adaptive layer-skipping → SkipNet), and the `novel` verdicts that remain are grounded in *relevant* related work rather than junk. Under a large batch the free polite pool may rate-limit; the idempotent pass simply re-checks those cards on the next run.
 
 ## Future Hooks (not built here)
 

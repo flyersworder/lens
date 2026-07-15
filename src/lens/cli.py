@@ -487,7 +487,7 @@ def explain(
 @app.command()
 def scoop_check(
     limit: int | None = typer.Option(None, "--limit", help="Max cards to check this run."),
-    top_k: int = typer.Option(5, "--top-k", help="Prior-art papers to retrieve per card."),
+    top_k: int = typer.Option(8, "--top-k", help="Prior-art papers to judge per card."),
 ) -> None:
     """Verify idea-card novelty against Semantic Scholar prior art."""
     config = load_config(_get_config_path())

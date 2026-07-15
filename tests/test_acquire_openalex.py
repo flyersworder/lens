@@ -149,11 +149,18 @@ async def test_search_openalex_parses(monkeypatch):
                 ]
             }
 
+    seen_url = {}
+
     async def fake_fetch(client, url, headers=None):
+        seen_url["url"] = url
         return FakeResp()
 
     monkeypatch.setattr(oa, "fetch_with_retry", fake_fetch)
+    monkeypatch.setattr(oa, "SEARCH_PACING_SECONDS", 0)
     res = await oa.search_openalex("kv cache quantization", limit=5)
+    # recency + CS-concept filters are applied to keep results on-domain
+    assert "from_publication_date:2018-01-01" in seen_url["url"]
+    assert "concepts.id:C41008148" in seen_url["url"]
     assert len(res) == 2  # full + title-only kept; fully-empty work dropped
     assert res[0]["abstract"] == "Adaptive quantization"
     assert res[0]["year"] == 2024
@@ -171,4 +178,5 @@ async def test_search_openalex_fails_soft(monkeypatch):
         raise RuntimeError("429")
 
     monkeypatch.setattr(oa, "fetch_with_retry", boom)
+    monkeypatch.setattr(oa, "SEARCH_PACING_SECONDS", 0)
     assert await oa.search_openalex("anything") == []

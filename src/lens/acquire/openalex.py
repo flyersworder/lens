@@ -7,6 +7,7 @@ Retry with exponential backoff per spec.
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from typing import Any
@@ -18,8 +19,17 @@ from lens.acquire.http import fetch_with_retry
 
 logger = logging.getLogger(__name__)
 
+# Light pacing between search requests: scoop-check fires several per card, and
+# the free polite pool rate-limits bursts. Tests set this to 0.
+SEARCH_PACING_SECONDS = 0.2
+
 OPENALEX_API_URL = "https://api.openalex.org/works"
 DEFAULT_MAILTO = "lens-project@example.com"
+# OpenAlex "Computer science" concept — scoop-check searches LLM-research prior
+# art, so restricting to recent CS works keeps generic terms (e.g. "adaptive
+# quantization") from dredging up control-theory / signal-processing papers.
+CS_CONCEPT_ID = "C41008148"
+DEFAULT_FROM_YEAR = 2018
 
 
 def _reconstruct_abstract(inverted_index: Any) -> str:
@@ -38,17 +48,20 @@ async def search_openalex(
     query: str,
     limit: int = 5,
     mailto: str = "",
+    from_year: int = DEFAULT_FROM_YEAR,
 ) -> list[dict[str, Any]]:
     """Search OpenAlex for prior art matching a text query (polite free pool).
 
-    Never raises — returns [] on timeout / HTTP error / malformed body. Works
-    without a usable abstract are dropped (nothing to judge against).
+    Restricted to recent Computer-science works so generic query terms don't
+    surface off-domain / decades-old papers. Never raises — returns [] on
+    timeout / HTTP error / malformed body; works without a title are dropped.
     """
     effective_mailto = mailto or DEFAULT_MAILTO
     fields = "title,abstract_inverted_index,publication_year,doi,id"
+    filters = f"from_publication_date:{from_year}-01-01,concepts.id:{CS_CONCEPT_ID}"
     url = (
         f"{OPENALEX_API_URL}?search={quote_plus(query)}"
-        f"&per-page={limit}&mailto={effective_mailto}&select={fields}"
+        f"&per-page={limit}&mailto={effective_mailto}&select={fields}&filter={filters}"
     )
 
     data: dict[str, Any] = {}
@@ -59,6 +72,8 @@ async def search_openalex(
         except Exception as e:
             logger.warning("OpenAlex search failed for %r: %s", query, e)
             return []
+        finally:
+            await asyncio.sleep(SEARCH_PACING_SECONDS)
 
     if not isinstance(data, dict):
         return []

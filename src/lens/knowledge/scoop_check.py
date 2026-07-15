@@ -89,11 +89,50 @@ async def judge_novelty(
     }
 
 
+async def _gather_prior_art(
+    card: dict[str, Any],
+    per_term_limit: int = 3,
+    max_terms: int = 5,
+    max_total: int = 8,
+) -> list[dict[str, Any]]:
+    """Retrieve prior art via focused per-signature-term searches (union, deduped).
+
+    One combined ``title + all terms`` query is ~15 jargon words spanning
+    several concepts, which OpenAlex relevance-ranks into broad off-topic
+    surveys and manufactures false 'novel' verdicts. Searching each signature
+    term separately keeps every query on-topic; the union is deduped by title
+    and capped so the judge sees a focused candidate set. Falls back to the
+    card title when there are no signature terms.
+    """
+    terms = [t for t in (card.get("signature_terms") or []) if str(t).strip()][:max_terms]
+    if terms:
+        queries = terms
+    else:
+        title = str(card.get("title", "")).strip()
+        queries = [title] if title else []
+
+    combined: list[dict[str, Any]] = []
+    for q in queries:
+        combined.extend(await search_openalex(q, limit=per_term_limit))
+
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for paper in combined:
+        key = (paper.get("title") or "").strip().lower()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append(paper)
+        if len(out) >= max_total:
+            break
+    return out
+
+
 async def run_scoop_check(
     store: LensStore,
     llm_client: Any,
     limit: int | None = None,
-    top_k: int = 5,
+    top_k: int = 8,
 ) -> dict[str, Any]:
     """Novelty-check every idea card with novelty_status='unchecked'.
 
@@ -112,12 +151,7 @@ async def run_scoop_check(
         # the cap and can't starve higher-id cards from ever being reached.
         if limit is not None and checked >= limit:
             break
-        terms = card.get("signature_terms") or []
-        query = " ".join([card.get("title", ""), *terms]).strip()
-        if not query:
-            logger.info("Card %d has no title/terms to search; leaving unchecked", card["id"])
-            continue
-        prior_art = await search_openalex(query, limit=top_k)
+        prior_art = await _gather_prior_art(card, max_total=top_k)
         if not prior_art:
             logger.info("No prior art for card %d; leaving unchecked", card["id"])
             continue

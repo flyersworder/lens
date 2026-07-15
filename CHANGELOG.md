@@ -13,6 +13,15 @@
     Semantic Scholar tier 429s every request, so OpenAlex is the source).
     Fail-soft: returns `[]` on any error; keeps title-only works so a
     colliding paper without an abstract is still visible to the judge.
+    Restricted to **recent Computer-science works** (`from_publication_date`
+    + CS concept filter) with light request pacing.
+  - **Focused per-term retrieval** — scoop-check searches each of a card's
+    `signature_terms` separately and unions the results, instead of one long
+    combined query. A corpus e2e showed the combined query diluted OpenAlex
+    relevance into off-domain/decades-old papers (control theory, 6G) and
+    produced false "novel" verdicts; per-term + the CS/recency filter
+    surfaces the actual prior art (e.g. correctly flags an adaptive
+    layer-skipping idea as scooped by SkipNet).
   - **LLM novelty judge** — reads a card plus the top retrieved abstracts and
     returns `novel | overlaps | scooped`, the colliding paper(s), and a
     rationale, distinguishing shared keywords from the same contribution.
