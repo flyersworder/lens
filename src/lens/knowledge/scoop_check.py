@@ -117,7 +117,11 @@ async def run_scoop_check(
             logger.info("No prior art for card %d; leaving unchecked", card["id"])
             continue
 
-        verdict = await judge_novelty(card, prior_art, llm_client)
+        try:
+            verdict = await judge_novelty(card, prior_art, llm_client)
+        except Exception:
+            logger.warning("Novelty judge crashed for card %d; leaving unchecked", card["id"])
+            verdict = None
         if verdict is None:
             logger.warning("Unusable novelty judgment for card %d; leaving unchecked", card["id"])
             continue

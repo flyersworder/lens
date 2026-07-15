@@ -117,3 +117,23 @@ async def test_run_scoop_check_leaves_unchecked_on_empty_prior_art(store, monkey
     assert summary["checked"] == 0
     assert store.query("idea_cards")[0]["novelty_status"] == "unchecked"
     llm.complete.assert_not_awaited()  # no judge call when there's no prior art
+
+
+@pytest.mark.asyncio
+async def test_run_scoop_check_survives_judge_crash(store, monkeypatch):
+    import lens.knowledge.scoop_check as sc
+    from lens.knowledge.scoop_check import run_scoop_check
+
+    _seed_card(store, 1, ["quantization"])
+
+    async def fake_search(query, limit=5):
+        return [{"title": "Prior", "abstract": "a", "year": 2023, "url": "http://p"}]
+
+    monkeypatch.setattr(sc, "search_semantic_scholar", fake_search)
+
+    llm = AsyncMock()
+    llm.complete.return_value = None  # non-str -> strip_code_fences would crash
+
+    summary = await run_scoop_check(store, llm)  # must not raise
+    assert summary["checked"] == 0
+    assert store.query("idea_cards")[0]["novelty_status"] == "unchecked"
