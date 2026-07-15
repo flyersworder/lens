@@ -368,13 +368,15 @@ def _parse_idea_card(text: str, valid_pattern_ids: set[str]) -> dict[str, Any] |
     title = str(data.get("title", "")).strip()
     if not title:
         return None
+    patterns_raw = data.get("patterns")
+    if not isinstance(patterns_raw, list):
+        patterns_raw = []
     pattern_ids = [
-        pid
-        for name in data.get("patterns", [])
-        if (pid := _slugify(str(name))) in valid_pattern_ids
+        pid for name in patterns_raw if (pid := _slugify(str(name))) in valid_pattern_ids
     ]
+    confidence_raw = data.get("confidence")
     try:
-        confidence = float(data.get("confidence", 0.5) or 0.5)
+        confidence = float(confidence_raw) if confidence_raw is not None else 0.5
     except (TypeError, ValueError):
         confidence = 0.5
     return {

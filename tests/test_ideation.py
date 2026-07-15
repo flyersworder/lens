@@ -162,3 +162,45 @@ async def test_run_ideation_with_llm_malformed_json_skips(ideation_store):
     assert ideation_store.query("idea_cards") == []
     assert report["idea_cards"] == []
     assert report["gap_count"] >= 1
+
+
+@pytest.mark.asyncio
+async def test_run_ideation_with_llm_null_patterns_does_not_crash(ideation_store):
+    import json
+
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = json.dumps(
+        {
+            "title": "X",
+            "patterns": None,
+            "hook": "h",
+            "mechanism": "m",
+            "falsification": "f",
+            "differentiation": [],
+            "signature_terms": [],
+            "confidence": 0.4,
+        }
+    )
+
+    report = await run_ideation_with_llm(ideation_store, mock_client)
+
+    assert isinstance(report["idea_cards"], list)
+    cards = ideation_store.query("idea_cards")
+    assert len(cards) >= 1
+    for card in cards:
+        assert card["pattern_ids"] == []
+
+
+@pytest.mark.asyncio
+async def test_run_ideation_with_llm_complete_raises_skips(ideation_store):
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    mock_client = AsyncMock()
+    mock_client.complete.side_effect = RuntimeError("boom")
+
+    report = await run_ideation_with_llm(ideation_store, mock_client)
+
+    assert ideation_store.query("idea_cards") == []
+    assert report["idea_cards"] == []
