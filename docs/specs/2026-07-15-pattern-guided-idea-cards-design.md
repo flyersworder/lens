@@ -1,4 +1,9 @@
-# Pattern-Guided Idea Cards Design
+# Pattern-Guided Idea Cards & Novelty Verification Design
+
+> Covers two shipped increments: pattern-guided Idea Cards (0.11.0) and
+> scoop-check novelty verification (0.12.0). Scoop-check was the "Future Hook"
+> of the original idea-cards design; it is folded in here as the design of
+> record. The former standalone `2026-07-15-scoop-check-design.md` is superseded.
 
 ## Overview
 
@@ -129,8 +134,28 @@ The prompt asks for JSON and parses defensively; it does not depend on provider-
 4. **Happy path** — `run_ideation_with_llm` with a stub client returning a well-formed card JSON persists one `idea_cards` row per gap, with `pattern_ids` resolving to real `ideation_pattern` vocab ids and `llm_hypothesis` set to the mechanism.
 5. **Malformed output** — stub returns non-JSON / a bad pattern name → the run completes, no card row is written for that gap, no exception propagates.
 
+## Scoop-Check — Novelty Verification (built in 0.12.0)
+
+Generated cards are structurally sound but unverified for novelty; a validation batch (2026-07-15) found several restating published work (KVQuant, CALM/early-exit) that is **not** in LENS's local corpus. Scoop-check is a **separate, idempotent pass** that flags prior art so cards aren't presented as novel when they aren't.
+
+**Source decision.** The original Future Hook imagined a corpus hybrid-search, but the prior art that matters usually isn't in the local corpus, so scoop-check queries an *external* source. A live e2e found the free unauthenticated Semantic Scholar `/paper/search` tier returns `429` on every request; the shipped source is **OpenAlex** (free polite pool via `mailto`, reliable, relevant).
+
+**Flow** — for each card with `novelty_status = 'unchecked'`:
+1. `search_openalex(query, limit)` (`acquire/openalex.py`) by the card's `title` + `signature_terms`; abstracts reconstructed from `abstract_inverted_index`; fail-soft (returns `[]` on any error); keeps title-only works so a colliding paper without an abstract still reaches the judge.
+2. `judge_novelty(card, prior_art, llm)` (`knowledge/scoop_check.py`) → `{verdict ∈ novel|overlaps|scooped, colliding_papers, rationale}`; parsed with `strip_code_fences` → `json.loads` → `json_repair`; unusable/out-of-enum output → `None`.
+3. Persist `novelty_status`, `prior_art` (JSON), `novelty_note` (rationale + colliding papers), `novelty_checked_at`.
+
+**Schema.** Four columns added to `idea_cards` (`novelty_status`, `prior_art`, `novelty_note`, `novelty_checked_at`) via `_TABLE_DDL` + `_COLUMN_MIGRATIONS`; `prior_art` registered in `JSON_FIELDS`.
+
+**Guarantees.** Fully fail-soft and idempotent — a card only leaves `unchecked` on a real verdict (search-empty, judge-crash, or DB error all leave it for the next run). `--limit` caps *checked* cards (not a pre-slice), so persistently-failing cards can't starve unreached ones. **Not** wired into the monitor cron (keeps the external API out of the unattended job).
+
+**Surface.** `lens scoop-check` (`--limit`, `--top-k`). Keyless. No web/UI yet.
+
+**Known limitation.** Keyword-search recall depends on query quality — a jargon-heavy card can miss real prior art (e.g. an early-exit idea scored `novel` because OpenAlex didn't surface CALM). A future increment could broaden the query or add a second source.
+
 ## Future Hooks (not built here)
 
-- **Scoop-check (idea #2):** run each card's `signature_terms` through the existing FTS + sqlite-vec hybrid search over the corpus to flag prior art. The card field already exists; this becomes a new linter check or an ideate sub-step.
 - **Embedding-based pattern retrieval:** patterns are already embedded by `build_vocabulary`; a later version can retrieve the top-k patterns by gap-description similarity instead of injecting all 15.
-- **Card surfacing:** `lens status` card counts and provenance sidecars for cards.
+- **Card surfacing (UI):** an `/api/ideas` endpoint + an Ideas page that renders cards and lets users filter out `scooped` ones (now possible thanks to `novelty_status`). This is the increment that makes cards visible in the web app.
+- **Audit/revise loop:** feed a `scooped` verdict back into generation to regenerate with the collision as an explicit constraint (like ResearchStudio's Phase 3).
+- **Confidence calibration & domain guard** on generation (further findings from the validation batch).
