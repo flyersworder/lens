@@ -1,5 +1,39 @@
 # Changelog
 
+## 0.12.0 (2026-07-15)
+
+### Added
+- **Scoop-check — idea-card novelty verification** — a separate, idempotent
+  pass that checks each generated Idea Card against real prior art, so cards
+  that merely restate published work are flagged rather than presented as
+  novel. Motivated by a validation batch that found generated cards echoing
+  existing papers absent from the local corpus.
+  - **`search_openalex`** — new relevance search against the OpenAlex works
+    API (free polite pool via `mailto`; a live e2e found the unauthenticated
+    Semantic Scholar tier 429s every request, so OpenAlex is the source).
+    Fail-soft: returns `[]` on any error; keeps title-only works so a
+    colliding paper without an abstract is still visible to the judge.
+    Restricted to **recent Computer-science works** (`from_publication_date`
+    + CS concept filter) with light request pacing.
+  - **Focused per-term retrieval** — scoop-check searches each of a card's
+    `signature_terms` separately and unions the results, instead of one long
+    combined query. A corpus e2e showed the combined query diluted OpenAlex
+    relevance into off-domain/decades-old papers (control theory, 6G) and
+    produced false "novel" verdicts; per-term + the CS/recency filter
+    surfaces the actual prior art (e.g. correctly flags an adaptive
+    layer-skipping idea as scooped by SkipNet).
+  - **LLM novelty judge** — reads a card plus the top retrieved abstracts and
+    returns `novel | overlaps | scooped`, the colliding paper(s), and a
+    rationale, distinguishing shared keywords from the same contribution.
+  - **Novelty columns on `idea_cards`** — `novelty_status`
+    (`unchecked | novel | overlaps | scooped`), `prior_art`, `novelty_note`,
+    `novelty_checked_at`, added via the migration path for existing DBs.
+  - **`lens scoop-check`** command (`--limit`, `--top-k`). Fully fail-soft and
+    idempotent: a card only leaves `unchecked` on a real verdict, so runs are
+    safe to repeat; empty prior art or a judge failure simply leaves the card
+    for the next run. Not wired into the scheduled monitor (keeps the external
+    API out of the unattended cron); run it deliberately after generating cards.
+
 ## 0.11.0 (2026-07-15)
 
 ### Added

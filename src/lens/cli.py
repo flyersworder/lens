@@ -485,6 +485,38 @@ def explain(
 
 
 @app.command()
+def scoop_check(
+    limit: int | None = typer.Option(None, "--limit", help="Max cards to check this run."),
+    top_k: int = typer.Option(8, "--top-k", help="Prior-art papers to judge per card."),
+) -> None:
+    """Verify idea-card novelty against Semantic Scholar prior art."""
+    config = load_config(_get_config_path())
+    _require_llm_config(config)
+    data_dir = _get_data_dir(config)
+    store = LensStore(str(data_dir / "lens.db"))
+    store.init_tables()
+
+    from lens.knowledge.scoop_check import run_scoop_check
+    from lens.llm.client import LLMClient
+
+    client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
+    session_id = str(uuid4())[:8]
+
+    summary = asyncio.run(run_scoop_check(store, client, limit=limit, top_k=top_k))
+
+    rprint(f"\n[bold]Scoop-check:[/bold] {summary['checked']} card(s) checked")
+    for verdict, n in summary["by_verdict"].items():
+        rprint(f"  {verdict}: {n}")
+    log_event(
+        store,
+        "scoop_check",
+        "scoop_check.run",
+        detail=summary,
+        session_id=session_id,
+    )
+
+
+@app.command()
 def search(
     query: str | None = typer.Argument(None, help="Text to search for."),
     author: str | None = typer.Option(None, "--author", help="Filter by author name."),

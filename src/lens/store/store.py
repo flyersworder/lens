@@ -40,7 +40,13 @@ JSON_FIELDS: dict[str, set[str]] = {
     "agentic_extractions": {"components", "new_concepts"},
     "matrix_cells": {"paper_ids"},
     "ideation_gaps": {"related_params", "related_principles", "related_slots"},
-    "idea_cards": {"pattern_ids", "differentiation", "signature_terms", "paper_ids"},
+    "idea_cards": {
+        "pattern_ids",
+        "differentiation",
+        "signature_terms",
+        "paper_ids",
+        "prior_art",
+    },
     "event_log": {"detail"},
 }
 
@@ -157,7 +163,11 @@ _TABLE_DDL = [
         paper_ids TEXT NOT NULL DEFAULT '[]',
         confidence REAL NOT NULL DEFAULT 0.0,
         created_at TEXT NOT NULL,
-        taxonomy_version INTEGER NOT NULL DEFAULT 0
+        taxonomy_version INTEGER NOT NULL DEFAULT 0,
+        novelty_status TEXT NOT NULL DEFAULT 'unchecked',
+        prior_art TEXT NOT NULL DEFAULT '[]',
+        novelty_note TEXT NOT NULL DEFAULT '',
+        novelty_checked_at TEXT
     )""",
     """CREATE TABLE IF NOT EXISTS event_log (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -183,6 +193,10 @@ _COLUMN_MIGRATIONS: list[tuple[str, str, str]] = [
     ("tradeoff_extractions", "verification_status", "TEXT NOT NULL DEFAULT 'unverified'"),
     ("architecture_extractions", "verification_status", "TEXT NOT NULL DEFAULT 'unverified'"),
     ("agentic_extractions", "verification_status", "TEXT NOT NULL DEFAULT 'unverified'"),
+    ("idea_cards", "novelty_status", "TEXT NOT NULL DEFAULT 'unchecked'"),
+    ("idea_cards", "prior_art", "TEXT NOT NULL DEFAULT '[]'"),
+    ("idea_cards", "novelty_note", "TEXT NOT NULL DEFAULT ''"),
+    ("idea_cards", "novelty_checked_at", "TEXT"),
 ]
 
 

@@ -1,5 +1,6 @@
 """Tests for LensStore — SQLite + sqlite-vec backend."""
 
+import sqlite3
 from datetime import UTC, datetime
 
 from lens.store.models import EMBEDDING_DIM
@@ -541,3 +542,71 @@ def test_idea_cards_table_roundtrip(tmp_path):
     assert c["signature_terms"] == ["quantization", "throughput", "attention"]
     assert c["paper_ids"] == ["p1"]
     assert c["confidence"] == 0.7
+
+
+# ---- 14. idea_cards novelty columns ----
+
+
+def test_idea_cards_novelty_columns_roundtrip(tmp_path):
+    from lens.store.store import LensStore
+
+    store = LensStore(str(tmp_path / "t.db"))
+    store.init_tables()
+    store.add_rows(
+        "idea_cards",
+        [
+            {
+                "id": 1,
+                "gap_id": 1,
+                "report_id": 1,
+                "title": "T",
+                "pattern_ids": [],
+                "hook": "",
+                "mechanism": "m",
+                "falsification": "",
+                "differentiation": [],
+                "signature_terms": ["quantization"],
+                "paper_ids": [],
+                "confidence": 0.5,
+                "created_at": datetime.now(UTC),
+                "taxonomy_version": 0,
+                "prior_art": [{"title": "GQA", "url": "http://x", "year": 2023}],
+                "novelty_status": "scooped",
+                "novelty_note": "already published",
+            }
+        ],
+    )
+    c = store.query("idea_cards")[0]
+    assert c["novelty_status"] == "scooped"
+    assert c["prior_art"] == [{"title": "GQA", "url": "http://x", "year": 2023}]
+    assert c["novelty_note"] == "already published"
+
+
+def test_idea_cards_novelty_migration_on_old_table(tmp_path):
+    """A pre-scoop-check idea_cards table gains the novelty columns on init."""
+    from lens.store.store import LensStore
+
+    db = str(tmp_path / "old.db")
+    conn = sqlite3.connect(db)
+    conn.execute(
+        "CREATE TABLE idea_cards ("
+        "id INTEGER PRIMARY KEY, gap_id INTEGER NOT NULL, "
+        "report_id INTEGER NOT NULL, "
+        "title TEXT NOT NULL, pattern_ids TEXT NOT NULL DEFAULT '[]', "
+        "hook TEXT NOT NULL DEFAULT '', "
+        "mechanism TEXT NOT NULL DEFAULT '', "
+        "falsification TEXT NOT NULL DEFAULT '', "
+        "differentiation TEXT NOT NULL DEFAULT '[]', "
+        "signature_terms TEXT NOT NULL DEFAULT '[]', "
+        "paper_ids TEXT NOT NULL DEFAULT '[]', "
+        "confidence REAL NOT NULL DEFAULT 0.0, "
+        "created_at TEXT NOT NULL, taxonomy_version INTEGER NOT NULL DEFAULT 0)"
+    )
+    conn.commit()
+    conn.close()
+
+    store = LensStore(db)
+    store.init_tables()
+    cols = {row[1] for row in store.conn.execute("PRAGMA table_info(idea_cards)")}
+    expected_cols = {"novelty_status", "prior_art", "novelty_note", "novelty_checked_at"}
+    assert expected_cols <= cols

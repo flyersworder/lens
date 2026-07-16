@@ -105,3 +105,78 @@ async def test_enrich_no_match_leaves_paper_unchanged():
         enriched = await enrich_with_openalex(papers)
         assert enriched[0]["citations"] == 0  # unchanged
         assert enriched[0]["venue"] is None  # unchanged
+
+
+def test_reconstruct_abstract():
+    from lens.acquire.openalex import _reconstruct_abstract
+
+    # word -> positions; reconstruction orders by position.
+    inv = {"Adaptive": [0], "KV": [1], "cache": [2], "quantization": [3]}
+    assert _reconstruct_abstract(inv) == "Adaptive KV cache quantization"
+    assert _reconstruct_abstract(None) == ""
+    assert _reconstruct_abstract("not a dict") == ""
+
+
+@pytest.mark.asyncio
+async def test_search_openalex_parses(monkeypatch):
+    import lens.acquire.openalex as oa
+
+    class FakeResp:
+        def json(self):
+            return {
+                "results": [
+                    {
+                        "title": "QAQ: Quality Adaptive Quantization for LLM KV Cache",
+                        "abstract_inverted_index": {"Adaptive": [0], "quantization": [1]},
+                        "publication_year": 2024,
+                        "doi": "https://doi.org/10.48550/arXiv.2403.04643",
+                        "id": "https://openalex.org/W123",
+                    },
+                    {
+                        "title": "Title-only work (no abstract)",
+                        "abstract_inverted_index": None,
+                        "publication_year": 2023,
+                        "doi": None,
+                        "id": "https://openalex.org/W456",
+                    },
+                    {
+                        "title": None,  # no title AND no abstract -> dropped
+                        "abstract_inverted_index": None,
+                        "publication_year": 2022,
+                        "doi": None,
+                        "id": "https://openalex.org/W789",
+                    },
+                ]
+            }
+
+    seen_url = {}
+
+    async def fake_fetch(client, url, headers=None):
+        seen_url["url"] = url
+        return FakeResp()
+
+    monkeypatch.setattr(oa, "fetch_with_retry", fake_fetch)
+    monkeypatch.setattr(oa, "SEARCH_PACING_SECONDS", 0)
+    res = await oa.search_openalex("kv cache quantization", limit=5)
+    # recency + CS-concept filters are applied to keep results on-domain
+    assert "from_publication_date:2018-01-01" in seen_url["url"]
+    assert "concepts.id:C41008148" in seen_url["url"]
+    assert len(res) == 2  # full + title-only kept; fully-empty work dropped
+    assert res[0]["abstract"] == "Adaptive quantization"
+    assert res[0]["year"] == 2024
+    assert res[0]["arxiv_id"] == "2403.04643"
+    assert res[0]["url"] == "https://doi.org/10.48550/arXiv.2403.04643"
+    assert res[1]["title"] == "Title-only work (no abstract)"
+    assert res[1]["abstract"] == ""  # kept despite no abstract
+
+
+@pytest.mark.asyncio
+async def test_search_openalex_fails_soft(monkeypatch):
+    import lens.acquire.openalex as oa
+
+    async def boom(client, url, headers=None):
+        raise RuntimeError("429")
+
+    monkeypatch.setattr(oa, "fetch_with_retry", boom)
+    monkeypatch.setattr(oa, "SEARCH_PACING_SECONDS", 0)
+    assert await oa.search_openalex("anything") == []
