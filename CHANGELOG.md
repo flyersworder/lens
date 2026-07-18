@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **Ideation diversity gate** — `run_ideation_with_llm` no longer emits one
+  idea card per matrix gap (which produced hundreds of heavily-redundant cards,
+  since every fully-empty cell scores identically and the LLM collapses distinct
+  cells onto a handful of recurring "moves"). A gate now sits between structural
+  gap-finding and card emission:
+  - **Score floor** (`monitor.ideate_min_gap_score`, default 0.5) drops
+    low-scored gaps before any LLM call.
+  - **Diversified order** (`_diversified_gap_order`) round-robins gaps across
+    their improving parameter so distinct ideas surface before the budget is
+    spent on one cluster.
+  - **Near-duplicate dedup** (`monitor.ideate_dedup_threshold`, default 0.32)
+    skips a card whose `title + signature_terms` token-Jaccard against any
+    already-kept card meets the threshold. 0.32 was tuned against the real
+    corpus — it collapses genuine restatements (e.g. two near-identical
+    warp-level scheduling cards) while keeping distinct-but-adjacent ideas.
+  - **Cap** (`monitor.ideate_top_n`, default raised 10 → 40) stops once that
+    many distinct cards are kept; an internal `max(top_n*3, 60)` LLM-call budget
+    bounds worst-case cost, logged (no silent truncation).
+  - Wires the previously-declared-but-unused `ideate_top_n` /
+    `ideate_min_gap_score` config keys and adds `ideate_dedup_threshold`.
+
+### Fixed
+- `lens scoop-check` help text now says "against OpenAlex prior art" (was
+  "Semantic Scholar"; scoop-check has queried OpenAlex since 0.12.0).
+
 ## 0.12.0 (2026-07-15)
 
 ### Added

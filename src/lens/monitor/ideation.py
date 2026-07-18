@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import logging
+import re
+from collections import defaultdict
 from datetime import UTC, datetime
 from typing import Any
 
@@ -18,6 +20,57 @@ logger = logging.getLogger(__name__)
 # Keys carried on in-memory gap dicts for downstream provenance but not
 # persisted as columns on the ``ideation_gaps`` table.
 _GAP_TRANSIENT_KEYS = frozenset({"source_improving_param_id", "source_worsening_param_id"})
+
+_TOKEN_RE = re.compile(r"[a-z0-9]+")
+
+
+def _card_token_set(title: str, signature_terms: list[str]) -> set[str]:
+    """Lowercased word-token fingerprint of a card, for near-duplicate detection.
+
+    Combines the title and signature terms — the two fields that carry a card's
+    idea-level identity — and splits into ``[a-z0-9]+`` tokens so multi-word
+    phrases ("Differentiable Architecture Search") overlap at the word level.
+    """
+    text = title + " " + " ".join(signature_terms)
+    return set(_TOKEN_RE.findall(text.lower()))
+
+
+def _jaccard(a: set[str], b: set[str]) -> float:
+    """Jaccard similarity of two token sets; empty ∪ empty is 0.0 (no divide-by-zero)."""
+    union = a | b
+    if not union:
+        return 0.0
+    return len(a & b) / len(union)
+
+
+def _diversified_gap_order(gaps: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Round-robin gaps across their improving parameter, best-scored first.
+
+    All fully-empty sparse cells score an identical ``1.0``, so a plain score sort
+    would surface many gaps for one parameter before touching another. Bucketing by
+    ``related_params[0]`` and taking one gap per bucket per pass spreads the LLM
+    budget across parameters, so distinct ideas surface early.
+    """
+    buckets: dict[str, list[dict[str, Any]]] = defaultdict(list)
+    for gap in gaps:
+        params = gap.get("related_params") or []
+        key = params[0] if params else ""
+        buckets[key].append(gap)
+    # Highest score first within each bucket.
+    for bucket in buckets.values():
+        bucket.sort(key=lambda g: g.get("score", 0.0), reverse=True)
+    # Stable bucket order: by the best score each bucket offers, then by key.
+    ordered_buckets = sorted(
+        buckets.items(),
+        key=lambda kv: (-kv[1][0].get("score", 0.0), kv[0]),
+    )
+    queues = [list(bucket) for _, bucket in ordered_buckets]
+    result: list[dict[str, Any]] = []
+    while queues:
+        for queue in queues:
+            result.append(queue.pop(0))
+        queues = [q for q in queues if q]
+    return result
 
 
 def find_sparse_cells(
@@ -449,8 +502,22 @@ async def run_ideation_with_llm(
     llm_client: Any,
     min_principles: int = 2,
     similarity_threshold: float = 0.75,
+    max_cards: int = 40,
+    min_gap_score: float = 0.0,
+    dedup_threshold: float = 0.32,
 ) -> dict[str, Any]:
-    """Run ideation, then generate a structured Idea Card per gap via the LLM."""
+    """Run ideation, then generate a diverse, capped set of Idea Cards via the LLM.
+
+    A diversity gate sits between structural gap-finding and card emission so a run
+    yields ~``max_cards`` *distinct* ideas rather than one card per matrix cell:
+
+    * ``min_gap_score`` — drop gaps scoring below this before spending any LLM call.
+    * diversified order — round-robin gaps across their improving parameter.
+    * ``dedup_threshold`` — skip a card whose title+signature_terms token-Jaccard
+      against any already-kept card is ≥ this.
+    * ``max_cards`` — stop once this many distinct cards are kept; an internal
+      ``max(max_cards*3, 60)`` LLM-call budget bounds worst-case cost.
+    """
     report = run_ideation(
         store,
         min_principles=min_principles,
@@ -503,10 +570,23 @@ async def run_ideation_with_llm(
 
     now = datetime.now(UTC)
     all_cards: list[dict[str, Any]] = []
+    kept_token_sets: list[set[str]] = []
+    dedup_dropped = 0
 
-    for gap in report["gaps"]:
+    # Diversity gate: floor by score, spread across improving params, then cap.
+    eligible = [g for g in report["gaps"] if g.get("score", 0.0) >= min_gap_score]
+    ordered_gaps = _diversified_gap_order(eligible)
+    call_budget = max(max_cards * 3, 60)
+    calls_made = 0
+    gaps_reached = 0
+
+    for gap in ordered_gaps:
+        if len(all_cards) >= max_cards or calls_made >= call_budget:
+            break
+        gaps_reached += 1
         gap_id = int(gap["id"])
         messages = _build_idea_card_messages(gap, vocab_by_id, patterns)
+        calls_made += 1
         try:
             text = await llm_client.complete(messages)
         except Exception:
@@ -530,6 +610,15 @@ async def run_ideation_with_llm(
             )
             if card["mechanism"]:
                 _set_gap_hypothesis(store, gap, card["mechanism"])
+            continue
+
+        # Diversity gate: drop cards that restate an already-kept idea.
+        token_set = _card_token_set(card["title"], card["signature_terms"])
+        if any(_jaccard(token_set, kept) >= dedup_threshold for kept in kept_token_sets):
+            dedup_dropped += 1
+            logger.debug("Idea card for gap %d is a near-duplicate; skipping", gap_id)
+            # Keep the mechanism as the gap's hypothesis so the gap isn't left bare.
+            _set_gap_hypothesis(store, gap, card["mechanism"])
             continue
 
         card_row = {
@@ -556,11 +645,21 @@ async def run_ideation_with_llm(
             logger.warning("Failed to persist idea card for gap %d", gap_id)
             continue
         all_cards.append(card_row)
+        kept_token_sets.append(token_set)
         next_card_id += 1
 
         # Back-compat: keep the free-text hypothesis column populated.
         _set_gap_hypothesis(store, gap, card["mechanism"])
 
     report["idea_cards"] = all_cards
-    logger.info("Ideation LLM: generated %d idea cards", len(all_cards))
+    unprocessed = len(ordered_gaps) - gaps_reached
+    logger.info(
+        "Ideation LLM: %d distinct cards from %d gaps (%d near-dups dropped, "
+        "%d LLM calls, %d gaps left unprocessed by cap/budget)",
+        len(all_cards),
+        gaps_reached,
+        dedup_dropped,
+        calls_made,
+        unprocessed,
+    )
     return report

@@ -489,7 +489,7 @@ def scoop_check(
     limit: int | None = typer.Option(None, "--limit", help="Max cards to check this run."),
     top_k: int = typer.Option(8, "--top-k", help="Prior-art papers to judge per card."),
 ) -> None:
-    """Verify idea-card novelty against Semantic Scholar prior art."""
+    """Verify idea-card novelty against OpenAlex prior art."""
     config = load_config(_get_config_path())
     _require_llm_config(config)
     data_dir = _get_data_dir(config)
@@ -649,6 +649,9 @@ def monitor(
             run_build=not skip_build,
             run_ideation_flag=monitor_cfg["ideate"],
             ideate_with_llm=monitor_cfg.get("ideate_llm", False),
+            ideate_max_cards=monitor_cfg.get("ideate_top_n", 40),
+            ideate_min_gap_score=monitor_cfg.get("ideate_min_gap_score", 0.5),
+            ideate_dedup_threshold=monitor_cfg.get("ideate_dedup_threshold", 0.32),
             openalex_mailto=openalex_mailto,
             embedding_kwargs=_embedding_kwargs(config),
             venue_tiers=config["acquire"].get("quality_venue_tiers"),
