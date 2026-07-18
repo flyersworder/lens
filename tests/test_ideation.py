@@ -217,26 +217,36 @@ async def test_run_ideation_with_llm_complete_raises_skips(ideation_store):
 async def test_cross_pollination_card_uses_source_cell_provenance(ideation_store):
     """Cross-pollination cards should be attributed to the source cell that
     motivated the transfer, not the (empty) target matrix cell."""
+    # Distinct card per call so the diversity gate keeps the cross-pollination
+    # card instead of deduping it against an identical sparse-cell card. confidence
+    # is fixed at 1.5 to exercise the clamp on every card.
+    import itertools
     import json
 
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = json.dumps(
-        {
-            "title": "Quantization-aware throughput scheduling",
-            "patterns": ["Substitute the Operator or Representation"],
-            "hook": "Swap the decode operator to trade accuracy for latency.",
-            "mechanism": "Replace dense attention with a quantized kernel selected per layer.",
-            "falsification": "Measure tokens/sec vs perplexity on WikiText-103; "
-            "the quantized variant should raise throughput >20% at <1% perplexity loss.",
-            "differentiation": ["Unlike static quantization, adapts per-layer at decode time"],
-            "signature_terms": ["quantization", "throughput", "attention"],
-            "confidence": 1.5,
-        }
-    )
+    counter = itertools.count()
 
-    await run_ideation_with_llm(ideation_store, mock_client)
+    def _distinct(*_a, **_k):
+        i = next(counter)
+        return json.dumps(
+            {
+                "title": f"Quantization-aware throughput scheduling {i}",
+                "patterns": ["Substitute the Operator or Representation"],
+                "hook": "Swap the decode operator to trade accuracy for latency.",
+                "mechanism": "Replace dense attention with a quantized kernel selected per layer.",
+                "falsification": "Measure tokens/sec vs perplexity on WikiText-103; "
+                "the quantized variant should raise throughput >20% at <1% perplexity loss.",
+                "differentiation": ["Unlike static quantization, adapts per-layer at decode time"],
+                "signature_terms": [f"quantization{i}", f"throughput{i}", f"attention{i}"],
+                "confidence": 1.5,
+            }
+        )
+
+    mock_client = AsyncMock()
+    mock_client.complete.side_effect = _distinct
+
+    await run_ideation_with_llm(ideation_store, mock_client, max_cards=1000)
 
     gap_type_by_id = {g["id"]: g["gap_type"] for g in ideation_store.query("ideation_gaps")}
     cards = ideation_store.query("idea_cards")
@@ -295,10 +305,17 @@ async def test_cross_pollination_provenance_excludes_other_principle_cells(ideat
     )
     build_matrix(ideation_store)
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = _valid_card_json()
+    # Distinct card per call so the cross-pollination card survives the diversity
+    # gate rather than being deduped against an identical sparse-cell card.
+    import itertools
 
-    await run_ideation_with_llm(ideation_store, mock_client)
+    counter = itertools.count()
+    mock_client = AsyncMock()
+    mock_client.complete.side_effect = lambda *_a, **_k: _valid_card_json(
+        title=f"T{(i := next(counter))}", signature_terms=[f"term{i}"]
+    )
+
+    await run_ideation_with_llm(ideation_store, mock_client, max_cards=1000)
 
     gap_type_by_id = {g["id"]: g["gap_type"] for g in ideation_store.query("ideation_gaps")}
     cross_cards = [
@@ -367,3 +384,102 @@ async def test_differentiation_dict_is_dropped(ideation_store):
     assert cards
     for card in cards:
         assert card["differentiation"] == []
+
+
+# --- Diversity gate: pure helpers ---
+
+
+def test_card_token_set_tokenizes_title_and_terms():
+    from lens.monitor.ideation import _card_token_set
+
+    tokens = _card_token_set(
+        "Differentiable Architecture Search",
+        ["Structural Sparsity", "Gumbel-Softmax"],
+    )
+    assert tokens == {
+        "differentiable",
+        "architecture",
+        "search",
+        "structural",
+        "sparsity",
+        "gumbel",
+        "softmax",
+    }
+
+
+def test_jaccard_basic_and_empty():
+    from lens.monitor.ideation import _jaccard
+
+    assert _jaccard({"a", "b"}, {"a", "b"}) == 1.0
+    assert _jaccard({"a", "b", "c", "d"}, {"a", "b"}) == 0.5
+    assert _jaccard({"a"}, {"b"}) == 0.0
+    # Empty union must not divide by zero.
+    assert _jaccard(set(), set()) == 0.0
+
+
+def test_diversified_gap_order_round_robins_improving_param():
+    from lens.monitor.ideation import _diversified_gap_order
+
+    # Three gaps on param "a", one on "b". Round-robin must surface "b" before
+    # the first bucket is exhausted, and sort by score desc within a bucket.
+    gaps = [
+        {"id": 1, "related_params": ["a", "x"], "score": 0.5},
+        {"id": 2, "related_params": ["a", "y"], "score": 0.9},
+        {"id": 3, "related_params": ["a", "z"], "score": 0.7},
+        {"id": 4, "related_params": ["b", "x"], "score": 0.4},
+    ]
+    ordered = [g["id"] for g in _diversified_gap_order(gaps)]
+    # Pass 1: best of "a" (id 2, score 0.9), then best of "b" (id 4).
+    assert ordered[:2] == [2, 4]
+    # Remaining "a" gaps follow in score order.
+    assert ordered[2:] == [3, 1]
+
+
+def _counting_mock(fmt="term{i}"):
+    """AsyncMock whose complete() returns a *distinct* card per call, so the
+    diversity gate keeps every card (no dedup collapse)."""
+    import itertools
+
+    counter = itertools.count()
+
+    def _next(*_args, **_kwargs):
+        i = next(counter)
+        return _valid_card_json(title=f"Idea {i}", signature_terms=[fmt.format(i=i)])
+
+    mock = AsyncMock()
+    mock.complete.side_effect = _next
+    return mock
+
+
+@pytest.mark.asyncio
+async def test_dedup_collapses_identical_cards(ideation_store):
+    """Many gaps that yield identical cards collapse to a single distinct card."""
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    mock_client = AsyncMock()
+    mock_client.complete.return_value = _valid_card_json(
+        title="Same Idea", signature_terms=["quantization", "throughput"]
+    )
+
+    await run_ideation_with_llm(ideation_store, mock_client)
+    assert len(ideation_store.query("idea_cards")) == 1
+
+
+@pytest.mark.asyncio
+async def test_max_cards_caps_output(ideation_store):
+    """With distinct cards available, max_cards bounds how many are emitted."""
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    await run_ideation_with_llm(ideation_store, _counting_mock(), max_cards=3)
+    assert len(ideation_store.query("idea_cards")) == 3
+
+
+@pytest.mark.asyncio
+async def test_min_gap_score_filters_all_gaps(ideation_store):
+    """A score floor above every gap's score emits no cards (and spends no LLM calls)."""
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    mock = _counting_mock()
+    await run_ideation_with_llm(ideation_store, mock, min_gap_score=2.0)
+    assert ideation_store.query("idea_cards") == []
+    mock.complete.assert_not_called()

@@ -45,8 +45,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
     "monitor": {
         "ideate": True,
         "ideate_llm": False,
-        "ideate_top_n": 10,
+        "ideate_top_n": 40,
         "ideate_min_gap_score": 0.5,
+        "ideate_dedup_threshold": 0.35,
     },
     "storage": {
         "data_dir": "~/.lens/data",
@@ -129,6 +130,10 @@ def validate_config(config: dict[str, Any]) -> list[str]:
     gap_score = mon.get("ideate_min_gap_score", 0.0)
     if not isinstance(gap_score, (int, float)) or gap_score < 0.0 or gap_score > 1.0:
         _warn("monitor.ideate_min_gap_score must be between 0.0 and 1.0")
+
+    dedup = mon.get("ideate_dedup_threshold", 0.35)
+    if not isinstance(dedup, (int, float)) or dedup < 0.0 or dedup > 1.0:
+        _warn("monitor.ideate_dedup_threshold must be between 0.0 and 1.0")
 
     return warnings
 

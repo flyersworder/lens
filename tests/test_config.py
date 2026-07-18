@@ -129,3 +129,13 @@ def test_validate_config_gap_score_range():
     cfg["monitor"]["ideate_min_gap_score"] = 1.5
     warnings = validate_config(cfg)
     assert any("ideate_min_gap_score" in w for w in warnings)
+
+
+def test_validate_config_dedup_threshold_range():
+    """Out-of-range dedup threshold should produce a warning."""
+    from lens.config import default_config
+
+    cfg = default_config()
+    cfg["monitor"]["ideate_dedup_threshold"] = 1.5
+    warnings = validate_config(cfg)
+    assert any("ideate_dedup_threshold" in w for w in warnings)

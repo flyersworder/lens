@@ -28,6 +28,9 @@ async def run_monitor_cycle(
     run_build: bool = True,
     run_ideation_flag: bool = True,
     ideate_with_llm: bool = False,
+    ideate_max_cards: int = 40,
+    ideate_min_gap_score: float = 0.0,
+    ideate_dedup_threshold: float = 0.35,
     openalex_mailto: str = "",
     embedding_kwargs: dict[str, Any] | None = None,
     venue_tiers: dict[str, list[str]] | None = None,
@@ -161,7 +164,13 @@ async def run_monitor_cycle(
             if ideate_with_llm:
                 from lens.monitor.ideation import run_ideation_with_llm
 
-                ideation_report = await run_ideation_with_llm(store, llm_client)
+                ideation_report = await run_ideation_with_llm(
+                    store,
+                    llm_client,
+                    max_cards=ideate_max_cards,
+                    min_gap_score=ideate_min_gap_score,
+                    dedup_threshold=ideate_dedup_threshold,
+                )
             else:
                 from lens.monitor.ideation import run_ideation
 
