@@ -102,3 +102,54 @@ def test_require_backend_raises_without_litellm_or_api_base():
         pytest.raises(RuntimeError, match="No LLM backend available"),
     ):
         client._require_backend()
+
+
+def test_use_litellm_prefers_openai_when_api_base_set():
+    """With an OpenAI-compatible api_base (OpenRouter/gateway/vLLM), prefer the
+    openai path even if litellm is installed — litellm re-interprets a
+    provider-prefixed id like 'google/gemini-...' and misroutes it, whereas the
+    openai SDK passes the id through verbatim."""
+    from lens.llm.client import LLMClient
+
+    with patch("lens.llm.client.HAS_LITELLM", True):
+        with_base = LLMClient(
+            model="google/gemini-3.1-flash-lite-preview",
+            api_base="https://openrouter.ai/api/v1",
+        )
+        assert with_base._use_litellm() is False
+        # No endpoint configured: litellm handles pure provider routing.
+        no_base = LLMClient(model="openrouter/anthropic/claude-sonnet-4-6")
+        assert no_base._use_litellm() is True
+
+    with patch("lens.llm.client.HAS_LITELLM", False):
+        no_litellm = LLMClient(model="google/gemini", api_base="https://openrouter.ai/api/v1")
+        assert no_litellm._use_litellm() is False
+
+
+@pytest.mark.asyncio
+async def test_complete_with_api_base_uses_openai_even_with_litellm():
+    """The regression: a bare provider-prefixed model on OpenRouter must go
+    through the openai path, not litellm, when both are available."""
+    from lens.llm.client import LLMClient
+
+    client = LLMClient(
+        model="google/gemini-3.1-flash-lite-preview",
+        api_base="https://openrouter.ai/api/v1",
+        api_key="sk-test",
+    )
+    mock_response = AsyncMock()
+    mock_response.choices = [AsyncMock()]
+    mock_response.choices[0].message.content = "routed via openai"
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+    with (
+        patch("lens.llm.client.HAS_LITELLM", True),
+        patch("litellm.acompletion") as mock_litellm,
+    ):
+        client._openai_client = mock_client
+        result = await client.complete(messages=[{"role": "user", "content": "test"}])
+        assert result == "routed via openai"
+        mock_client.chat.completions.create.assert_called_once()
+        mock_litellm.assert_not_called()

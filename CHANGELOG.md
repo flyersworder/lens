@@ -25,6 +25,14 @@
     `ideate_min_gap_score` config keys and adds `ideate_dedup_threshold`.
 
 ### Fixed
+- **LLM routing with litellm installed** — `LLMClient` now prefers the openai
+  SDK path whenever an OpenAI-compatible `api_base` is configured (OpenRouter,
+  gateway, vLLM), using litellm only for bare provider routing with no endpoint.
+  Previously, with litellm installed (the dev default), a provider-prefixed model
+  id like `google/gemini-...` was re-interpreted by litellm and misrouted, so
+  every local `lens scoop-check` / `lens monitor` LLM call failed. Production was
+  unaffected (no litellm in the web extra → openai path). New `_use_litellm()`
+  gate; both `_call_llm` and `_stream_llm` route through it.
 - `lens scoop-check` help text now says "against OpenAlex prior art" (was
   "Semantic Scholar"; scoop-check has queried OpenAlex since 0.12.0).
 

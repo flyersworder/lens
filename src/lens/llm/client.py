@@ -65,6 +65,18 @@ class LLMClient:
             self._openai_client = openai.AsyncOpenAI(**kwargs)
         return self._openai_client
 
+    def _use_litellm(self) -> bool:
+        """Whether to route this call through litellm rather than the openai SDK.
+
+        litellm is used only for *bare provider routing* — when no OpenAI-compatible
+        endpoint is configured. Whenever an ``api_base`` is set (OpenRouter, a
+        litellm gateway, vLLM, Ollama), prefer the openai SDK: it passes the model
+        id through verbatim, so a provider-prefixed id like ``google/gemini-...``
+        reaches OpenRouter intact. litellm would re-interpret that prefix as its own
+        routing scheme and misroute the request.
+        """
+        return HAS_LITELLM and not self.api_base
+
     def _require_backend(self) -> None:
         """Raise if neither litellm nor api_base is available."""
         if HAS_LITELLM:
@@ -125,7 +137,7 @@ class LLMClient:
         **kwargs: Any,
     ) -> str:
         """Execute a single LLM call (no retry logic)."""
-        if HAS_LITELLM:
+        if self._use_litellm():
             llm_kwargs: dict[str, Any] = {}
             if self.api_base:
                 llm_kwargs["api_base"] = self.api_base
@@ -209,7 +221,7 @@ class LLMClient:
         """One streaming attempt, no retries. Yields content deltas only;
         empty deltas (role-only chunks, finish_reason chunks) are skipped.
         """
-        if HAS_LITELLM:
+        if self._use_litellm():
             llm_kwargs: dict[str, Any] = {}
             if self.api_base:
                 llm_kwargs["api_base"] = self.api_base
