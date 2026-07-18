@@ -651,7 +651,7 @@ def monitor(
             ideate_with_llm=monitor_cfg.get("ideate_llm", False),
             ideate_max_cards=monitor_cfg.get("ideate_top_n", 40),
             ideate_min_gap_score=monitor_cfg.get("ideate_min_gap_score", 0.5),
-            ideate_dedup_threshold=monitor_cfg.get("ideate_dedup_threshold", 0.35),
+            ideate_dedup_threshold=monitor_cfg.get("ideate_dedup_threshold", 0.32),
             openalex_mailto=openalex_mailto,
             embedding_kwargs=_embedding_kwargs(config),
             venue_tiers=config["acquire"].get("quality_venue_tiers"),

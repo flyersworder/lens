@@ -228,17 +228,19 @@ async def test_cross_pollination_card_uses_source_cell_provenance(ideation_store
     counter = itertools.count()
 
     def _distinct(*_a, **_k):
+        # Fully-distinct tokens per card (no shared stem) so the diversity gate
+        # keeps every card regardless of threshold; confidence 1.5 exercises the clamp.
         i = next(counter)
         return json.dumps(
             {
-                "title": f"Quantization-aware throughput scheduling {i}",
+                "title": f"Idea alpha{i} beta{i} gamma{i}",
                 "patterns": ["Substitute the Operator or Representation"],
                 "hook": "Swap the decode operator to trade accuracy for latency.",
                 "mechanism": "Replace dense attention with a quantized kernel selected per layer.",
                 "falsification": "Measure tokens/sec vs perplexity on WikiText-103; "
                 "the quantized variant should raise throughput >20% at <1% perplexity loss.",
                 "differentiation": ["Unlike static quantization, adapts per-layer at decode time"],
-                "signature_terms": [f"quantization{i}", f"throughput{i}", f"attention{i}"],
+                "signature_terms": [f"delta{i}", f"epsilon{i}", f"zeta{i}"],
                 "confidence": 1.5,
             }
         )

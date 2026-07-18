@@ -30,7 +30,7 @@ async def run_monitor_cycle(
     ideate_with_llm: bool = False,
     ideate_max_cards: int = 40,
     ideate_min_gap_score: float = 0.0,
-    ideate_dedup_threshold: float = 0.35,
+    ideate_dedup_threshold: float = 0.32,
     openalex_mailto: str = "",
     embedding_kwargs: dict[str, Any] | None = None,
     venue_tiers: dict[str, list[str]] | None = None,

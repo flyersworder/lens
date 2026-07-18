@@ -13,9 +13,11 @@
   - **Diversified order** (`_diversified_gap_order`) round-robins gaps across
     their improving parameter so distinct ideas surface before the budget is
     spent on one cluster.
-  - **Near-duplicate dedup** (`monitor.ideate_dedup_threshold`, default 0.35)
+  - **Near-duplicate dedup** (`monitor.ideate_dedup_threshold`, default 0.32)
     skips a card whose `title + signature_terms` token-Jaccard against any
-    already-kept card meets the threshold.
+    already-kept card meets the threshold. 0.32 was tuned against the real
+    corpus — it collapses genuine restatements (e.g. two near-identical
+    warp-level scheduling cards) while keeping distinct-but-adjacent ideas.
   - **Cap** (`monitor.ideate_top_n`, default raised 10 → 40) stops once that
     many distinct cards are kept; an internal `max(top_n*3, 60)` LLM-call budget
     bounds worst-case cost, logged (no silent truncation).

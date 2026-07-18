@@ -504,7 +504,7 @@ async def run_ideation_with_llm(
     similarity_threshold: float = 0.75,
     max_cards: int = 40,
     min_gap_score: float = 0.0,
-    dedup_threshold: float = 0.35,
+    dedup_threshold: float = 0.32,
 ) -> dict[str, Any]:
     """Run ideation, then generate a diverse, capped set of Idea Cards via the LLM.
 
