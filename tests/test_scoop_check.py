@@ -208,6 +208,30 @@ async def test_gather_prior_art_searches_per_term_and_dedups(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_run_scoop_check_honors_max_terms(store, monkeypatch):
+    """max_terms caps per-card OpenAlex searches so a run fits a daily credit budget."""
+    import lens.knowledge.scoop_check as sc
+    from lens.knowledge.scoop_check import run_scoop_check
+
+    _seed_card(store, 1, ["a", "b", "c", "d", "e"])
+
+    calls = []
+
+    async def fake_search(query, limit=5):
+        calls.append(query)
+        return [{"title": f"Prior {query}", "abstract": "x", "year": 2023, "url": "u"}]
+
+    monkeypatch.setattr(sc, "search_openalex", fake_search)
+
+    llm = AsyncMock()
+    llm.complete.return_value = json.dumps({"verdict": "novel", "rationale": "ok"})
+
+    await run_scoop_check(store, llm, max_terms=3)
+    # Only the first 3 of the card's 5 signature terms are searched.
+    assert calls == ["a", "b", "c"]
+
+
+@pytest.mark.asyncio
 async def test_gather_prior_art_falls_back_to_title(monkeypatch):
     import lens.knowledge.scoop_check as sc
 

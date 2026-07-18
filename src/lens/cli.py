@@ -488,6 +488,12 @@ def explain(
 def scoop_check(
     limit: int | None = typer.Option(None, "--limit", help="Max cards to check this run."),
     top_k: int = typer.Option(8, "--top-k", help="Prior-art papers to judge per card."),
+    max_terms: int = typer.Option(
+        5,
+        "--max-terms",
+        help="Signature terms searched per card (1 OpenAlex request each). "
+        "Lower to fit the daily credit budget, e.g. 3.",
+    ),
 ) -> None:
     """Verify idea-card novelty against OpenAlex prior art."""
     config = load_config(_get_config_path())
@@ -502,7 +508,9 @@ def scoop_check(
     client = LLMClient(model=config["llm"]["default_model"], **_llm_kwargs(config))
     session_id = str(uuid4())[:8]
 
-    summary = asyncio.run(run_scoop_check(store, client, limit=limit, top_k=top_k))
+    summary = asyncio.run(
+        run_scoop_check(store, client, limit=limit, top_k=top_k, max_terms=max_terms)
+    )
 
     rprint(f"\n[bold]Scoop-check:[/bold] {summary['checked']} card(s) checked")
     for verdict, n in summary["by_verdict"].items():

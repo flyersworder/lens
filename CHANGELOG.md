@@ -23,6 +23,11 @@
     bounds worst-case cost, logged (no silent truncation).
   - Wires the previously-declared-but-unused `ideate_top_n` /
     `ideate_min_gap_score` config keys and adds `ideate_dedup_threshold`.
+- **`lens scoop-check --max-terms`** (default 5) — caps how many of each card's
+  signature terms are searched (one OpenAlex request each), so a run can fit
+  OpenAlex's daily credit budget. The free tier is ~100 searches/day; at
+  `--max-terms 3`, 33 cards cost 99 requests — just under the daily limit.
+  Plumbed through `run_scoop_check(max_terms=...)`.
 
 ### Fixed
 - **LLM routing with litellm installed** — `LLMClient` now prefers the openai

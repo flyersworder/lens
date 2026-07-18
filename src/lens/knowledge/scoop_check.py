@@ -133,11 +133,17 @@ async def run_scoop_check(
     llm_client: Any,
     limit: int | None = None,
     top_k: int = 8,
+    max_terms: int = 5,
 ) -> dict[str, Any]:
     """Novelty-check every idea card with novelty_status='unchecked'.
 
     Idempotent and fail-soft: a card only leaves 'unchecked' when it gets a
     real verdict; search/judge/DB failures leave it for the next run.
+
+    ``max_terms`` caps how many of each card's signature terms are searched
+    (one OpenAlex request per term). Lower it to fit a run within OpenAlex's
+    daily credit budget — e.g. 3 terms × 33 cards = 99 requests, just under the
+    free-tier ~100 searches/day.
     """
     cards = store.query("idea_cards", "novelty_status = ?", ("unchecked",))
     cards = sorted(cards, key=lambda c: c["id"])
@@ -151,7 +157,7 @@ async def run_scoop_check(
         # the cap and can't starve higher-id cards from ever being reached.
         if limit is not None and checked >= limit:
             break
-        prior_art = await _gather_prior_art(card, max_total=top_k)
+        prior_art = await _gather_prior_art(card, max_terms=max_terms, max_total=top_k)
         if not prior_art:
             logger.info("No prior art for card %d; leaving unchecked", card["id"])
             continue
