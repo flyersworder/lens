@@ -79,6 +79,7 @@ TABLES_TO_COPY: list[str] = [
     "taxonomy_versions",
     "ideation_reports",
     "ideation_gaps",
+    "idea_cards",
     "event_log",
 ]
 
