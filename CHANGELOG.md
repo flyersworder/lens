@@ -19,6 +19,18 @@
   `prior_art`, `novelty_note`, and `novelty_checked_at` fields, matching the
   columns scoop-check writes to the `idea_cards` table.
 
+### Fixed
+- **Idea cards are now grounded in evidence papers** (`_card_paper_ids` in
+  `monitor/ideation.py`). Previously every card showed "grounded in 0 papers":
+  the diversity gate scores *fully-empty* matrix cells highest (1.0), so those
+  cells win card selection — but a fully-empty cell has no papers of its own, so
+  `_card_paper_ids` returned `[]`. It now falls back to *bridge* papers when the
+  exact cell is empty: the papers studying each axis (parameter A, parameter B)
+  in adjacent cells, with papers touching **both** axes surfaced first
+  (`_bridge_papers`, capped at 8). This makes the "grounded in N papers" receipt
+  meaningful for the unexplored-tradeoff ideas that dominate the feed, without
+  changing which gaps surface.
+
 ### Changed
 - **The weekly monitor cron now generates and novelty-checks idea cards**, so
   the `/ideas` showcase refreshes automatically. `monitor.ideate_llm` is enabled

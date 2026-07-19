@@ -264,6 +264,50 @@ async def test_cross_pollination_card_uses_source_cell_provenance(ideation_store
     assert all(card["confidence"] == 1.0 for card in cards)
 
 
+def test_card_paper_ids_uses_exact_cell_when_populated():
+    """A sparse cell that already has papers cites those, not the bridge fallback."""
+    from lens.monitor.ideation import _card_paper_ids
+
+    gap = {"gap_type": "sparse_cell", "related_params": ["A", "B"]}
+    cell_papers = {("A", "B"): ["p9"]}
+    param_papers = {"A": ["p1"], "B": ["p2"]}
+    assert _card_paper_ids(gap, cell_papers, {}, param_papers) == ["p9"]
+
+
+def test_card_paper_ids_empty_cell_bridges_adjacent_papers():
+    """A fully-empty (A,B) cell grounds the card in papers on each axis,
+    with papers touching BOTH parameters surfaced first."""
+    from lens.monitor.ideation import _card_paper_ids
+
+    gap = {"gap_type": "sparse_cell", "related_params": ["A", "B"]}
+    param_papers = {"A": ["p1", "p2"], "B": ["p2", "p3"]}
+    result = _card_paper_ids(gap, {}, {}, param_papers)
+    assert result[0] == "p2"  # bridges both axes → first
+    assert set(result) == {"p1", "p2", "p3"}
+
+
+def test_card_paper_ids_bridge_is_capped_and_deduped():
+    """The bridge fallback dedupes and respects the limit."""
+    from lens.monitor.ideation import _card_paper_ids
+
+    gap = {"gap_type": "sparse_cell", "related_params": ["A", "B"]}
+    param_papers = {
+        "A": [f"p{i}" for i in range(10)],
+        "B": [f"p{i}" for i in range(5, 15)],
+    }
+    result = _card_paper_ids(gap, {}, {}, param_papers, limit=6)
+    assert len(result) == 6
+    assert len(set(result)) == 6  # no duplicates
+
+
+def test_card_paper_ids_empty_everywhere_returns_empty():
+    """No exact cell and no adjacent papers → empty (never crashes)."""
+    from lens.monitor.ideation import _card_paper_ids
+
+    gap = {"gap_type": "sparse_cell", "related_params": ["A", "B"]}
+    assert _card_paper_ids(gap, {}, {}, {}) == []
+
+
 def _valid_card_json(**overrides):
     import json
 

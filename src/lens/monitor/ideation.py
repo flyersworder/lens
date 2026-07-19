@@ -472,10 +472,43 @@ def _set_gap_hypothesis(store: LensStore, gap: dict[str, Any], text: str) -> Non
         logger.warning("Failed to store hypothesis for gap %d", gap_id)
 
 
+def _bridge_papers(
+    params: list[str],
+    param_papers: dict[str, list[str]],
+    limit: int,
+) -> list[str]:
+    """Papers that motivate a fully-empty ``(A, B)`` tradeoff.
+
+    A fully-empty matrix cell has no papers of its own — that emptiness is why
+    it is a gap. But the two axes are not ungrounded: papers exist that study
+    parameter ``A`` (in other cells) and parameter ``B`` (in other cells). Those
+    are the literature the idea bridges. Papers touching *both* axes are the
+    strongest bridge, so they come first; the rest of each axis's papers follow.
+    Deduplicated, order-preserving, capped at *limit*.
+    """
+    if len(params) < 2:
+        return []
+    a = param_papers.get(params[0], [])
+    b = param_papers.get(params[1], [])
+    b_set = set(b)
+    both = [p for p in a if p in b_set]  # papers on BOTH axes — strongest bridge
+    seen: set[str] = set()
+    out: list[str] = []
+    for pid in [*both, *a, *b]:
+        if pid not in seen:
+            seen.add(pid)
+            out.append(pid)
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _card_paper_ids(
     gap: dict[str, Any],
     cell_papers: dict[tuple[str, str], list[str]],
     triple_papers: dict[tuple[str, str, str], list[str]],
+    param_papers: dict[str, list[str]],
+    limit: int = 8,
 ) -> list[str]:
     """Evidence papers for a gap's idea card.
 
@@ -483,18 +516,29 @@ def _card_paper_ids(
     transfer — ``(source_improving, source_worsening, principle)`` — not the
     (empty) target pair and not every cell the principle happens to resolve.
     Sparse-cell cards cite the papers already sitting at the gap's pair.
+
+    When the exact cell is empty (the dominant case — fully-empty cells score
+    highest and win card selection), the card falls back to *bridge* papers:
+    the papers studying each axis in adjacent cells (see ``_bridge_papers``).
+    This keeps the "grounded in N papers" receipt meaningful for the
+    unexplored-tradeoff ideas that make up most of the feed, without changing
+    which gaps surface.
     """
     if gap["gap_type"] == "cross_pollination":
         src_imp = gap.get("source_improving_param_id")
         src_wors = gap.get("source_worsening_param_id")
         principles = gap.get("related_principles") or []
         if src_imp and src_wors and principles:
-            return triple_papers.get((src_imp, src_wors, principles[0]), [])
-        return []
+            direct = triple_papers.get((src_imp, src_wors, principles[0]), [])
+            if direct:
+                return direct
+        return _bridge_papers(gap.get("related_params", []), param_papers, limit)
     params = gap.get("related_params", [])
     if len(params) >= 2:
-        return cell_papers.get((params[0], params[1]), [])
-    return []
+        direct = cell_papers.get((params[0], params[1]), [])
+        if direct:
+            return direct
+    return _bridge_papers(params, param_papers, limit)
 
 
 async def run_ideation_with_llm(
@@ -552,18 +596,28 @@ async def run_ideation_with_llm(
     # Provenance lookups from matrix cells:
     #   cell_papers   : (improving, worsening)            -> papers (sparse-cell gaps)
     #   triple_papers : (improving, worsening, principle) -> papers (cross-pollination source cell)
+    #   param_papers  : parameter                         -> papers on that axis (bridge fallback
+    #                                                        for fully-empty cells)
     cell_papers: dict[tuple[str, str], list[str]] = {}
     triple_papers: dict[tuple[str, str, str], list[str]] = {}
+    param_papers: dict[str, list[str]] = {}
     for cell in store.query("matrix_cells"):
-        pair = (cell["improving_param_id"], cell["worsening_param_id"])
-        triple = (cell["improving_param_id"], cell["worsening_param_id"], cell["principle_id"])
+        imp, wors = cell["improving_param_id"], cell["worsening_param_id"]
+        pair = (imp, wors)
+        triple = (imp, wors, cell["principle_id"])
         pair_bucket = cell_papers.setdefault(pair, [])
         triple_bucket = triple_papers.setdefault(triple, [])
+        imp_bucket = param_papers.setdefault(imp, [])
+        wors_bucket = param_papers.setdefault(wors, [])
         for pid in cell.get("paper_ids", []):
             if pid not in pair_bucket:
                 pair_bucket.append(pid)
             if pid not in triple_bucket:
                 triple_bucket.append(pid)
+            if pid not in imp_bucket:
+                imp_bucket.append(pid)
+            if pid not in wors_bucket:
+                wors_bucket.append(pid)
 
     card_rows = store.query_sql("SELECT MAX(id) AS max_id FROM idea_cards")
     next_card_id = (int(card_rows[0]["max_id"]) + 1) if card_rows[0]["max_id"] is not None else 1
@@ -632,7 +686,7 @@ async def run_ideation_with_llm(
             "falsification": card["falsification"],
             "differentiation": card["differentiation"],
             "signature_terms": card["signature_terms"],
-            "paper_ids": _card_paper_ids(gap, cell_papers, triple_papers),
+            "paper_ids": _card_paper_ids(gap, cell_papers, triple_papers, param_papers),
             "confidence": card["confidence"],
             "created_at": now,
             "taxonomy_version": gap.get("taxonomy_version", 0),
