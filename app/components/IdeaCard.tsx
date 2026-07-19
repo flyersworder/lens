@@ -15,8 +15,9 @@ export function IdeaCard({ card }: { card: IdeaCardT }) {
   const priorCount = card.prior_art.length;
 
   const toggle = (section: string) => {
-    setOpen((cur) => (cur === section ? null : section));
-    track("expand_idea", String(card.id));
+    const opening = open !== section;
+    setOpen(opening ? section : null);
+    if (opening) track("expand_idea", String(card.id));
   };
 
   return (
