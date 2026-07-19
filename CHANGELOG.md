@@ -28,6 +28,12 @@
   OpenAlex's daily credit budget. The free tier is ~100 searches/day; at
   `--max-terms 3`, 33 cards cost 99 requests — just under the daily limit.
   Plumbed through `run_scoop_check(max_terms=...)`.
+- **`idea_cards` published to Turso** — the publish pipeline now copies the
+  `idea_cards` table (with its `novelty_status` / `prior_art` / `novelty_note`
+  columns) to lens-prod alongside the other content tables. Previously the
+  table was omitted from `TABLES_TO_COPY`, so scoop-checked cards never reached
+  production. The table carries no embeddings, so the generic schema-mirroring
+  and row-copy handle it without special-casing.
 
 ### Fixed
 - **LLM routing with litellm installed** — `LLMClient` now prefers the openai
