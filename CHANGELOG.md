@@ -20,13 +20,16 @@
   columns scoop-check writes to the `idea_cards` table.
 
 ### Changed
-- **Scoop-check now runs in the weekly monitor cron** (`--max-terms 3`, between
-  the monitor and publish steps), so newly-generated idea cards are
-  novelty-checked automatically and the verdicts flow into both `lens-prod` and
-  the `corpus-snapshot` release asset — making the novelty verdicts durable
-  across cron runs rather than a one-off manual pass. `--max-terms` bounds the
-  OpenAlex spend and scoop-check only touches `unchecked` cards, so each run
-  checks just that week's new cards.
+- **The weekly monitor cron now generates and novelty-checks idea cards**, so
+  the `/ideas` showcase refreshes automatically. `monitor.ideate_llm` is enabled
+  in the workflow (the `ideate` stage produces new pattern-guided cards), and a
+  `lens scoop-check --max-terms 3 --limit 30` step runs between the monitor and
+  publish steps to verify them. The updated DB (new cards + verdicts) flows into
+  both `lens-prod` and the `corpus-snapshot` release asset, so verdicts are
+  durable across runs. `--max-terms 3 --limit 30` bounds OpenAlex usage to ~90
+  searches/run (under the free-tier ~100/day); scoop-check is idempotent and
+  only touches `unchecked` cards, so any overflow from a heavy week is picked up
+  in a later run.
 
 ## 0.13.0 (2026-07-19)
 
