@@ -250,3 +250,53 @@ def test_explanation_result_model():
         alternatives=[{"type": "parameter", "id": 2, "name": "Accuracy"}],
     )
     assert result.resolved_type == "parameter"
+
+
+def test_idea_card_novelty_fields():
+    from lens.store.models import IdeaCard
+
+    card = IdeaCard(
+        id=1,
+        gap_id=2,
+        report_id=3,
+        title="Adaptive KV-Cache Pruning",
+        pattern_ids=[],
+        hook="",
+        mechanism="m",
+        falsification="",
+        differentiation=[],
+        signature_terms=["kv-cache"],
+        paper_ids=["2401.00001"],
+        confidence=0.7,
+        created_at=datetime(2026, 7, 19),
+        taxonomy_version=0,
+        novelty_status="novel",
+        prior_art=[{"title": "Titanus", "url": "https://x", "year": 2025}],
+        novelty_note="no core collision",
+        novelty_checked_at=datetime(2026, 7, 19),
+    )
+    assert card.novelty_status == "novel"
+    assert card.prior_art[0]["title"] == "Titanus"
+    assert card.novelty_note == "no core collision"
+
+    # Novelty fields are optional (backward-compat with pre-scoop-check rows).
+    bare = IdeaCard(
+        id=2,
+        gap_id=1,
+        report_id=1,
+        title="Bare",
+        pattern_ids=[],
+        hook="",
+        mechanism="",
+        falsification="",
+        differentiation=[],
+        signature_terms=[],
+        paper_ids=[],
+        confidence=0.0,
+        created_at=datetime(2026, 7, 19),
+        taxonomy_version=0,
+    )
+    assert bare.novelty_status == "unchecked"
+    assert bare.prior_art == []
+    assert bare.novelty_note == ""
+    assert bare.novelty_checked_at is None
