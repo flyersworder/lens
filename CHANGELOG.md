@@ -1,5 +1,33 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- **`/ideas` — vetted-novelty idea showcase** — a new public web page that
+  surfaces the machine-generated idea cards with their prior-art novelty
+  verdict as the hero: each card leads with a `novel` / `overlaps` / `scooped`
+  badge and a "checked against N papers" receipt, with mechanism, falsification,
+  and the prior-art list expanding inline. Filter chips (novel / overlaps /
+  scooped) narrow the feed client-side. Frontend at `app/ideas/page.tsx` +
+  `app/components/IdeaCard.tsx`; "ideas" added to the site nav.
+- **`GET /api/ideas`** (`api/index.py`) — read-only endpoint backing the
+  showcase. Returns `{counts, cards}` novel-first (then by confidence), reads
+  via the backend-agnostic `ReadableStore.query`, excludes `unchecked` cards,
+  and degrades to an empty envelope on any failure (never 500s, mirroring
+  `_compute_stats`).
+- `IdeaCard` (`src/lens/store/models.py`) gains the `novelty_status`,
+  `prior_art`, `novelty_note`, and `novelty_checked_at` fields, matching the
+  columns scoop-check writes to the `idea_cards` table.
+
+### Changed
+- **Scoop-check now runs in the weekly monitor cron** (`--max-terms 3`, between
+  the monitor and publish steps), so newly-generated idea cards are
+  novelty-checked automatically and the verdicts flow into both `lens-prod` and
+  the `corpus-snapshot` release asset — making the novelty verdicts durable
+  across cron runs rather than a one-off manual pass. `--max-terms` bounds the
+  OpenAlex spend and scoop-check only touches `unchecked` cards, so each run
+  checks just that week's new cards.
+
 ## 0.13.0 (2026-07-19)
 
 ### Added
