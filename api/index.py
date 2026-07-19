@@ -618,44 +618,44 @@ def ideas_endpoint(store: StoreDep) -> dict[str, Any]:
             "novelty_status IN (?, ?, ?)",
             ("novel", "overlaps", "scooped"),
         )
+
+        rank = {"novel": 0, "overlaps": 1, "scooped": 2}
+        rows.sort(
+            key=lambda c: (
+                rank.get(str(c.get("novelty_status")), 9),
+                -float(c.get("confidence") or 0.0),
+                c.get("id") or 0,
+            )
+        )
+
+        counts = {"novel": 0, "overlaps": 0, "scooped": 0}
+        cards: list[dict[str, Any]] = []
+        for c in rows:
+            status = str(c.get("novelty_status"))
+            if status not in counts:
+                continue
+            counts[status] += 1
+            cards.append(
+                {
+                    "id": c.get("id"),
+                    "title": c.get("title", ""),
+                    "hook": c.get("hook", ""),
+                    "mechanism": c.get("mechanism", ""),
+                    "falsification": c.get("falsification", ""),
+                    "differentiation": c.get("differentiation") or [],
+                    "signature_terms": c.get("signature_terms") or [],
+                    "novelty_status": status,
+                    "prior_art": c.get("prior_art") or [],
+                    "novelty_note": c.get("novelty_note", ""),
+                    "grounded_paper_count": len(c.get("paper_ids") or []),
+                    "confidence": float(c.get("confidence") or 0.0),
+                }
+            )
+        counts["total"] = len(cards)
+        return {"counts": counts, "cards": cards}
     except Exception:
         logger.exception("ideas: query failed")
         return empty
-
-    rank = {"novel": 0, "overlaps": 1, "scooped": 2}
-    rows.sort(
-        key=lambda c: (
-            rank.get(str(c.get("novelty_status")), 9),
-            -float(c.get("confidence") or 0.0),
-            c.get("id") or 0,
-        )
-    )
-
-    counts = {"novel": 0, "overlaps": 0, "scooped": 0}
-    cards: list[dict[str, Any]] = []
-    for c in rows:
-        status = str(c.get("novelty_status"))
-        if status not in counts:
-            continue
-        counts[status] += 1
-        cards.append(
-            {
-                "id": c.get("id"),
-                "title": c.get("title", ""),
-                "hook": c.get("hook", ""),
-                "mechanism": c.get("mechanism", ""),
-                "falsification": c.get("falsification", ""),
-                "differentiation": c.get("differentiation") or [],
-                "signature_terms": c.get("signature_terms") or [],
-                "novelty_status": status,
-                "prior_art": c.get("prior_art") or [],
-                "novelty_note": c.get("novelty_note", ""),
-                "grounded_paper_count": len(c.get("paper_ids") or []),
-                "confidence": float(c.get("confidence") or 0.0),
-            }
-        )
-    counts["total"] = len(cards)
-    return {"counts": counts, "cards": cards}
 
 
 @app.post("/api/track")

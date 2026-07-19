@@ -531,6 +531,23 @@ def test_ideas_degrades_on_query_failure(client):
     assert body["counts"]["total"] == 0
 
 
+def test_ideas_degrades_on_malformed_row(client):
+    """A row that returns successfully but has bad field types (non-numeric
+    confidence, non-sized paper_ids) must not 500 — sort/card-building run
+    inside the same guard as the query."""
+    c, fake_store, _ = client
+    good = _idea_row(1, "novel", 0.7)
+    bad = _idea_row(2, "novel", confidence=0.5, paper_ids=123)
+    bad["confidence"] = "n/a"  # non-numeric → float() raises ValueError
+    fake_store.query = MagicMock(return_value=[good, bad])
+    r = c.get("/api/ideas")
+    assert r.status_code == 200  # never 500
+    assert r.json() == {
+        "counts": {"novel": 0, "overlaps": 0, "scooped": 0, "total": 0},
+        "cards": [],
+    }
+
+
 # ---------------------------------------------------------------------------
 # /api/track
 # ---------------------------------------------------------------------------
