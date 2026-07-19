@@ -34,6 +34,7 @@ export default function RootLayout({
               <a className="hover:text-white" href="/">search</a>
               <a className="hover:text-white" href="/analyze">analyze</a>
               <a className="hover:text-white" href="/explain">explain</a>
+              <a className="hover:text-white" href="/ideas">ideas</a>
               <a className="hover:text-white" href="/usage">usage</a>
               <a
                 className="flex items-center gap-1.5 hover:text-white"

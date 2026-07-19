@@ -81,6 +81,11 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: uv run lens monitor
 
+      - name: Scoop-check new idea cards
+        env:
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+        run: uv run lens scoop-check --max-terms 3
+
       - name: Publish to lens-prod
         env:
           TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}

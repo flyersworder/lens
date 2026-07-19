@@ -255,6 +255,10 @@ class IdeaCard(BaseModel):
     confidence: float
     created_at: datetime
     taxonomy_version: int
+    novelty_status: str = "unchecked"
+    prior_art: list[dict] = []
+    novelty_note: str = ""
+    novelty_checked_at: datetime | None = None
 
 
 # ---------------------------------------------------------------------------

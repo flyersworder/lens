@@ -599,6 +599,65 @@ def _compute_stats(store: ReadableStore) -> dict[str, Any]:
     }
 
 
+@app.get("/api/ideas")
+def ideas_endpoint(store: StoreDep) -> dict[str, Any]:
+    """Vetted idea cards for the /ideas showcase.
+
+    Returns only cards with a real novelty verdict (novel / overlaps /
+    scooped); ``unchecked`` cards are excluded via the WHERE clause.
+    Sorted novel-first, then by confidence. Degrades to an empty
+    envelope on any failure — never 500 (mirrors ``_compute_stats``).
+    """
+    empty = {
+        "counts": {"novel": 0, "overlaps": 0, "scooped": 0, "total": 0},
+        "cards": [],
+    }
+    try:
+        rows = store.query(
+            "idea_cards",
+            "novelty_status IN (?, ?, ?)",
+            ("novel", "overlaps", "scooped"),
+        )
+
+        rank = {"novel": 0, "overlaps": 1, "scooped": 2}
+        rows.sort(
+            key=lambda c: (
+                rank.get(str(c.get("novelty_status")), 9),
+                -float(c.get("confidence") or 0.0),
+                c.get("id") or 0,
+            )
+        )
+
+        counts = {"novel": 0, "overlaps": 0, "scooped": 0}
+        cards: list[dict[str, Any]] = []
+        for c in rows:
+            status = str(c.get("novelty_status"))
+            if status not in counts:
+                continue
+            counts[status] += 1
+            cards.append(
+                {
+                    "id": c.get("id"),
+                    "title": c.get("title", ""),
+                    "hook": c.get("hook", ""),
+                    "mechanism": c.get("mechanism", ""),
+                    "falsification": c.get("falsification", ""),
+                    "differentiation": c.get("differentiation") or [],
+                    "signature_terms": c.get("signature_terms") or [],
+                    "novelty_status": status,
+                    "prior_art": c.get("prior_art") or [],
+                    "novelty_note": c.get("novelty_note", ""),
+                    "grounded_paper_count": len(c.get("paper_ids") or []),
+                    "confidence": float(c.get("confidence") or 0.0),
+                }
+            )
+        counts["total"] = len(cards)
+        return {"counts": counts, "cards": cards}
+    except Exception:
+        logger.exception("ideas: query failed")
+        return empty
+
+
 @app.post("/api/track")
 def track_endpoint(req: TrackRequest, request: Request) -> dict[str, str]:
     """Best-effort write of a single usage event.

@@ -444,6 +444,111 @@ def test_stats_cache_warm_path(client):
 
 
 # ---------------------------------------------------------------------------
+# /api/ideas
+# ---------------------------------------------------------------------------
+
+
+def _idea_row(
+    card_id: int, status: str, confidence: float = 0.5, paper_ids=None, prior_art=None
+) -> dict:
+    """A store.query('idea_cards', ...) row (JSON columns already deserialized)."""
+    return {
+        "id": card_id,
+        "gap_id": 1,
+        "report_id": 1,
+        "title": f"Card {card_id}",
+        "pattern_ids": [],
+        "hook": "hook",
+        "mechanism": "mechanism",
+        "falsification": "falsify",
+        "differentiation": ["diff"],
+        "signature_terms": ["t1", "t2"],
+        "paper_ids": ["p1", "p2"] if paper_ids is None else paper_ids,
+        "confidence": confidence,
+        "created_at": "2026-07-19T00:00:00+00:00",
+        "taxonomy_version": 0,
+        "novelty_status": status,
+        "prior_art": [{"title": "Prior", "url": "u", "year": 2024}]
+        if prior_art is None
+        else prior_art,
+        "novelty_note": "note",
+    }
+
+
+def test_ideas_returns_sorted_envelope(client):
+    c, fake_store, _ = client
+    fake_store.query = MagicMock(
+        return_value=[
+            _idea_row(3, "scooped", 0.9),
+            _idea_row(1, "novel", 0.6),
+            _idea_row(2, "novel", 0.8),
+            _idea_row(4, "overlaps", 0.5),
+        ]
+    )
+    r = c.get("/api/ideas")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["counts"] == {"novel": 2, "overlaps": 1, "scooped": 1, "total": 4}
+    # novel-first, then confidence desc, then id asc → [2, 1, 4, 3]
+    assert [card["id"] for card in body["cards"]] == [2, 1, 4, 3]
+    first = body["cards"][0]
+    assert first["novelty_status"] == "novel"
+    assert first["grounded_paper_count"] == 2  # len(paper_ids)
+    assert "paper_ids" not in first  # raw ids not surfaced
+    assert first["prior_art"][0]["title"] == "Prior"
+    assert first["signature_terms"] == ["t1", "t2"]
+
+
+def test_ideas_excludes_unchecked_in_query(client):
+    c, fake_store, _ = client
+    captured = {}
+
+    def fake_query(table, where="", params=None):
+        captured["table"] = table
+        captured["where"] = where
+        captured["params"] = params
+        return []
+
+    fake_store.query = fake_query
+    r = c.get("/api/ideas")
+    assert r.status_code == 200
+    assert captured["table"] == "idea_cards"
+    assert "novelty_status IN" in captured["where"]
+    assert set(captured["params"]) == {"novel", "overlaps", "scooped"}
+    assert r.json() == {
+        "counts": {"novel": 0, "overlaps": 0, "scooped": 0, "total": 0},
+        "cards": [],
+    }
+
+
+def test_ideas_degrades_on_query_failure(client):
+    c, fake_store, _ = client
+    fake_store.query = MagicMock(side_effect=RuntimeError("no idea_cards table"))
+    r = c.get("/api/ideas")
+    assert r.status_code == 200  # never 500
+    body = r.json()
+    assert body["cards"] == []
+    assert body["counts"]["total"] == 0
+
+
+def test_ideas_degrades_on_malformed_row(client):
+    """A row that returns successfully but has bad field types (non-numeric
+    confidence, non-sized paper_ids) must not 500 — sort/card-building run
+    inside the same guard as the query."""
+    c, fake_store, _ = client
+    good = _idea_row(1, "novel", 0.7)
+    bad = _idea_row(2, "novel", confidence=0.5, paper_ids=123)
+    bad["confidence"] = "n/a"  # non-numeric → float() raises ValueError
+    fake_store.query = MagicMock(return_value=[good, bad])
+    r = c.get("/api/ideas")
+    assert r.status_code == 200  # never 500
+    assert r.json() == {
+        "counts": {"novel": 0, "overlaps": 0, "scooped": 0, "total": 0},
+        "cards": [],
+    }
+
+
+# ---------------------------------------------------------------------------
 # /api/track
 # ---------------------------------------------------------------------------
 

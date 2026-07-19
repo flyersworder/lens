@@ -8,6 +8,8 @@ const EVENT_LABELS: Record<string, string> = {
   view_analyze: "Analyze page view",
   view_explain: "Explain landing view",
   view_explain_concept: "Concept page view",
+  view_ideas: "Ideas page view",
+  expand_idea: "Idea card expanded",
   search: "Search submitted",
   analyze: "Analyze submitted",
   explain: "Explain resolved",

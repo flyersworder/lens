@@ -65,6 +65,28 @@ export const search = (q: string, limit = 10) =>
 
 export const stats = () => jget<Stats>("/api/stats");
 
+export type IdeaCard = {
+  id: number;
+  title: string;
+  hook: string;
+  mechanism: string;
+  falsification: string;
+  differentiation: string[];
+  signature_terms: string[];
+  novelty_status: "novel" | "overlaps" | "scooped";
+  prior_art: Array<{ title: string; url: string; year: number | null }>;
+  novelty_note: string;
+  grounded_paper_count: number;
+  confidence: number;
+};
+
+export type IdeasResponse = {
+  counts: { novel: number; overlaps: number; scooped: number; total: number };
+  cards: IdeaCard[];
+};
+
+export const ideas = () => jget<IdeasResponse>("/api/ideas");
+
 export type UsageSummary = {
   events: Array<{ event: string; count: number }>;
   total: number;

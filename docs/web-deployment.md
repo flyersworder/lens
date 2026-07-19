@@ -45,7 +45,9 @@ VERCEL_ORG_ID=team_aWx4s8YoVMOWVPeo3S8FO2RD \
 
 ---
 
-## Live state snapshot (2026-04-26)
+## Live state snapshot (2026-07-19)
+
+> **2026-07-19 update.** `lens-prod` was republished from the local corpus after a full scoop-check pass. It now carries the **`idea_cards`** table — 33 novelty-checked idea cards (25 `novel` / 7 `overlaps` / 1 `scooped`), each with `novelty_status` / `prior_art` / `novelty_note`. The publish pipeline was fixed to include `idea_cards` in `TABLES_TO_COPY` (it was silently omitted before 0.13.0). Verified counts below are from that publish (`publish_to_turso.py --target prod`, all tables `[OK]`). **Durability caveat:** this was a manual prod publish; per step 3 below, the next Monday monitor cron rebuilds `lens-prod` from the `corpus-snapshot` release asset and will overwrite these cards unless the local `lens.db` is also pushed to `corpus-snapshot`. The monitor cron now runs `lens scoop-check --max-terms 3` between *Run monitor* and *Publish*, so verdicts are re-uploaded into `corpus-snapshot` and durability is self-maintaining after the one-time bootstrap.
 
 | Component | Where it lives | Notes |
 |---|---|---|
@@ -53,7 +55,7 @@ VERCEL_ORG_ID=team_aWx4s8YoVMOWVPeo3S8FO2RD \
 | **Public URL (API)** | `https://lens-api-chi.vercel.app` | Separate Vercel project (`flyersworders-projects/lens-api`). See [Deployment topology](#deployment-topology-2026-05-03). |
 | **Endpoints** | `/api/health`, `/api/search`, `/api/analyze`, `/api/explain`, `/api/stats`, `/api/track` | Defined in `api/index.py`, served by the `lens-api` project. `stats` aggregates corpus counts (5-min in-process cache); `track` writes a row into `usage_events` on Turso (lazy DDL, no-op when `TURSO_*` is unset). |
 | **Frontend** | Next.js 16 App Router at repo root (`app/`, `lib/`) | Three pages — `/` (search + landing), `/analyze`, `/explain/[concept]` — plus a global `StatsBar`. Uses Tailwind; no shadcn registry. Tracks views + submissions via `lib/api.ts#track()` (sendBeacon). |
-| **Database (prod)** | Turso `lens-prod` (`libsql://lens-prod-flyersworder.aws-eu-west-1.turso.io`) | Live API source. 77 papers, 82 vocab, 65 matrix cells, 80 tradeoff extractions; embeddings now 1536-dim `text-embedding-3-small` (matches runtime query space — no truncation). |
+| **Database (prod)** | Turso `lens-prod` (`libsql://lens-prod-flyersworder.aws-eu-west-1.turso.io`) | Live API source. As of 2026-07-19: 77 papers, 97 vocab (82 embedded), 65 matrix cells, 80 tradeoff / 86 architecture / 37 agentic extractions, 816 ideation gaps, **33 idea_cards** (scoop-checked), 235 event-log rows. Embeddings 1536-dim `text-embedding-3-small` (matches runtime query space — no truncation). |
 | **Database (dev)** | Turso `lens-dev` (`libsql://lens-dev-flyersworder.aws-eu-west-1.turso.io`) | Used by `tests/test_turso_store.py` and the Phase 1 publish workflow; safe to wipe. Same corpus snapshot, same 1536-dim embeddings. |
 | **Storage adapter** | `TursoStore` in `src/lens/store/turso_store.py` | libSQL native vectors via `vector_top_k` + `vector_distance_cos` |
 | **LLM** | OpenRouter `deepseek/deepseek-v4-flash` | Per ADR D2; ~$20 credit balance, **weekly cap $5** (set 2026-04-28 — ~$20/mo effective ceiling) |
@@ -65,7 +67,7 @@ VERCEL_ORG_ID=team_aWx4s8YoVMOWVPeo3S8FO2RD \
 | **Local-only path** | `LensStore` (sqlite-vec); `--extra local` install | Used by CLI, build pipeline, and 296-test suite |
 | **Vercel env vars set** | `TURSO_DATABASE_URL` (→ lens-prod), `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY` | Production environment only; preview/dev not configured |
 | **GitHub Secrets** | `TURSO_DEV_*` (Phase 1 publish) and `TURSO_PROD_*` (Phase 2 monitor cron, queued) | `OPENROUTER_API_KEY` will be added when Phase 2 lands |
-| **Test count** | 296 (256 offline + 17 TursoStore + 19 API/protocol + 4 protocol-specific) | All green |
+| **Test count** | 355 (as of 0.13.0; offline suite + TursoStore + API/protocol) | All green |
 
 ### Verified working (last checked 2026-04-26)
 
