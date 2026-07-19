@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.13.0 (2026-07-19)
 
 ### Added
 - **Ideation diversity gate** — `run_ideation_with_llm` no longer emits one
