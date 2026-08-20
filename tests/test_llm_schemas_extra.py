@@ -8,6 +8,18 @@ from pydantic import ValidationError
 from lens.llm.structured import strict_schema
 
 
+@pytest.fixture
+def analysis_store_for_nomatch(tmp_path):
+    """A store with seed vocabulary, so the classify enum is non-empty."""
+    from lens.store.store import LensStore
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    store = LensStore(str(tmp_path / "nomatch.db"))
+    store.init_tables()
+    load_seed_vocabulary(store)
+    return store
+
+
 def test_novelty_verdict_is_a_closed_enum():
     """The verdict is one of three values; strict mode can enforce that directly.
 
@@ -120,3 +132,57 @@ async def test_candidate_selection_skips_llm_for_a_single_candidate():
     client, fake = make_llm_client([])
     assert await _select_candidate(client, "q", ["only"]) == 0
     assert fake.calls == []
+
+
+def test_single_option_choice_emits_enum_not_const():
+    """`const` is not in the documented strict-mode keyword set.
+
+    Pydantic renders a one-value Literal as `const`, which risks a 400 from the
+    very endpoints this is meant to constrain.
+    """
+    from lens.llm.structured import choice_model
+
+    schema = strict_schema(choice_model("One", slot=["Attention Mechanism"]))
+    prop = schema["properties"]["slot"]
+    assert "const" not in prop
+    assert prop["enum"] == ["Attention Mechanism"]
+
+
+def test_schema_builder_does_not_eat_a_property_named_default():
+    """`default` is stripped as a keyword, but a *property* called default is data.
+
+    Removing it from `properties` while `required` still lists it produces a
+    schema referencing a field that does not exist.
+    """
+    from pydantic import BaseModel
+
+    class HasDefault(BaseModel):
+        default: str
+        other: str
+
+    schema = strict_schema(HasDefault)
+    assert set(schema["required"]) == set(schema["properties"])
+    assert "default" in schema["properties"]
+
+
+@pytest.mark.asyncio
+async def test_analyze_can_still_answer_no_match(analysis_store_for_nomatch):
+    """Pinning both fields to an enum removed the 'not a tradeoff' escape hatch.
+
+    Without an explicit sentinel the model is forced to name two real parameters,
+    so an off-topic query gets a confidently wrong tradeoff instead of nothing.
+    """
+    import json
+
+    from conftest import make_llm_client
+
+    from lens.serve.analyzer import _NO_MATCH, analyze
+
+    payload = json.dumps({"improving": _NO_MATCH, "worsening": _NO_MATCH})
+    client, _ = make_llm_client([payload], supports_schema=True)
+
+    result = await analyze("what is the weather today", analysis_store_for_nomatch, client)
+
+    assert result["improving"] is None
+    assert result["worsening"] is None
+    assert result["principles"] == []

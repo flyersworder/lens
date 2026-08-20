@@ -240,8 +240,7 @@ def _build_selection_prompt(
         "Multiple matching concepts were found in our knowledge base.\n\n"
         f'User query: "{query}"\n\n'
         f"Candidates:\n{options}\n\n"
-        "Which candidate best matches the user's intent? "
-        "Respond with ONLY the number (e.g., 1)."
+        "Which candidate best matches the user's intent?"
     )
 
 

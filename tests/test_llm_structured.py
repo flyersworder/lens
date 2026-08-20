@@ -382,3 +382,66 @@ async def test_complete_structured_error_carries_the_raw_text():
         await client.complete_structured([{"role": "user", "content": "x"}], ExtractionResponse)
 
     assert "only this" in excinfo.value.raw_text
+
+
+@pytest.mark.asyncio
+async def test_content_validation_failure_does_not_poison_the_capability_cache():
+    """A schema violation is not evidence the endpoint lacks json_schema.
+
+    Pydantic embeds the offending input in its message, and this corpus indexes
+    LLM research — so a paper about structured decoding puts the words
+    "json_schema" into a ValidationError. Treating that as a capability failure
+    would silently downgrade every later call in the process.
+    """
+    from lens.llm.structured import _NO_SCHEMA_SUPPORT
+
+    bad = json.dumps({"tradeoffs": [{"improves": "json_schema decoding"}]})
+    good = json.dumps(_VALID)
+    fake = _FakeCompletions(strict_error=None, payloads=[bad, good])
+    client = _client_with(fake)
+
+    result = await client.complete_structured(
+        [{"role": "user", "content": "x"}], ExtractionResponse
+    )
+
+    assert result.tradeoffs[0].improves == "latency"
+    assert set() == _NO_SCHEMA_SUPPORT  # endpoint never marked unsupported
+    assert fake.calls == [True, True]  # retried WITH the schema, not downgraded
+
+
+@pytest.mark.asyncio
+async def test_enforced_path_failure_still_carries_raw_text():
+    """Ideation's degradation branch must work on schema-capable endpoints too.
+
+    Otherwise the branch is dead exactly where the corpus actually runs.
+    """
+    from lens.llm.structured import StructuredOutputError
+
+    bad = json.dumps({"tradeoffs": [{"improves": "unsalvageable"}]})
+    fake = _FakeCompletions(strict_error=None, payloads=[bad, bad])
+    client = _client_with(fake)
+
+    with pytest.raises(StructuredOutputError) as excinfo:
+        await client.complete_structured([{"role": "user", "content": "x"}], ExtractionResponse)
+
+    assert "unsalvageable" in excinfo.value.raw_text
+
+
+@pytest.mark.asyncio
+async def test_client_counts_every_provider_call():
+    """Callers budget real spend, and one complete_structured can cost three calls.
+
+    Ideation's call budget guards a metered API, so it has to count what the
+    provider actually saw, not how many items were attempted.
+    """
+    fake = _FakeCompletions(
+        strict_error=_bad_request("json_schema not supported"),
+        payloads=[json.dumps(_VALID)],
+    )
+    client = _client_with(fake)
+    assert client.calls_made == 0
+
+    await client.complete_structured([{"role": "user", "content": "x"}], ExtractionResponse)
+
+    # rejected enforced probe + prompt fallback
+    assert client.calls_made == 2

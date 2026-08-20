@@ -406,15 +406,6 @@ def _build_idea_card_messages(
     ]
 
 
-def _as_str_list(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(x) for x in value]
-    if isinstance(value, str):
-        return [value] if value.strip() else []
-    # Ignore malformed shapes (e.g. a dict) rather than storing a Python repr.
-    return []
-
-
 def _card_from_response(
     response: IdeaCardResponse, valid_pattern_ids: set[str]
 ) -> dict[str, Any] | None:
@@ -611,16 +602,19 @@ async def run_ideation_with_llm(
     eligible = [g for g in report["gaps"] if g.get("score", 0.0) >= min_gap_score]
     ordered_gaps = _diversified_gap_order(eligible)
     call_budget = max(max_cards * 3, 60)
-    calls_made = 0
+    # Count what the provider actually saw: one gap can cost up to three calls
+    # (enforced probe, prompt fallback, corrective retry), so counting gaps would
+    # let a run overspend the cap severalfold.
+    calls_at_start = getattr(llm_client, "calls_made", 0)
     gaps_reached = 0
 
     for gap in ordered_gaps:
+        calls_made = getattr(llm_client, "calls_made", 0) - calls_at_start
         if len(all_cards) >= max_cards or calls_made >= call_budget:
             break
         gaps_reached += 1
         gap_id = int(gap["id"])
         messages = _build_idea_card_messages(gap, vocab_by_id, patterns)
-        calls_made += 1
         text = ""
         try:
             response = await llm_client.complete_structured(messages, IdeaCardResponse)
@@ -692,6 +686,7 @@ async def run_ideation_with_llm(
 
     report["idea_cards"] = all_cards
     unprocessed = len(ordered_gaps) - gaps_reached
+    calls_made = getattr(llm_client, "calls_made", 0) - calls_at_start
     logger.info(
         "Ideation LLM: %d distinct cards from %d gaps (%d near-dups dropped, "
         "%d LLM calls, %d gaps left unprocessed by cap/budget)",

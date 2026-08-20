@@ -44,18 +44,35 @@ def _close_object(node: dict[str, Any]) -> None:
     node["required"] = list(node["properties"])
 
 
-def _walk(node: Any) -> None:
-    """Recursively apply :func:`_close_object` to every object in the schema."""
+def _looks_like_schema(node: dict[str, Any]) -> bool:
+    """Whether ``node`` is a schema rather than a plain mapping of names.
+
+    A ``properties`` map is a dict too, and a model may legitimately declare a
+    field called ``default``; stripping that as if it were the keyword would drop
+    a real property while ``required`` still names it.
+    """
+    return any(k in node for k in ("type", "anyOf", "allOf", "enum", "const", "$ref"))
+
+
+def _walk(node: Any, *, in_schema: bool = True) -> None:
+    """Recursively normalise every schema node for strict mode."""
     if isinstance(node, dict):
-        # `default` is an unsupported keyword under strict mode. Dropping it is
-        # safe: Pydantic still applies the default when validating our side.
-        node.pop("default", None)
+        if in_schema and _looks_like_schema(node):
+            # `default` is an unsupported keyword under strict mode. Dropping it
+            # is safe: Pydantic still applies it when validating our side.
+            node.pop("default", None)
+            # Pydantic renders a one-value Literal as `const`, which is not in the
+            # documented strict-mode keyword set; `enum` says the same thing.
+            if "const" in node:
+                node["enum"] = [node.pop("const")]
         _close_object(node)
-        for value in node.values():
-            _walk(value)
+        for key, value in node.items():
+            # Inside `properties`/`$defs` the keys are names, so their values are
+            # schemas but the mapping itself is not one.
+            _walk(value, in_schema=key not in ("properties", "$defs"))
     elif isinstance(node, list):
         for item in node:
-            _walk(item)
+            _walk(item, in_schema=in_schema)
 
 
 def strict_schema(model: type[BaseModel]) -> dict[str, Any]:

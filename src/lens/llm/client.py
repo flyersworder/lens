@@ -62,6 +62,11 @@ class LLMClient:
         self.api_base = api_base or None  # normalize "" to None
         self.api_key = api_key or None
         self._openai_client: openai.AsyncOpenAI | None = None
+        # Provider calls actually issued. complete_structured can spend up to
+        # three per request (enforced probe, prompt fallback, corrective
+        # retry), so callers budgeting a metered API must count these rather
+        # than the number of items they attempted.
+        self.calls_made = 0
 
     def _get_openai_client(self) -> openai.AsyncOpenAI:
         """Get or create cached async openai client."""
@@ -146,6 +151,7 @@ class LLMClient:
         **kwargs: Any,
     ) -> str:
         """Execute a single LLM call (no retry logic)."""
+        self.calls_made += 1
         if self._use_litellm():
             llm_kwargs: dict[str, Any] = {}
             if self.api_base:
@@ -197,35 +203,63 @@ class LLMClient:
         same Pydantic gate, so the guarantee is "conforms", not "parses".
         """
         self._require_backend()
-        cache_key = f"{self.api_base or ''}|{self.model}"
+        # Keyed by schema as well as endpoint: a 400 can be specific to one
+        # schema (an oversized enum, say) and must not disable enforced decoding
+        # for every other schema on the same endpoint.
+        cache_key = f"{self.api_base or ''}|{self.model}|{schema.__name__}"
 
         if cache_key not in _NO_SCHEMA_SUPPORT:
             try:
                 text = await self.complete(
                     messages, response_format=_response_format(schema), **kwargs
                 )
-                return _validate(schema, text, repair=False)
             except Exception as e:
+                # Only the *call* can tell us the endpoint lacks support.
+                # Validation failures are content problems and must never land
+                # here: Pydantic embeds the offending input in its message, and a
+                # corpus about LLM engineering readily produces text containing
+                # "json_schema", which would masquerade as a capability failure
+                # and silently downgrade the rest of the process.
                 if not _is_schema_unsupported(e):
                     raise
-                # Remember, so the wasted round-trip is paid once per model,
-                # not on every extraction.
                 logger.info(
-                    "Endpoint lacks json_schema support (%s); using prompt schema",
+                    "Endpoint lacks json_schema support (%s/%s); using prompt schema",
                     self.model,
+                    schema.__name__,
                 )
                 _NO_SCHEMA_SUPPORT.add(cache_key)
+            else:
+                return await self._validate_or_retry(
+                    messages, schema, text, enforce=True, **kwargs
+                )
 
         prompt_messages = _with_schema_prompt(messages, schema)
         text = await self.complete(prompt_messages, **kwargs)
+        return await self._validate_or_retry(prompt_messages, schema, text, **kwargs)
+
+    async def _validate_or_retry(
+        self,
+        messages: list[dict[str, str]],
+        schema: type[_ModelT],
+        text: str,
+        *,
+        enforce: bool = False,
+        **kwargs: Any,
+    ) -> _ModelT:
+        """Validate ``text``, spending one corrective retry before giving up.
+
+        Repair runs before validation on both routes. It is text cleanup, not the
+        correctness guarantee — Pydantic remains the gate — but it recovers a
+        response truncated at ``max_tokens``, which would otherwise fail a whole
+        paper over a formatting artefact.
+        """
         try:
             return _validate(schema, text, repair=True)
         except ValidationError as e:
-            # Hand the actual violation back rather than re-asking for "valid
-            # JSON": the JSON was already valid, it just didn't conform, and the
-            # model can only fix what it is told is wrong.
+            # Hand back the actual violation rather than re-asking for "valid
+            # JSON": the JSON was already valid, it just did not conform.
             logger.info("Response violated %s; retrying with the error", schema.__name__)
-            repair_messages = prompt_messages + [
+            repair_messages = messages + [
                 {"role": "assistant", "content": text},
                 {
                     "role": "user",
@@ -236,12 +270,20 @@ class LLMClient:
                     ),
                 },
             ]
-            text = await self.complete(repair_messages, **kwargs)
+            # Keep the schema on the retry when the first call was enforced —
+            # dropping it would trade the provider's guarantee for a plain ask.
+            if enforce:
+                kwargs = {**kwargs, "response_format": _response_format(schema)}
+            retry_text = await self.complete(repair_messages, **kwargs)
             try:
-                return _validate(schema, text, repair=True)
+                return _validate(schema, retry_text, repair=True)
             except ValidationError as final:
+                # Carries the text so callers that degrade gracefully (ideation
+                # keeps an unusable card as a free-text hypothesis) still have
+                # something to work with — on the enforced path too, which is
+                # where this corpus actually runs.
                 raise StructuredOutputError(
-                    f"Response did not match {schema.__name__}: {final}", raw_text=text
+                    f"Response did not match {schema.__name__}: {final}", raw_text=retry_text
                 ) from final
 
     async def stream(

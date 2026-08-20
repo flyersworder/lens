@@ -13,22 +13,12 @@ from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
 
-_VERDICTS = {"novel", "overlaps", "scooped"}
-
 NOVELTY_SYSTEM_PROMPT = (
     "You are a research novelty auditor. Given a proposed research idea and a list "
     "of existing papers, decide whether the idea's CORE contribution is already "
     "covered. Distinguish shared keywords from the same contribution. Respond with "
     "a single JSON object and nothing else."
 )
-
-
-def _str_list(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(x) for x in value]
-    if isinstance(value, str):
-        return [value] if value.strip() else []
-    return []
 
 
 def _format_prior_art(prior_art: list[dict[str, Any]]) -> str:
