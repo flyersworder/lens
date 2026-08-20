@@ -719,7 +719,7 @@ def usage_summary_endpoint() -> dict[str, Any]:
             "SELECT event, COUNT(*) AS n FROM usage_events GROUP BY event ORDER BY n DESC"
         ).rows
         events = [{"event": str(r[0]), "count": int(r[1])} for r in rows]
-        total = sum(e["count"] for e in events)
+        total = sum(int(e["count"]) for e in events)
         bounds = writer.execute(
             "SELECT MIN(ts) AS first_ts, MAX(ts) AS last_ts FROM usage_events"
         ).rows

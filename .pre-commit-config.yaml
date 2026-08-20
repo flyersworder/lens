@@ -1,7 +1,7 @@
 repos:
   # Linting + formatting (Astral)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.6
+    rev: v0.16.3
     hooks:
       - id: ruff
         args: [--fix]
@@ -9,7 +9,7 @@ repos:
 
   # Type checking (Astral's ty)
   - repo: https://github.com/astral-sh/ty-pre-commit
-    rev: v0.0.59
+    rev: v0.0.73
     hooks:
       - id: ty
 
@@ -30,7 +30,7 @@ repos:
 
   # Validate pyproject.toml against PEP 621
   - repo: https://github.com/abravalheri/validate-pyproject
-    rev: v0.25
+    rev: 0.26
     hooks:
       - id: validate-pyproject
 

@@ -6,41 +6,6 @@ A single prompt per paper extracts all three tuple types.
 
 from __future__ import annotations
 
-EXTRACTION_RESPONSE_SCHEMA = """{
-  "tradeoffs": [
-    {
-      "improves": "what the technique improves",
-      "worsens": "what gets worse as a result",
-      "technique": "the technique or method used",
-      "context": "conditions or constraints mentioned",
-      "confidence": 0.85,
-      "evidence_quote": "relevant sentence from the paper",
-      "new_concepts": {}
-    }
-  ],
-  "architecture": [
-    {
-      "component_slot": "architecture component category",
-      "variant_name": "specific variant introduced",
-      "replaces": "what it replaces or generalizes (null if novel)",
-      "key_properties": "key properties or advantages",
-      "confidence": 0.9,
-      "new_concepts": {}
-    }
-  ],
-  "agentic": [
-    {
-      "pattern_name": "name of the agent pattern",
-      "category": "agentic category",
-      "structure": "high-level structure description",
-      "use_case": "primary use case",
-      "components": ["list", "of", "components"],
-      "confidence": 0.8,
-      "new_concepts": {}
-    }
-  ]
-}"""
-
 _TASK_SECTION = (
     "## Task\n"
     "Extract three types of structured information from this paper. Return a JSON object"
@@ -170,13 +135,6 @@ def build_extraction_prompt(
         "You are an expert in LLM research. Analyze the following paper and extract"
         " structured information."
     )
-    response_format = (
-        "## Response Format\n"
-        "Return ONLY valid JSON matching this schema:\n"
-        f"{EXTRACTION_RESPONSE_SCHEMA}\n\n"
-        "Do not include any text outside the JSON object."
-    )
-
     sections = [
         intro,
         f"## Paper\n{paper_content}",
@@ -185,6 +143,5 @@ def build_extraction_prompt(
         _build_architecture_section(vocabulary),
         _build_agentic_section(vocabulary),
         _CONFIDENCE_SECTION,
-        response_format,
     ]
     return "\n\n".join(sections)

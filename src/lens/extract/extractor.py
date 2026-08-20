@@ -8,11 +8,12 @@ import json
 import logging
 from typing import Any
 
-from pydantic import ValidationError
+from pydantic import BaseModel, ValidationError
 
 from lens.extract.prompts import build_extraction_prompt
 from lens.knowledge.events import log_event
 from lens.llm.client import LLMClient
+from lens.llm.schemas import ExtractionResponse
 from lens.llm.utils import strip_code_fences
 from lens.store.models import (
     AgenticExtraction,
@@ -132,6 +133,46 @@ def parse_extraction_response(
     return tradeoffs, architecture, agentic
 
 
+def _item_to_raw(item: BaseModel) -> dict[str, Any]:
+    """Flatten one response item onto the persistence shape.
+
+    ``new_concepts`` arrives as typed pairs because strict structured outputs
+    cannot express an open-ended map; it is rebuilt into the ``{slug: description}``
+    dict the store expects.
+    """
+    raw = item.model_dump()
+    raw["new_concepts"] = {c["name"]: c["description"] for c in raw.get("new_concepts", [])}
+    return raw
+
+
+def extraction_response_to_tuple(
+    response: ExtractionResponse,
+    paper_id: str,
+) -> ExtractionTuple:
+    """Convert a validated :class:`ExtractionResponse` into the store's tuple shape.
+
+    Reuses the same per-item validators as the prompt path, so ``paper_id`` and
+    ``verification_status`` are attached identically no matter which route the
+    response arrived by.
+    """
+    tradeoffs = [
+        v
+        for t in response.tradeoffs
+        if (v := _validate_tradeoff(_item_to_raw(t), paper_id)) is not None
+    ]
+    architecture = [
+        v
+        for a in response.architecture
+        if (v := _validate_architecture(_item_to_raw(a), paper_id)) is not None
+    ]
+    agentic = [
+        v
+        for ag in response.agentic
+        if (v := _validate_agentic(_item_to_raw(ag), paper_id)) is not None
+    ]
+    return tradeoffs, architecture, agentic
+
+
 async def extract_paper(
     paper_id: str,
     title: str,
@@ -140,41 +181,24 @@ async def extract_paper(
     full_text: str | None = None,
     vocabulary: list[dict[str, str]] | None = None,
 ) -> ExtractionTuple | None:
+    """Extract structured information from one paper.
+
+    Uses schema-constrained decoding where the endpoint supports it, so a
+    non-conforming response is impossible rather than merely repairable.
+    ``complete_structured`` handles the prompt-schema fallback and the one
+    corrective retry, so no separate "please emit valid JSON" round-trip is
+    needed here.
+    """
     prompt = build_extraction_prompt(title, abstract, full_text=full_text, vocabulary=vocabulary)
     messages = [{"role": "user", "content": prompt}]
 
     try:
-        response = await llm_client.complete(messages)
+        response = await llm_client.complete_structured(messages, ExtractionResponse)
     except Exception:
-        logger.warning(f"LLM call failed for paper {paper_id}")
+        logger.warning("LLM extraction failed for paper %s", paper_id)
         return None
 
-    result = parse_extraction_response(response, paper_id)
-    if result is not None:
-        return result
-
-    # Retry with stricter prompt
-    logger.info(f"Retrying extraction for {paper_id}")
-    retry_messages = [
-        {"role": "user", "content": prompt},
-        {"role": "assistant", "content": response},
-        {
-            "role": "user",
-            "content": (
-                "Your previous response was not valid JSON. "
-                "Please respond with ONLY a valid JSON object. "
-                "No markdown, no explanation, just the JSON."
-            ),
-        },
-    ]
-
-    try:
-        response = await llm_client.complete(retry_messages)
-    except Exception:
-        logger.warning(f"LLM retry failed for paper {paper_id}")
-        return None
-
-    return parse_extraction_response(response, paper_id)
+    return extraction_response_to_tuple(response, paper_id)
 
 
 def _delete_old_extractions(store: LensStore, paper_id: str) -> None:

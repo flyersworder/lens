@@ -12,9 +12,16 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import AsyncGenerator
-from typing import Any, cast
+from typing import Any, TypeVar, cast
 
 import openai
+from pydantic import BaseModel, ValidationError
+
+from lens.llm.structured import _NO_SCHEMA_SUPPORT
+from lens.llm.structured import is_schema_unsupported as _is_schema_unsupported
+from lens.llm.structured import response_format as _response_format
+from lens.llm.structured import validate as _validate
+from lens.llm.structured import with_schema_prompt as _with_schema_prompt
 
 try:
     import litellm  # ty: ignore[unresolved-import, unused-ignore-comment]
@@ -27,6 +34,8 @@ except ImportError:
     HAS_LITELLM = False
 
 logger = logging.getLogger(__name__)
+
+_ModelT = TypeVar("_ModelT", bound=BaseModel)
 
 DEFAULT_MODEL = "openrouter/anthropic/claude-sonnet-4-6"
 
@@ -162,6 +171,7 @@ class LLMClient:
                 messages=typed_messages,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
+                **kwargs,
             )
             content = response.choices[0].message.content
 
@@ -171,6 +181,63 @@ class LLMClient:
                 "This may indicate content filtering or an unsupported response type."
             )
         return content
+
+    async def complete_structured(
+        self,
+        messages: list[dict[str, str]],
+        schema: type[_ModelT],
+        **kwargs: Any,
+    ) -> _ModelT:
+        """Return a response validated against ``schema``.
+
+        Prefers provider-enforced ``json_schema`` decoding, which makes a
+        non-conforming response impossible rather than merely repairable. Support
+        is per-endpoint and OpenRouter rejects unsupported endpoints outright, so
+        a rejection degrades to a prompt-described schema. Both routes end at the
+        same Pydantic gate, so the guarantee is "conforms", not "parses".
+        """
+        self._require_backend()
+        cache_key = f"{self.api_base or ''}|{self.model}"
+
+        if cache_key not in _NO_SCHEMA_SUPPORT:
+            try:
+                text = await self.complete(
+                    messages, response_format=_response_format(schema), **kwargs
+                )
+                return _validate(schema, text, repair=False)
+            except Exception as e:
+                if not _is_schema_unsupported(e):
+                    raise
+                # Remember, so the wasted round-trip is paid once per model,
+                # not on every extraction.
+                logger.info(
+                    "Endpoint lacks json_schema support (%s); using prompt schema",
+                    self.model,
+                )
+                _NO_SCHEMA_SUPPORT.add(cache_key)
+
+        prompt_messages = _with_schema_prompt(messages, schema)
+        text = await self.complete(prompt_messages, **kwargs)
+        try:
+            return _validate(schema, text, repair=True)
+        except ValidationError as e:
+            # Hand the actual violation back rather than re-asking for "valid
+            # JSON": the JSON was already valid, it just didn't conform, and the
+            # model can only fix what it is told is wrong.
+            logger.info("Response violated %s; retrying with the error", schema.__name__)
+            repair_messages = prompt_messages + [
+                {"role": "assistant", "content": text},
+                {
+                    "role": "user",
+                    "content": (
+                        "Your response did not match the required schema:\n"
+                        f"{e}\n\n"
+                        "Return ONLY a corrected JSON object matching the schema."
+                    ),
+                },
+            ]
+            text = await self.complete(repair_messages, **kwargs)
+            return _validate(schema, text, repair=True)
 
     async def stream(
         self,

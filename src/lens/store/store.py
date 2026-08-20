@@ -15,11 +15,11 @@ from typing import Any
 # with an actionable message if the extension is missing at runtime.
 try:
     import sqlite_vec as _sqlite_vec  # type: ignore[import-not-found]
-
-    _SQLITE_VEC_AVAILABLE = True
 except ImportError:  # pragma: no cover — gated by `[local]` extra install
-    _sqlite_vec = None  # type: ignore[assignment]  # ty: ignore[invalid-assignment]
-    _SQLITE_VEC_AVAILABLE = False
+    # Checked directly (``_sqlite_vec is None``) rather than via a sibling
+    # boolean: type checkers narrow the module out of the ``module | None``
+    # union only from the object itself, never from a parallel flag.
+    _sqlite_vec = None  # type: ignore[assignment]
 
 from lens.store.models import EMBEDDING_DIM
 
@@ -216,7 +216,7 @@ class LensStore:
     """
 
     def __init__(self, db_path: str) -> None:
-        if not _SQLITE_VEC_AVAILABLE:
+        if _sqlite_vec is None:
             raise ImportError(
                 "LensStore requires the `local` optional extra. "
                 "Install with: uv sync --extra local "
