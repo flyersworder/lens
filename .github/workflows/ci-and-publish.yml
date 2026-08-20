@@ -41,6 +41,17 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - run: uvx uv-secure uv.lock
+      # uv-secure only reads uv.lock, so a JavaScript advisory gated nothing:
+      # GHSA-2v37-7h3g-55p8 (nanoid, HIGH, reachable from the server bundle via
+      # next -> postcss) sat green in CI for three days. npm audit reads
+      # package-lock.json directly, so no install step is needed.
+      #
+      # --omit=dev scopes the gate to what actually ships. --audit-level=high
+      # gates on high/critical only: npm has no per-advisory ignore (unlike
+      # uv-secure's pyproject config), so an unfixable low/moderate transitive
+      # advisory would otherwise block every PR with no way out. All severities
+      # are still printed -- the flag changes the exit code, not the output.
+      - run: npm audit --omit=dev --audit-level=high
 
   publish:
     needs: [test, security]
