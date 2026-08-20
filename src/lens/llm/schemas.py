@@ -27,7 +27,13 @@ class NewConcept(BaseModel):
     grammar for arbitrary keys), so the mapping is rebuilt caller-side.
     """
 
-    name: str = Field(description="Slug identifying the concept")
+    name: str = Field(
+        description=(
+            "The concept name exactly as written after the 'NEW: ' prefix in "
+            "improves/worsens/technique. Matched verbatim when the vocabulary is "
+            "built, so do not slugify or reword it."
+        )
+    )
     description: str = Field(description="Short description of the concept")
 
 

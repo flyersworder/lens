@@ -99,11 +99,14 @@ def strict_schema(model: type[BaseModel]) -> dict[str, Any]:
 # the only trustworthy signal.
 _NO_SCHEMA_SUPPORT: set[str] = set()
 
+# Every marker names the feature. A bare "does not support" would also match
+# complaints about unrelated parameters ("model does not support temperature"),
+# permanently downgrading this schema for an error the fallback hits anyway.
 _UNSUPPORTED_MARKERS = (
     "response_format",
     "json_schema",
     "structured output",
-    "does not support",
+    "structured_output",
 )
 
 
@@ -161,14 +164,14 @@ def with_schema_prompt(
     return out
 
 
-def validate[ModelT: BaseModel](model: type[ModelT], text: str, *, repair: bool) -> ModelT:
+def validate[ModelT: BaseModel](model: type[ModelT], text: str) -> ModelT:
     """Parse and validate ``text`` against ``model``.
 
-    ``repair`` applies json_repair as a text-cleanup step *before* validation on
-    the prompt path, where the provider guarantees nothing about syntax. It is
-    never the correctness guarantee — Pydantic is. On the enforced path repair is
-    off, since a syntax error there is a real signal rather than noise to paper
-    over.
+    json_repair runs as a text-cleanup step *before* validation. It is never the
+    correctness guarantee — Pydantic is — but it recovers a response truncated at
+    ``max_tokens``, which would otherwise fail a whole paper over a formatting
+    artefact. It runs on the enforced path too: strict decoding constrains the
+    grammar, not the length.
     """
     from lens.llm.utils import strip_code_fences
 
@@ -176,8 +179,6 @@ def validate[ModelT: BaseModel](model: type[ModelT], text: str, *, repair: bool)
     try:
         return model.model_validate_json(cleaned)
     except Exception:
-        if not repair:
-            raise
         from json_repair import repair_json
 
         return model.model_validate(repair_json(cleaned, return_objects=True))

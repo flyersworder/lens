@@ -237,7 +237,7 @@ def test_validation_rejects_conforming_json_that_violates_schema():
     )
 
     with pytest.raises(ValidationError):
-        validate(ExtractionResponse, missing_confidence, repair=True)
+        validate(ExtractionResponse, missing_confidence)
 
 
 # ---------------------------------------------------------------------------

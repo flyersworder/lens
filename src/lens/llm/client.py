@@ -62,10 +62,10 @@ class LLMClient:
         self.api_base = api_base or None  # normalize "" to None
         self.api_key = api_key or None
         self._openai_client: openai.AsyncOpenAI | None = None
-        # Provider calls actually issued. complete_structured can spend up to
-        # three per request (enforced probe, prompt fallback, corrective
-        # retry), so callers budgeting a metered API must count these rather
-        # than the number of items they attempted.
+        # Billable completions issued. complete_structured can spend up to three
+        # per request (enforced probe, prompt fallback, corrective retry), so
+        # callers budgeting a metered API must count these rather than the
+        # number of items they attempted. Rate-limit retries are not counted.
         self.calls_made = 0
 
     def _get_openai_client(self) -> openai.AsyncOpenAI:
@@ -120,6 +120,10 @@ class LLMClient:
         Automatically retries with exponential backoff on rate limit (429) errors.
         """
         self._require_backend()
+        # Counted here rather than in _call_llm so a 429 backoff loop registers as
+        # one call: a throttled request is not a billed one, and callers use this
+        # to budget spend.
+        self.calls_made += 1
 
         last_error: Exception | None = None
         backoff = INITIAL_BACKOFF
@@ -151,7 +155,6 @@ class LLMClient:
         **kwargs: Any,
     ) -> str:
         """Execute a single LLM call (no retry logic)."""
-        self.calls_made += 1
         if self._use_litellm():
             llm_kwargs: dict[str, Any] = {}
             if self.api_base:
@@ -254,7 +257,7 @@ class LLMClient:
         paper over a formatting artefact.
         """
         try:
-            return _validate(schema, text, repair=True)
+            return _validate(schema, text)
         except ValidationError as e:
             # Hand back the actual violation rather than re-asking for "valid
             # JSON": the JSON was already valid, it just did not conform.
@@ -276,7 +279,7 @@ class LLMClient:
                 kwargs = {**kwargs, "response_format": _response_format(schema)}
             retry_text = await self.complete(repair_messages, **kwargs)
             try:
-                return _validate(schema, retry_text, repair=True)
+                return _validate(schema, retry_text)
             except ValidationError as final:
                 # Carries the text so callers that degrade gracefully (ideation
                 # keeps an unusable card as a free-text hypothesis) still have

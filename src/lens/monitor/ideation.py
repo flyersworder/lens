@@ -606,13 +606,18 @@ async def run_ideation_with_llm(
     # (enforced probe, prompt fallback, corrective retry), so counting gaps would
     # let a run overspend the cap severalfold.
     calls_at_start = getattr(llm_client, "calls_made", 0)
+    # Floor for a client that does not expose calls_made: without it the delta is
+    # a constant 0, the ceiling never trips, and the loop spends one paid call per
+    # eligible gap — a worse failure than the local counter this replaced.
+    gaps_attempted = 0
     gaps_reached = 0
 
     for gap in ordered_gaps:
-        calls_made = getattr(llm_client, "calls_made", 0) - calls_at_start
+        calls_made = max(getattr(llm_client, "calls_made", 0) - calls_at_start, gaps_attempted)
         if len(all_cards) >= max_cards or calls_made >= call_budget:
             break
         gaps_reached += 1
+        gaps_attempted += 1
         gap_id = int(gap["id"])
         messages = _build_idea_card_messages(gap, vocab_by_id, patterns)
         text = ""
@@ -632,10 +637,15 @@ async def run_ideation_with_llm(
         # card, keep the LLM's output as a free-text hypothesis (pre-0.11.0
         # behaviour) instead of dropping it entirely.
         if card is None:
-            logger.warning("Unusable idea-card JSON for gap %d; keeping raw hypothesis", gap_id)
-            fallback = strip_code_fences(text).strip()
+            # `text` is only populated when the response never validated. A card
+            # rejected for an empty title has no raw text to fall back on, so say
+            # which happened rather than claiming a hypothesis was kept.
+            fallback = strip_code_fences(text).strip() if text else ""
             if fallback:
+                logger.warning("Unusable idea-card for gap %d; keeping raw hypothesis", gap_id)
                 _set_gap_hypothesis(store, gap, fallback)
+            else:
+                logger.warning("Idea card for gap %d failed validation; skipping", gap_id)
             continue
         if not card["pattern_ids"]:
             logger.warning(
@@ -686,7 +696,7 @@ async def run_ideation_with_llm(
 
     report["idea_cards"] = all_cards
     unprocessed = len(ordered_gaps) - gaps_reached
-    calls_made = getattr(llm_client, "calls_made", 0) - calls_at_start
+    calls_made = max(getattr(llm_client, "calls_made", 0) - calls_at_start, gaps_attempted)
     logger.info(
         "Ideation LLM: %d distinct cards from %d gaps (%d near-dups dropped, "
         "%d LLM calls, %d gaps left unprocessed by cap/budget)",

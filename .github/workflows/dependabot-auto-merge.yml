@@ -84,9 +84,8 @@ jobs:
           fi
           echo "PR #$PR is patch/minor/security with green CI — squash-merging."
           gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
-          # Signals the deploy step below. Set only on this path: the major-bump
+          # Gates the deploy step below. Set only on this path: the major-bump
           # branch above also exits 0, and must not trigger a production deploy.
-          echo "merged=true" >> "$GITHUB_OUTPUT"
           # File paths are untrusted, but are only pattern-matched here, never
           # executed. Deny-list rather than allow-list: a newly added top-level
           # file should default to deploying. A needless deploy costs two build

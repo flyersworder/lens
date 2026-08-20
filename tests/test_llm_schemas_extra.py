@@ -9,6 +9,18 @@ from lens.llm.structured import strict_schema
 
 
 @pytest.fixture
+def ideation_store_min(tmp_path):
+    """A store with enough vocabulary/matrix for gap-finding to yield many gaps."""
+    from lens.store.store import LensStore
+    from lens.taxonomy.vocabulary import load_seed_vocabulary
+
+    store = LensStore(str(tmp_path / "ideation.db"))
+    store.init_tables()
+    load_seed_vocabulary(store)
+    return store
+
+
+@pytest.fixture
 def analysis_store_for_nomatch(tmp_path):
     """A store with seed vocabulary, so the classify enum is non-empty."""
     from lens.store.store import LensStore
@@ -186,3 +198,53 @@ async def test_analyze_can_still_answer_no_match(analysis_store_for_nomatch):
     assert result["improving"] is None
     assert result["worsening"] is None
     assert result["principles"] == []
+
+
+def test_extraction_prompt_describes_new_concepts_as_the_schema_accepts_it():
+    """Prose and schema must agree on new_concepts' shape.
+
+    Strict decoding cannot express a free-form map, so the schema takes a list of
+    typed pairs. Prose still saying "dict" makes the model emit a map on the
+    prompt-fallback route, which fails at the *envelope* level — losing the
+    paper's tradeoffs, architecture and agentic together, not just one field.
+    """
+    from lens.extract.prompts import build_extraction_prompt
+
+    vocab = [
+        {"kind": "parameter", "name": "Inference Latency"},
+        {"kind": "principle", "name": "Quantization"},
+    ]
+    prompt = build_extraction_prompt(title="T", abstract="A", vocabulary=vocab)
+
+    assert "dict mapping" not in prompt
+    assert "Empty {}" not in prompt
+    # It must describe the pair shape the model actually has to emit.
+    assert '"name"' in prompt and '"description"' in prompt
+
+
+@pytest.mark.asyncio
+async def test_ideation_budget_holds_for_a_client_without_a_call_counter(ideation_store_min):
+    """The budget must not silently disable itself.
+
+    Reading the count via getattr(..., 0) means a client lacking `calls_made`
+    yields a constant delta of 0, so the ceiling never trips and the loop runs
+    one paid call per eligible gap. That is a worse failure than the local
+    counter it replaced.
+    """
+    from lens.monitor.ideation import run_ideation_with_llm
+
+    class _NoCounter:
+        """A client honouring the interface but not exposing calls_made."""
+
+        def __init__(self):
+            self.n = 0
+
+        async def complete_structured(self, messages, schema, **kwargs):
+            self.n += 1
+            raise RuntimeError("no card")
+
+    client = _NoCounter()
+    await run_ideation_with_llm(ideation_store_min, client, max_cards=1, min_gap_score=0.0)
+
+    # max(1*3, 60) == 60 is the ceiling; without a working counter this runs away.
+    assert client.n <= 60, f"budget did not hold: {client.n} calls"

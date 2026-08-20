@@ -36,7 +36,7 @@ def _build_tradeoffs_section(
             + "\n".join(f"- {p}" for p in principles)
             + "\n\nIf a concept genuinely does not match any entry above, prefix it "
             'with NEW: (e.g., "NEW: Energy Efficiency") and add an entry to '
-            "new_concepts mapping the concept name to a one-line definition.\n"
+            "new_concepts, giving the concept name and a one-line definition.\n"
         )
 
     base += (
@@ -46,10 +46,11 @@ def _build_tradeoffs_section(
         '- "context": conditions, benchmarks, or constraints mentioned\n'
         '- "confidence": your confidence score (see scale below)\n'
         '- "evidence_quote": a relevant sentence from the paper\n'
-        '- "new_concepts": dict mapping each NEW: concept name (without the '
-        '"NEW: " prefix) to a one-line definition, e.g. '
-        '{"Energy Efficiency": "Power consumption relative to throughput"}. '
-        "Empty {} if no NEW: concepts used"
+        '- "new_concepts": list of {"name": ..., "description": ...} objects, one '
+        'per NEW: concept. "name" is the concept name exactly as written after '
+        'the "NEW: " prefix — it is matched verbatim, so do not slugify it, e.g. '
+        '[{"name": "Energy Efficiency", "description": "Power consumption '
+        'relative to throughput"}]. Empty list if no NEW: concepts used'
     )
     return base
 
@@ -78,8 +79,9 @@ def _build_architecture_section(vocabulary=None):
         '- "replaces": what it replaces/generalizes (null if entirely novel)\n'
         '- "key_properties": key properties or advantages\n'
         '- "confidence": your confidence score\n'
-        '- "new_concepts": dict mapping each NEW: concept name to a one-line '
-        "definition. Empty {} if no NEW: concepts used"
+        '- "new_concepts": list of {"name": ..., "description": ...} objects, one '
+        'per NEW: concept. "name" must match the text after the "NEW: " prefix '
+        "verbatim (not a slug). Empty list if no NEW: concepts used"
     )
     return base
 
@@ -106,8 +108,9 @@ def _build_agentic_section(vocabulary=None):
         '- "use_case": primary use case or application\n'
         '- "components": list of key components\n'
         '- "confidence": your confidence score\n'
-        '- "new_concepts": dict mapping each NEW: concept name to a one-line '
-        "definition. Empty {} if no NEW: concepts used"
+        '- "new_concepts": list of {"name": ..., "description": ...} objects, one '
+        'per NEW: concept. "name" must match the text after the "NEW: " prefix '
+        "verbatim (not a slug). Empty list if no NEW: concepts used"
     )
     return base
 
