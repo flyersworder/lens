@@ -51,6 +51,14 @@
 
 ### Changed
 
+- **`parse_extraction_response` removed from the public API** (`lens.extract`).
+  Superseded by `complete_structured` + `extraction_response_to_tuple`, which
+  validate rather than best-effort parse. It had also gone stale in a way that
+  loses data silently: the current schema emits `new_concepts` as typed pairs,
+  and the old parser drops every extraction containing one while still returning
+  a successful-looking `([], [], [])` — indistinguishable from "this paper had no
+  extractions". Removing it also takes the last `json_repair` call out of the
+  package outside the prompt-fallback path.
 - **`EXTRACTION_RESPONSE_SCHEMA` removed.** The extraction prompt no longer
   embeds a hand-written JSON example; the schema is generated from the Pydantic
   model, so the prompt, the request and the validation gate cannot drift apart.

@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
-import json
 import logging
 from typing import Any
 
@@ -14,7 +13,6 @@ from lens.extract.prompts import build_extraction_prompt
 from lens.knowledge.events import log_event
 from lens.llm.client import LLMClient
 from lens.llm.schemas import ExtractionResponse
-from lens.llm.utils import strip_code_fences
 from lens.store.models import (
     AgenticExtraction,
     ArchitectureExtraction,
@@ -97,40 +95,6 @@ def _validate_agentic(raw: dict[str, Any], paper_id: str) -> dict[str, Any] | No
     except (ValidationError, TypeError):
         logger.warning("Invalid agentic for %s", paper_id)
         return None
-
-
-def parse_extraction_response(
-    response_text: str,
-    paper_id: str,
-) -> ExtractionTuple | None:
-    text = strip_code_fences(response_text)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        # Attempt repair of malformed JSON (trailing commas, unquoted keys, etc.)
-        from json_repair import repair_json
-
-        try:
-            data = repair_json(text, return_objects=True)
-            logger.info("Repaired malformed JSON for %s", paper_id)
-        except Exception:
-            logger.warning("Unrepairable JSON for %s", paper_id)
-            return None
-    if not isinstance(data, dict):
-        return None
-
-    tradeoffs = [
-        v for t in data.get("tradeoffs", []) if (v := _validate_tradeoff(t, paper_id)) is not None
-    ]
-    architecture = [
-        v
-        for a in data.get("architecture", [])
-        if (v := _validate_architecture(a, paper_id)) is not None
-    ]
-    agentic = [
-        v for ag in data.get("agentic", []) if (v := _validate_agentic(ag, paper_id)) is not None
-    ]
-    return tradeoffs, architecture, agentic
 
 
 def _item_to_raw(item: BaseModel) -> dict[str, Any]:
