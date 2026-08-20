@@ -48,9 +48,12 @@ class FakeCompletions:
     retry — instead of asserting against a mock's call count.
     """
 
-    def __init__(self, payloads, *, supports_schema: bool = False):
+    def __init__(self, payloads, *, supports_schema: bool = False, repeat: bool = False):
         self.payloads = list(payloads)
         self.supports_schema = supports_schema
+        # ``repeat`` mirrors AsyncMock's return_value semantics: serve the same
+        # payload for every call, for tests that process several items.
+        self.repeat = repeat
         self.calls: list[bool] = []  # True when response_format was sent
 
     async def create(self, **kwargs):
@@ -68,18 +71,22 @@ class FakeCompletions:
             )
         if not self.payloads:
             raise AssertionError("FakeCompletions ran out of payloads")
-        content = self.payloads.pop(0)
+        content = self.payloads[0] if self.repeat else self.payloads.pop(0)
+        if callable(content):
+            # Mirrors AsyncMock's callable side_effect, for tests that need a
+            # distinct payload per call.
+            content = content()
         if isinstance(content, Exception):
             raise content
         msg = type("M", (), {"content": content})()
         return type("R", (), {"choices": [type("C", (), {"message": msg})()]})()
 
 
-def make_llm_client(payloads, *, supports_schema: bool = False):
+def make_llm_client(payloads, *, supports_schema: bool = False, repeat: bool = False):
     """A real LLMClient whose transport is a :class:`FakeCompletions`."""
     from lens.llm.client import LLMClient
 
-    fake = FakeCompletions(payloads, supports_schema=supports_schema)
+    fake = FakeCompletions(payloads, supports_schema=supports_schema, repeat=repeat)
     client = LLMClient(
         model="openai/gpt-4o-mini", api_base="https://example.invalid/v1", api_key="k"
     )

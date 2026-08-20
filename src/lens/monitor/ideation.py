@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from collections import defaultdict
@@ -11,6 +10,8 @@ from typing import Any
 
 import numpy as np
 
+from lens.llm.schemas import IdeaCardResponse
+from lens.llm.structured import StructuredOutputError
 from lens.llm.utils import strip_code_fences
 from lens.store.store import LensStore
 from lens.taxonomy.vocabulary import _slugify
@@ -397,15 +398,7 @@ def _build_idea_card_messages(
         f"Gap type: {gap['gap_type']}\n\n"
         f"Referenced vocabulary:\n{_format_grounding(gap, vocab_by_id)}\n\n"
         f"Ideation pattern catalog:\n{_format_pattern_catalog(patterns)}\n\n"
-        "Return a JSON object with keys: "
-        '"title" (<=15 words), '
-        '"patterns" (list of 1-2 pattern names copied verbatim from the catalog), '
-        '"hook" (1-2 sentences), '
-        '"mechanism" (how the chosen pattern applies to this gap, producing a concrete artifact), '
-        '"falsification" (a minimal experiment with a metric and a distinguishing prediction), '
-        '"differentiation" (list of strings: how this differs from the referenced principles), '
-        '"signature_terms" (list of 3-6 key terms), '
-        '"confidence" (0-1 float).'
+        "Propose one concrete, falsifiable research idea that closes this gap."
     )
     return [
         {"role": "system", "content": IDEA_CARD_SYSTEM_PROMPT},
@@ -422,43 +415,30 @@ def _as_str_list(value: Any) -> list[str]:
     return []
 
 
-def _parse_idea_card(text: str, valid_pattern_ids: set[str]) -> dict[str, Any] | None:
-    text = strip_code_fences(text)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        from json_repair import repair_json
+def _card_from_response(
+    response: IdeaCardResponse, valid_pattern_ids: set[str]
+) -> dict[str, Any] | None:
+    """Map a validated response onto the stored card shape.
 
-        try:
-            data = repair_json(text, return_objects=True)
-        except Exception:
-            return None
-    if not isinstance(data, dict):
-        return None
-    title = str(data.get("title", "")).strip()
+    Schema validation guarantees the field *types*; this still enforces the two
+    semantic rules it cannot express — a card needs a title, and pattern names
+    must resolve to catalog entries this corpus actually knows.
+    """
+    title = response.title.strip()
     if not title:
         return None
-    patterns_raw = data.get("patterns")
-    if not isinstance(patterns_raw, list):
-        patterns_raw = []
     pattern_ids = [
-        pid for name in patterns_raw if (pid := _slugify(str(name))) in valid_pattern_ids
+        pid for name in response.patterns if (pid := _slugify(name)) in valid_pattern_ids
     ]
-    confidence_raw = data.get("confidence")
-    try:
-        confidence = float(confidence_raw) if confidence_raw is not None else 0.5
-    except (TypeError, ValueError):
-        confidence = 0.5
-    confidence = max(0.0, min(1.0, confidence))
     return {
         "title": title,
         "pattern_ids": pattern_ids,
-        "hook": str(data.get("hook", "")).strip(),
-        "mechanism": str(data.get("mechanism", "")).strip(),
-        "falsification": str(data.get("falsification", "")).strip(),
-        "differentiation": _as_str_list(data.get("differentiation")),
-        "signature_terms": _as_str_list(data.get("signature_terms")),
-        "confidence": confidence,
+        "hook": response.hook.strip(),
+        "mechanism": response.mechanism.strip(),
+        "falsification": response.falsification.strip(),
+        "differentiation": [str(x) for x in response.differentiation],
+        "signature_terms": [str(x) for x in response.signature_terms],
+        "confidence": max(0.0, min(1.0, response.confidence)),
     }
 
 
@@ -641,13 +621,18 @@ async def run_ideation_with_llm(
         gap_id = int(gap["id"])
         messages = _build_idea_card_messages(gap, vocab_by_id, patterns)
         calls_made += 1
+        text = ""
         try:
-            text = await llm_client.complete(messages)
+            response = await llm_client.complete_structured(messages, IdeaCardResponse)
+            card = _card_from_response(response, valid_pattern_ids)
+        except StructuredOutputError as e:
+            # The response never conformed; keep the raw text so the gap still
+            # gets a free-text hypothesis rather than nothing.
+            text = e.raw_text
+            card = None
         except Exception:
             logger.warning("LLM idea-card generation failed for gap %d", gap_id)
             continue
-
-        card = _parse_idea_card(text, valid_pattern_ids)
 
         # Graceful degradation: when we cannot build a properly pattern-grounded
         # card, keep the LLM's output as a free-text hypothesis (pre-0.11.0

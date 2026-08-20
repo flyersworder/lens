@@ -13,9 +13,22 @@ prompt-described schema and validates with Pydantic either way.
 
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel
+
+
+class StructuredOutputError(Exception):
+    """Raised when a response could not be validated against its schema.
+
+    Carries the offending text so callers can degrade gracefully — ideation, for
+    instance, keeps an unusable card as a free-text hypothesis rather than
+    discarding the model's work entirely.
+    """
+
+    def __init__(self, message: str, *, raw_text: str) -> None:
+        super().__init__(message)
+        self.raw_text = raw_text
 
 
 def _close_object(node: dict[str, Any]) -> None:
@@ -151,3 +164,30 @@ def validate[ModelT: BaseModel](model: type[ModelT], text: str, *, repair: bool)
         from json_repair import repair_json
 
         return model.model_validate(repair_json(cleaned, return_objects=True))
+
+
+def choice_model(name: str, **choices: list[str]) -> type[BaseModel]:
+    """Build a model whose fields are enums over runtime-supplied options.
+
+    The analyzer asks the model to pick a parameter, architecture slot or agentic
+    category by name, but the valid names live in the corpus vocabulary and are
+    only known at request time. Declaring them as an enum lets strict decoding
+    rule out a name that isn't in the corpus, instead of discovering it after the
+    call when the lookup returns None.
+
+    Every field is required; pass a single-element list to pin a value. Raises
+    ValueError for an empty option list, which cannot be expressed as an enum.
+    """
+    from pydantic import create_model
+
+    fields: dict[str, Any] = {}
+    for field, options in choices.items():
+        if not options:
+            raise ValueError(f"{name}.{field} needs at least one option")
+        # The options are only known at runtime, so this Literal cannot be
+        # written statically. Pydantic builds the enum from it correctly.
+        fields[field] = (
+            Literal[tuple(options)],  # type: ignore[valid-type]  # ty: ignore[invalid-type-form]
+            ...,
+        )
+    return create_model(name, **fields)

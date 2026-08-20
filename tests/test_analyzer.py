@@ -1,8 +1,7 @@
 """Tests for the analyze functionality."""
 
-from unittest.mock import AsyncMock
-
 import pytest
+from conftest import make_llm_client
 
 from lens.taxonomy.vocabulary import load_seed_vocabulary
 
@@ -95,9 +94,9 @@ async def test_analyze_tradeoff(analysis_store):
     quant_name = names["quant"]
     distil_name = names["distil"]
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = (
-        f'{{"improving": "{latency_name}", "worsening": "{accuracy_name}"}}'
+    mock_client, _fake = make_llm_client(
+        [f'{{"improving": "{latency_name}", "worsening": "{accuracy_name}"}}'],
+        repeat=True,
     )
 
     result = await analyze(
@@ -115,9 +114,9 @@ async def test_analyze_no_match(analysis_store):
     from lens.serve.analyzer import analyze
 
     store, _ = analysis_store
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = (
-        '{"improving": "Unknown Param", "worsening": "Other Param"}'
+    mock_client, _fake = make_llm_client(
+        ['{"improving": "Unknown Param", "worsening": "Other Param"}'],
+        repeat=True,
     )
 
     result = await analyze(
@@ -193,8 +192,7 @@ def arch_agentic_store(tmp_path):
 async def test_analyze_architecture(arch_agentic_store):
     from lens.serve.analyzer import analyze_architecture
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = '{"slot": "Attention Mechanism"}'
+    mock_client, _fake = make_llm_client(['{"slot": "Attention Mechanism"}'], repeat=True)
 
     result = await analyze_architecture(
         query="How does attention work in transformers?",
@@ -218,8 +216,7 @@ async def test_analyze_architecture_llm_failure(arch_agentic_store):
     """When LLM fails to identify a slot, all variants are returned."""
     from lens.serve.analyzer import analyze_architecture
 
-    mock_client = AsyncMock()
-    mock_client.complete.side_effect = Exception("LLM error")
+    mock_client, _fake = make_llm_client([Exception("LLM error")], repeat=True)
 
     result = await analyze_architecture(
         query="transformer architecture overview",
@@ -238,8 +235,7 @@ async def test_analyze_architecture_llm_failure(arch_agentic_store):
 async def test_analyze_agentic(arch_agentic_store):
     from lens.serve.analyzer import analyze_agentic
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = '{"category": "Reasoning"}'
+    mock_client, _fake = make_llm_client(['{"category": "Reasoning"}'], repeat=True)
 
     result = await analyze_agentic(
         query="step-by-step reasoning for complex tasks",

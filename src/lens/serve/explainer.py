@@ -13,6 +13,7 @@ from collections.abc import AsyncGenerator
 from typing import Any
 
 from lens.llm.client import LLMClient
+from lens.llm.structured import choice_model
 from lens.serve.explorer import (
     _matches_canonical,
     list_architecture_variants,
@@ -244,6 +245,34 @@ def _build_selection_prompt(
     )
 
 
+async def _select_candidate(
+    llm_client: LLMClient,
+    query: str,
+    candidate_summaries: list[str],
+) -> int:
+    """Pick the candidate best matching ``query``; fall back to the first.
+
+    The choice is constrained to an enum of the actual candidate positions, so a
+    reply naming a candidate that does not exist cannot validate. Previously the
+    answer was parsed with ``int()`` and clamped, which turned a nonsense reply
+    into a silent "candidate 1" after a paid call.
+    """
+    if len(candidate_summaries) <= 1:
+        return 0
+    prompt = _build_selection_prompt(query, candidate_summaries)
+    schema = choice_model(
+        "CandidateSelection", choice=[str(i + 1) for i in range(len(candidate_summaries))]
+    )
+    try:
+        result = await llm_client.complete_structured(
+            [{"role": "user", "content": prompt}], schema
+        )
+        return int(result.model_dump()["choice"]) - 1
+    except Exception:
+        logger.warning("LLM selection failed, using first candidate")
+        return 0
+
+
 def _build_synthesis_prompt(
     walk: dict[str, Any],
     focus: str | None = None,
@@ -403,16 +432,7 @@ async def explain(
     else:
         # Let the LLM pick the best match
         summaries = [_summarize_walk(w) for w in walks]
-        selection_prompt = _build_selection_prompt(query, summaries)
-        try:
-            response = await llm_client.complete([{"role": "user", "content": selection_prompt}])
-            choice = response.strip().strip(".")
-            selected_idx = int(choice) - 1
-            if selected_idx < 0 or selected_idx >= len(candidates):
-                selected_idx = 0
-        except Exception:
-            logger.warning("LLM selection failed, using first candidate")
-            selected_idx = 0
+        selected_idx = await _select_candidate(llm_client, query, summaries)
 
     selected = candidates[selected_idx]
     walk = walks[selected_idx]
@@ -476,16 +496,7 @@ async def explain_stream(
         selected_idx = 0
     else:
         summaries = [_summarize_walk(w) for w in walks]
-        selection_prompt = _build_selection_prompt(query, summaries)
-        try:
-            response = await llm_client.complete([{"role": "user", "content": selection_prompt}])
-            choice = response.strip().strip(".")
-            selected_idx = int(choice) - 1
-            if selected_idx < 0 or selected_idx >= len(candidates):
-                selected_idx = 0
-        except Exception:
-            logger.warning("LLM selection failed, using first candidate")
-            selected_idx = 0
+        selected_idx = await _select_candidate(llm_client, query, summaries)
 
     selected = candidates[selected_idx]
     walk = walks[selected_idx]

@@ -17,7 +17,7 @@ from typing import Any, TypeVar, cast
 import openai
 from pydantic import BaseModel, ValidationError
 
-from lens.llm.structured import _NO_SCHEMA_SUPPORT
+from lens.llm.structured import _NO_SCHEMA_SUPPORT, StructuredOutputError
 from lens.llm.structured import is_schema_unsupported as _is_schema_unsupported
 from lens.llm.structured import response_format as _response_format
 from lens.llm.structured import validate as _validate
@@ -237,7 +237,12 @@ class LLMClient:
                 },
             ]
             text = await self.complete(repair_messages, **kwargs)
-            return _validate(schema, text, repair=True)
+            try:
+                return _validate(schema, text, repair=True)
+            except ValidationError as final:
+                raise StructuredOutputError(
+                    f"Response did not match {schema.__name__}: {final}", raw_text=text
+                ) from final
 
     async def stream(
         self,

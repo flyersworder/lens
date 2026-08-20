@@ -361,3 +361,24 @@ def test_generated_schema_prompt_covers_all_three_arrays():
 
     for key in ("tradeoffs", "architecture", "agentic"):
         assert key in section
+
+
+@pytest.mark.asyncio
+async def test_complete_structured_error_carries_the_raw_text():
+    """Callers that degrade gracefully need the text that failed to validate.
+
+    Ideation keeps an unusable card as a free-text hypothesis, so raising a bare
+    ValidationError would throw away the only thing it still has a use for.
+    """
+    from lens.llm.structured import StructuredOutputError
+
+    bad = json.dumps({"tradeoffs": [{"improves": "only this"}]})
+    fake = _FakeCompletions(
+        strict_error=_bad_request("json_schema not supported"), payloads=[bad, bad]
+    )
+    client = _client_with(fake)
+
+    with pytest.raises(StructuredOutputError) as excinfo:
+        await client.complete_structured([{"role": "user", "content": "x"}], ExtractionResponse)
+
+    assert "only this" in excinfo.value.raw_text

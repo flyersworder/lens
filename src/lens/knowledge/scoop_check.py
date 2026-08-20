@@ -8,7 +8,7 @@ from datetime import UTC, datetime
 from typing import Any
 
 from lens.acquire.openalex import search_openalex
-from lens.llm.utils import strip_code_fences
+from lens.llm.schemas import NoveltyVerdict
 from lens.store.store import LensStore
 
 logger = logging.getLogger(__name__)
@@ -51,41 +51,24 @@ async def judge_novelty(
         f"  Mechanism: {card.get('mechanism', '')}\n"
         f"  Differentiation: {'; '.join(card.get('differentiation') or [])}\n\n"
         f"Existing papers:\n{_format_prior_art(prior_art)}\n\n"
-        'Return JSON: {"verdict": "novel|overlaps|scooped", '
-        '"colliding_papers": ["<paper title>", ...], "rationale": "<one sentence>"}\n'
-        "verdict meanings: scooped = core idea already published; "
-        "overlaps = substantial related work but a distinct angle; "
-        "novel = no close prior art in the list."
+        "Judge whether the proposed idea is already covered by the papers above."
     )
     messages = [
         {"role": "system", "content": NOVELTY_SYSTEM_PROMPT},
         {"role": "user", "content": user},
     ]
     try:
-        text = await llm_client.complete(messages)
+        result = await llm_client.complete_structured(messages, NoveltyVerdict)
     except Exception:
+        # Fail soft: the card stays `unchecked` and a later run retries it.
+        # Only a real verdict may move it out of that state.
         logger.warning("Novelty judge LLM call failed")
         return None
 
-    text = strip_code_fences(text)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        from json_repair import repair_json
-
-        try:
-            data = repair_json(text, return_objects=True)
-        except Exception:
-            return None
-    if not isinstance(data, dict):
-        return None
-    verdict = str(data.get("verdict", "")).strip().lower()
-    if verdict not in _VERDICTS:
-        return None
     return {
-        "verdict": verdict,
-        "colliding_papers": _str_list(data.get("colliding_papers")),
-        "rationale": str(data.get("rationale", "")).strip(),
+        "verdict": result.verdict,
+        "colliding_papers": list(result.colliding_papers),
+        "rationale": result.rationale.strip(),
     }
 
 
