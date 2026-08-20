@@ -33,7 +33,7 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
       - run: uv python install 3.12
       - name: Install Vercel CLI
-        run: npm i -g vercel@latest
+        run: npm i -g vercel@59.1.4
       - name: Pull project (production)
         run: vercel pull --yes --environment=production --local-config=vercel.api.json
       - name: Build
@@ -71,22 +71,34 @@ jobs:
       VERCEL_PROJECT_ID: prj_ga9XFH4y8Q5jheH5zxlw4SkB9h4e
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      # Pinned, not @latest: the CLI silently drifted 56.3.2 -> 59.1.4
+      # across the 58.4.4 filePathMap change and broke prod deploys with
+      # no repo change. Every other tool here is pinned; this was the gap.
       - name: Install Vercel CLI
-        run: npm i -g vercel@latest
+        run: npm i -g vercel@59.1.4
       # Stop Vercel auto-detecting the Python sources at root and trying
       # to bundle them with the Next.js output. The API ships from the
       # separate lens-api project; web only needs the JS bits. Written on
       # the runner only — never committed.
+      #
+      # Every pattern MUST keep its leading slash. .vercelignore uses
+      # gitignore semantics, so a bare `api/` matches a directory named
+      # `api` at ANY depth. Since CLI 58.4.4 (@vercel/client 18.2.3),
+      # `deploy --prebuilt` re-applies .vercelignore to every filePathMap
+      # entry, so unanchored `api/` silently drops
+      # node_modules/next/dist/compiled/@opentelemetry/api/** from the
+      # deploy manifest and the build dies remotely with an opaque
+      # `ENOENT: lstat /vercel/path0/...`. Upstream: vercel/vercel#17386.
       - name: Hide Python sources from web project
         run: |
           cat > .vercelignore <<'EOF'
-          api/
-          src/
-          tests/
-          scripts/
-          pyproject.toml
-          uv.lock
-          requirements.txt
+          /api/
+          /src/
+          /tests/
+          /scripts/
+          /pyproject.toml
+          /uv.lock
+          /requirements.txt
           EOF
       - name: Pull project (production)
         run: vercel pull --yes --environment=production
