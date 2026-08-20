@@ -1,9 +1,9 @@
 """Tests for the extraction pipeline."""
 
 from pathlib import Path
-from unittest.mock import AsyncMock
 
 import pytest
+from conftest import make_llm_client
 
 from lens.store.models import EMBEDDING_DIM
 
@@ -52,36 +52,17 @@ def test_build_extraction_prompt_empty_list_instruction():
 
 
 def test_extraction_response_schema():
-    from lens.extract.prompts import EXTRACTION_RESPONSE_SCHEMA
+    """The response schema is now derived from the Pydantic model.
 
-    schema = EXTRACTION_RESPONSE_SCHEMA
-    assert "tradeoffs" in schema
-    assert "architecture" in schema
-    assert "agentic" in schema
+    Replaces the hand-written EXTRACTION_RESPONSE_SCHEMA string, so the prompt,
+    the request and the validation gate cannot drift apart.
+    """
+    from lens.llm.schemas import ExtractionResponse
+    from lens.llm.structured import strict_schema
 
+    schema = strict_schema(ExtractionResponse)
 
-def test_parse_extraction_response():
-    from lens.extract.extractor import parse_extraction_response
-
-    fixture = (FIXTURE_DIR / "extraction_response.json").read_text()
-    result = parse_extraction_response(fixture, paper_id="2005.14165")
-    assert result is not None
-    tradeoffs, architecture, agentic = result
-
-    assert len(tradeoffs) == 1
-    assert tradeoffs[0]["paper_id"] == "2005.14165"
-    assert tradeoffs[0]["improves"] == "model quality across benchmarks"
-    assert tradeoffs[0]["confidence"] == 0.92
-    # High confidence + substantive quote => verified.
-    assert tradeoffs[0]["verification_status"] == "verified"
-
-    assert len(architecture) == 1
-    assert architecture[0]["component_slot"] == "architecture class"
-    assert architecture[0]["replaces"] is None
-    # High confidence, no quote field => verified by confidence alone.
-    assert architecture[0]["verification_status"] == "verified"
-
-    assert len(agentic) == 0
+    assert set(schema["required"]) == {"tradeoffs", "architecture", "agentic"}
 
 
 def test_compute_verification_status():
@@ -99,107 +80,67 @@ def test_compute_verification_status():
     assert compute_verification_status(0.3, "some quote here") == "unverified"
 
 
-def test_parse_extraction_response_malformed():
-    from lens.extract.extractor import parse_extraction_response
-
-    result = parse_extraction_response("not json at all", paper_id="test")
-    assert result is None
-
-
-def test_parse_extraction_response_partial():
-    from lens.extract.extractor import parse_extraction_response
-
-    partial = (
-        '{"tradeoffs": [{"improves": "a", "worsens": "b", "technique": "c",'
-        ' "context": "", "confidence": 0.8, "evidence_quote": "q"}]}'
-    )
-    result = parse_extraction_response(partial, paper_id="test")
-    assert result is not None
-    tradeoffs, architecture, agentic = result
-    assert len(tradeoffs) == 1
-    assert len(architecture) == 0
-    assert len(agentic) == 0
-
-
-def test_parse_extraction_response_strips_markdown_fences():
-    from lens.extract.extractor import parse_extraction_response
-
-    fenced = '```json\n{"tradeoffs": [], "architecture": [], "agentic": []}\n```'
-    result = parse_extraction_response(fenced, paper_id="test")
-    assert result is not None
-
-
 @pytest.mark.asyncio
 async def test_extract_paper():
     from lens.extract.extractor import extract_paper
 
     fixture = (FIXTURE_DIR / "extraction_response.json").read_text()
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = fixture
+    client, fake = make_llm_client([fixture])
 
     result = await extract_paper(
         paper_id="2005.14165",
         title="Language Models are Few-Shot Learners",
         abstract="We demonstrate that scaling up language models...",
-        llm_client=mock_client,
+        llm_client=client,
     )
     assert result is not None
     tradeoffs, architecture, agentic = result
     assert len(tradeoffs) == 1
     assert len(architecture) == 1
+    # Probed for schema support, then fell back on this stub endpoint.
+    assert fake.calls == [True, False]
 
 
 @pytest.mark.asyncio
 async def test_extract_paper_retries_on_malformed():
+    """A response that cannot be validated earns one corrective retry."""
     from lens.extract.extractor import extract_paper
 
     fixture = (FIXTURE_DIR / "extraction_response.json").read_text()
-    mock_client = AsyncMock()
-    mock_client.complete.side_effect = ["not json", fixture]
+    client, fake = make_llm_client(["not json", fixture])
 
     result = await extract_paper(
         paper_id="2005.14165",
         title="Test",
         abstract="Test abstract",
-        llm_client=mock_client,
+        llm_client=client,
     )
+
     assert result is not None
-    assert mock_client.complete.call_count == 2
+    tradeoffs, _, _ = result
+    assert tradeoffs[0]["paper_id"] == "2005.14165"
 
 
 @pytest.mark.asyncio
 async def test_extract_paper_returns_none_after_retries():
+    """Persistent garbage yields None rather than a partial extraction."""
     from lens.extract.extractor import extract_paper
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = "still not json"
+    client, _ = make_llm_client(["still not json", "also not json"])
 
-    result = await extract_paper(
-        paper_id="test",
-        title="Test",
-        abstract="Test",
-        llm_client=mock_client,
-    )
+    result = await extract_paper(paper_id="test", title="Test", abstract="Test", llm_client=client)
     assert result is None
-    assert mock_client.complete.call_count == 2
 
 
 @pytest.mark.asyncio
 async def test_extract_paper_handles_llm_exception():
+    """A transport failure is swallowed into None, not raised to the caller."""
     from lens.extract.extractor import extract_paper
 
-    mock_client = AsyncMock()
-    mock_client.complete.side_effect = RuntimeError("API down")
+    client, _ = make_llm_client([RuntimeError("API down"), RuntimeError("API down")])
 
-    result = await extract_paper(
-        paper_id="test",
-        title="Test",
-        abstract="Test",
-        llm_client=mock_client,
-    )
+    result = await extract_paper(paper_id="test", title="Test", abstract="Test", llm_client=client)
     assert result is None
-    # Should not retry when the LLM itself throws
-    assert mock_client.complete.call_count == 1
 
 
 @pytest.mark.asyncio
@@ -208,8 +149,7 @@ async def test_extract_papers_batch(tmp_path):
     from lens.store.store import LensStore
 
     fixture = (FIXTURE_DIR / "extraction_response.json").read_text()
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = fixture
+    client, _fake = make_llm_client([fixture])
 
     store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
@@ -232,7 +172,7 @@ async def test_extract_papers_batch(tmp_path):
         ]
     )
 
-    count = await extract_papers(store, mock_client, concurrency=1)
+    count = await extract_papers(store, client, concurrency=1)
     assert count == 1
 
     # Check extractions were stored
@@ -252,7 +192,8 @@ async def test_extract_papers_skips_completed(tmp_path):
     from lens.extract.extractor import extract_papers
     from lens.store.store import LensStore
 
-    mock_client = AsyncMock()
+    # No payloads: any LLM call at all would raise, proving none was made.
+    client, fake = make_llm_client([])
 
     store = LensStore(str(tmp_path / "test.db"))
     store.init_tables()
@@ -275,6 +216,8 @@ async def test_extract_papers_skips_completed(tmp_path):
         ]
     )
 
-    count = await extract_papers(store, mock_client, concurrency=1)
+    count = await extract_papers(store, client, concurrency=1)
     assert count == 0
-    mock_client.complete.assert_not_called()
+    # Real evidence the endpoint was never touched, rather than a mock assertion
+    # that would now pass vacuously because the code calls complete_structured.
+    assert fake.calls == []

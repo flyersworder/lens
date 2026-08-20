@@ -6,41 +6,6 @@ A single prompt per paper extracts all three tuple types.
 
 from __future__ import annotations
 
-EXTRACTION_RESPONSE_SCHEMA = """{
-  "tradeoffs": [
-    {
-      "improves": "what the technique improves",
-      "worsens": "what gets worse as a result",
-      "technique": "the technique or method used",
-      "context": "conditions or constraints mentioned",
-      "confidence": 0.85,
-      "evidence_quote": "relevant sentence from the paper",
-      "new_concepts": {}
-    }
-  ],
-  "architecture": [
-    {
-      "component_slot": "architecture component category",
-      "variant_name": "specific variant introduced",
-      "replaces": "what it replaces or generalizes (null if novel)",
-      "key_properties": "key properties or advantages",
-      "confidence": 0.9,
-      "new_concepts": {}
-    }
-  ],
-  "agentic": [
-    {
-      "pattern_name": "name of the agent pattern",
-      "category": "agentic category",
-      "structure": "high-level structure description",
-      "use_case": "primary use case",
-      "components": ["list", "of", "components"],
-      "confidence": 0.8,
-      "new_concepts": {}
-    }
-  ]
-}"""
-
 _TASK_SECTION = (
     "## Task\n"
     "Extract three types of structured information from this paper. Return a JSON object"
@@ -71,7 +36,7 @@ def _build_tradeoffs_section(
             + "\n".join(f"- {p}" for p in principles)
             + "\n\nIf a concept genuinely does not match any entry above, prefix it "
             'with NEW: (e.g., "NEW: Energy Efficiency") and add an entry to '
-            "new_concepts mapping the concept name to a one-line definition.\n"
+            "new_concepts, giving the concept name and a one-line definition.\n"
         )
 
     base += (
@@ -81,10 +46,11 @@ def _build_tradeoffs_section(
         '- "context": conditions, benchmarks, or constraints mentioned\n'
         '- "confidence": your confidence score (see scale below)\n'
         '- "evidence_quote": a relevant sentence from the paper\n'
-        '- "new_concepts": dict mapping each NEW: concept name (without the '
-        '"NEW: " prefix) to a one-line definition, e.g. '
-        '{"Energy Efficiency": "Power consumption relative to throughput"}. '
-        "Empty {} if no NEW: concepts used"
+        '- "new_concepts": list of {"name": ..., "description": ...} objects, one '
+        'per NEW: concept. "name" is the concept name exactly as written after '
+        'the "NEW: " prefix — it is matched verbatim, so do not slugify it, e.g. '
+        '[{"name": "Energy Efficiency", "description": "Power consumption '
+        'relative to throughput"}]. Empty list if no NEW: concepts used'
     )
     return base
 
@@ -113,8 +79,9 @@ def _build_architecture_section(vocabulary=None):
         '- "replaces": what it replaces/generalizes (null if entirely novel)\n'
         '- "key_properties": key properties or advantages\n'
         '- "confidence": your confidence score\n'
-        '- "new_concepts": dict mapping each NEW: concept name to a one-line '
-        "definition. Empty {} if no NEW: concepts used"
+        '- "new_concepts": list of {"name": ..., "description": ...} objects, one '
+        'per NEW: concept. "name" must match the text after the "NEW: " prefix '
+        "verbatim (not a slug). Empty list if no NEW: concepts used"
     )
     return base
 
@@ -141,8 +108,9 @@ def _build_agentic_section(vocabulary=None):
         '- "use_case": primary use case or application\n'
         '- "components": list of key components\n'
         '- "confidence": your confidence score\n'
-        '- "new_concepts": dict mapping each NEW: concept name to a one-line '
-        "definition. Empty {} if no NEW: concepts used"
+        '- "new_concepts": list of {"name": ..., "description": ...} objects, one '
+        'per NEW: concept. "name" must match the text after the "NEW: " prefix '
+        "verbatim (not a slug). Empty list if no NEW: concepts used"
     )
     return base
 
@@ -170,13 +138,6 @@ def build_extraction_prompt(
         "You are an expert in LLM research. Analyze the following paper and extract"
         " structured information."
     )
-    response_format = (
-        "## Response Format\n"
-        "Return ONLY valid JSON matching this schema:\n"
-        f"{EXTRACTION_RESPONSE_SCHEMA}\n\n"
-        "Do not include any text outside the JSON object."
-    )
-
     sections = [
         intro,
         f"## Paper\n{paper_content}",
@@ -185,6 +146,5 @@ def build_extraction_prompt(
         _build_architecture_section(vocabulary),
         _build_agentic_section(vocabulary),
         _CONFIDENCE_SECTION,
-        response_format,
     ]
     return "\n\n".join(sections)

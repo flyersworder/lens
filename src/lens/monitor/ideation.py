@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import json
 import logging
 import re
 from collections import defaultdict
@@ -11,6 +10,8 @@ from typing import Any
 
 import numpy as np
 
+from lens.llm.schemas import IdeaCardResponse
+from lens.llm.structured import StructuredOutputError
 from lens.llm.utils import strip_code_fences
 from lens.store.store import LensStore
 from lens.taxonomy.vocabulary import _slugify
@@ -397,15 +398,7 @@ def _build_idea_card_messages(
         f"Gap type: {gap['gap_type']}\n\n"
         f"Referenced vocabulary:\n{_format_grounding(gap, vocab_by_id)}\n\n"
         f"Ideation pattern catalog:\n{_format_pattern_catalog(patterns)}\n\n"
-        "Return a JSON object with keys: "
-        '"title" (<=15 words), '
-        '"patterns" (list of 1-2 pattern names copied verbatim from the catalog), '
-        '"hook" (1-2 sentences), '
-        '"mechanism" (how the chosen pattern applies to this gap, producing a concrete artifact), '
-        '"falsification" (a minimal experiment with a metric and a distinguishing prediction), '
-        '"differentiation" (list of strings: how this differs from the referenced principles), '
-        '"signature_terms" (list of 3-6 key terms), '
-        '"confidence" (0-1 float).'
+        "Propose one concrete, falsifiable research idea that closes this gap."
     )
     return [
         {"role": "system", "content": IDEA_CARD_SYSTEM_PROMPT},
@@ -413,52 +406,30 @@ def _build_idea_card_messages(
     ]
 
 
-def _as_str_list(value: Any) -> list[str]:
-    if isinstance(value, list):
-        return [str(x) for x in value]
-    if isinstance(value, str):
-        return [value] if value.strip() else []
-    # Ignore malformed shapes (e.g. a dict) rather than storing a Python repr.
-    return []
+def _card_from_response(
+    response: IdeaCardResponse, valid_pattern_ids: set[str]
+) -> dict[str, Any] | None:
+    """Map a validated response onto the stored card shape.
 
-
-def _parse_idea_card(text: str, valid_pattern_ids: set[str]) -> dict[str, Any] | None:
-    text = strip_code_fences(text)
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        from json_repair import repair_json
-
-        try:
-            data = repair_json(text, return_objects=True)
-        except Exception:
-            return None
-    if not isinstance(data, dict):
-        return None
-    title = str(data.get("title", "")).strip()
+    Schema validation guarantees the field *types*; this still enforces the two
+    semantic rules it cannot express — a card needs a title, and pattern names
+    must resolve to catalog entries this corpus actually knows.
+    """
+    title = response.title.strip()
     if not title:
         return None
-    patterns_raw = data.get("patterns")
-    if not isinstance(patterns_raw, list):
-        patterns_raw = []
     pattern_ids = [
-        pid for name in patterns_raw if (pid := _slugify(str(name))) in valid_pattern_ids
+        pid for name in response.patterns if (pid := _slugify(name)) in valid_pattern_ids
     ]
-    confidence_raw = data.get("confidence")
-    try:
-        confidence = float(confidence_raw) if confidence_raw is not None else 0.5
-    except (TypeError, ValueError):
-        confidence = 0.5
-    confidence = max(0.0, min(1.0, confidence))
     return {
         "title": title,
         "pattern_ids": pattern_ids,
-        "hook": str(data.get("hook", "")).strip(),
-        "mechanism": str(data.get("mechanism", "")).strip(),
-        "falsification": str(data.get("falsification", "")).strip(),
-        "differentiation": _as_str_list(data.get("differentiation")),
-        "signature_terms": _as_str_list(data.get("signature_terms")),
-        "confidence": confidence,
+        "hook": response.hook.strip(),
+        "mechanism": response.mechanism.strip(),
+        "falsification": response.falsification.strip(),
+        "differentiation": [str(x) for x in response.differentiation],
+        "signature_terms": [str(x) for x in response.signature_terms],
+        "confidence": max(0.0, min(1.0, response.confidence)),
     }
 
 
@@ -631,32 +602,50 @@ async def run_ideation_with_llm(
     eligible = [g for g in report["gaps"] if g.get("score", 0.0) >= min_gap_score]
     ordered_gaps = _diversified_gap_order(eligible)
     call_budget = max(max_cards * 3, 60)
-    calls_made = 0
+    # Count what the provider actually saw: one gap can cost up to three calls
+    # (enforced probe, prompt fallback, corrective retry), so counting gaps would
+    # let a run overspend the cap severalfold.
+    calls_at_start = getattr(llm_client, "calls_made", 0)
+    # Floor for a client that does not expose calls_made: without it the delta is
+    # a constant 0, the ceiling never trips, and the loop spends one paid call per
+    # eligible gap — a worse failure than the local counter this replaced.
+    gaps_attempted = 0
     gaps_reached = 0
 
     for gap in ordered_gaps:
+        calls_made = max(getattr(llm_client, "calls_made", 0) - calls_at_start, gaps_attempted)
         if len(all_cards) >= max_cards or calls_made >= call_budget:
             break
         gaps_reached += 1
+        gaps_attempted += 1
         gap_id = int(gap["id"])
         messages = _build_idea_card_messages(gap, vocab_by_id, patterns)
-        calls_made += 1
+        text = ""
         try:
-            text = await llm_client.complete(messages)
+            response = await llm_client.complete_structured(messages, IdeaCardResponse)
+            card = _card_from_response(response, valid_pattern_ids)
+        except StructuredOutputError as e:
+            # The response never conformed; keep the raw text so the gap still
+            # gets a free-text hypothesis rather than nothing.
+            text = e.raw_text
+            card = None
         except Exception:
             logger.warning("LLM idea-card generation failed for gap %d", gap_id)
             continue
-
-        card = _parse_idea_card(text, valid_pattern_ids)
 
         # Graceful degradation: when we cannot build a properly pattern-grounded
         # card, keep the LLM's output as a free-text hypothesis (pre-0.11.0
         # behaviour) instead of dropping it entirely.
         if card is None:
-            logger.warning("Unusable idea-card JSON for gap %d; keeping raw hypothesis", gap_id)
-            fallback = strip_code_fences(text).strip()
+            # `text` is only populated when the response never validated. A card
+            # rejected for an empty title has no raw text to fall back on, so say
+            # which happened rather than claiming a hypothesis was kept.
+            fallback = strip_code_fences(text).strip() if text else ""
             if fallback:
+                logger.warning("Unusable idea-card for gap %d; keeping raw hypothesis", gap_id)
                 _set_gap_hypothesis(store, gap, fallback)
+            else:
+                logger.warning("Idea card for gap %d failed validation; skipping", gap_id)
             continue
         if not card["pattern_ids"]:
             logger.warning(
@@ -707,6 +696,7 @@ async def run_ideation_with_llm(
 
     report["idea_cards"] = all_cards
     unprocessed = len(ordered_gaps) - gaps_reached
+    calls_made = max(getattr(llm_client, "calls_made", 0) - calls_at_start, gaps_attempted)
     logger.info(
         "Ideation LLM: %d distinct cards from %d gaps (%d near-dups dropped, "
         "%d LLM calls, %d gaps left unprocessed by cap/budget)",

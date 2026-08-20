@@ -2,15 +2,21 @@
 
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 
 from lens.llm.client import LLMClient
-from lens.llm.utils import strip_code_fences
+from lens.llm.structured import choice_model
 from lens.store.protocols import ReadableStore
 
 logger = logging.getLogger(__name__)
+
+
+# Sentinel enum member for "this query is not a tradeoff between our
+# parameters". Pinning both fields to the vocabulary would otherwise force the
+# model to name two real parameters for an off-topic query, turning "no answer"
+# into a confidently wrong one.
+_NO_MATCH = "(none of these)"
 
 
 def _build_classify_prompt(query: str, param_names: list[str]) -> str:
@@ -24,9 +30,7 @@ def _build_classify_prompt(query: str, param_names: list[str]) -> str:
         f"{params_list}\n\n"
         "Identify which parameter the user wants to IMPROVE and "
         "which parameter they accept WORSENING.\n"
-        "Respond with JSON only:\n"
-        '{"improving": "Parameter Name", '
-        '"worsening": "Parameter Name"}'
+        f"If the query does not map onto these parameters, answer {_NO_MATCH!r} for both."
     )
 
 
@@ -52,9 +56,12 @@ async def analyze(
     # Classify query via LLM
     prompt = _build_classify_prompt(query, param_names)
     try:
-        response = await llm_client.complete([{"role": "user", "content": prompt}])
-        text = strip_code_fences(response.strip())
-        classification = json.loads(text)
+        options = [*param_names, _NO_MATCH]
+        schema = choice_model("TradeoffClassification", improving=options, worsening=options)
+        result = await llm_client.complete_structured(
+            [{"role": "user", "content": prompt}], schema
+        )
+        classification = result.model_dump()
     except Exception:
         logger.warning("Failed to classify query: %s", query)
         return {
@@ -66,6 +73,8 @@ async def analyze(
 
     improving_name = classification.get("improving", "")
     worsening_name = classification.get("worsening", "")
+    if _NO_MATCH in (improving_name, worsening_name):
+        return {"query": query, "improving": None, "worsening": None, "principles": []}
     improving_id = param_name_to_id.get(improving_name)
     worsening_id = param_name_to_id.get(worsening_name)
 
@@ -130,10 +139,7 @@ def _build_slot_identify_prompt(query: str, slot_names: list[str]) -> str:
         f"User query: {query}\n\n"
         "Available architecture slots:\n"
         f"{slots_list}\n\n"
-        "Identify which slot is most relevant and extract any technical constraints "
-        "from the query (e.g., 'sub-quadratic', 'bounded KV cache', 'long context').\n"
-        "Respond with JSON only:\n"
-        '{"slot": "Slot Name", "constraints": "extracted technical constraints"}'
+        "Identify which slot is most relevant to the query."
     )
 
 
@@ -144,8 +150,7 @@ def _build_category_identify_prompt(query: str, category_names: list[str]) -> st
         "You are an LLM agent design expert. A user is asking about agentic design patterns.\n\n"
         f"User query: {query}\n\n"
         "Available categories:\n" + cats_list + "\n\n"
-        "Identify the most relevant category.\nRespond with JSON only:\n"
-        '{"category": "Category Name"}'
+        "Identify the most relevant category."
     )
 
 
@@ -223,10 +228,11 @@ async def analyze_architecture(
     if slot_names:
         prompt = _build_slot_identify_prompt(query, slot_names)
         try:
-            response = await llm_client.complete([{"role": "user", "content": prompt}])
-            text = strip_code_fences(response.strip())
-            classification = json.loads(text)
-            identified_slot = classification.get("slot")
+            schema = choice_model("SlotIdentification", slot=slot_names)
+            result = await llm_client.complete_structured(
+                [{"role": "user", "content": prompt}], schema
+            )
+            identified_slot = result.model_dump()["slot"]
         except Exception:
             logger.warning("Failed to identify slot for: %s", query)
 
@@ -297,10 +303,11 @@ async def analyze_agentic(
     if cat_names:
         prompt = _build_category_identify_prompt(query, cat_names)
         try:
-            response = await llm_client.complete([{"role": "user", "content": prompt}])
-            text = strip_code_fences(response.strip())
-            classification = json.loads(text)
-            identified_category = classification.get("category")
+            schema = choice_model("CategoryIdentification", category=cat_names)
+            result = await llm_client.complete_structured(
+                [{"role": "user", "content": prompt}], schema
+            )
+            identified_category = result.model_dump()["category"]
         except Exception:
             logger.warning("Failed to identify category for: %s", query)
 

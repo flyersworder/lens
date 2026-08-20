@@ -25,6 +25,7 @@ on:
 permissions:
   contents: write # squash-merge + delete branch
   pull-requests: write # comment on held PRs
+  actions: write # dispatch deploy-vercel after a merge (see the last step)
 
 jobs:
   auto-merge:
@@ -60,6 +61,7 @@ jobs:
           fi
 
       - name: Merge (holding majors for manual review)
+        id: merge
         if: steps.pr.outputs.number != ''
         env:
           PR: ${{ steps.pr.outputs.number }}
@@ -82,3 +84,25 @@ jobs:
           fi
           echo "PR #$PR is patch/minor/security with green CI — squash-merging."
           gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
+          # Gates the deploy step below. Set only on this path: the major-bump
+          # branch above also exits 0, and must not trigger a production deploy.
+          # File paths are untrusted, but are only pattern-matched here, never
+          # executed. Deny-list rather than allow-list: a newly added top-level
+          # file should default to deploying. A needless deploy costs two build
+          # minutes; a missed one silently withholds a security patch from prod.
+          files=$(gh pr view "$PR" --repo "$REPO" --json files --jq '.files[].path')
+          if printf '%s\n' "$files" | grep -qvE '^(\.github/|docs/|tests/|scripts/|[^/]*\.md$)'; then
+            echo "Touches shipped code — deploy needed."
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "Only CI/docs/tests changed — skipping deploy."
+          fi
+
+      # A GITHUB_TOKEN push cannot trigger `on: push`, so deploy-vercel never
+      # fires for an auto-merged PR and main silently drifts ahead of production.
+      # workflow_dispatch is an explicit exception to that rule. Without this,
+      # aiohttp's 2026-08-04 CVE fix (#59) sat merged and green for 16 days while
+      # production kept serving the vulnerable build.
+      - name: Deploy the merged change
+        if: steps.merge.outputs.deploy == 'true'
+        run: gh workflow run deploy-vercel.yml --repo "$REPO" --ref main

@@ -1,9 +1,10 @@
 """Tests for the explain functionality."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import numpy as np
 import pytest
+from conftest import make_llm_client
 
 from lens.store.models import EMBEDDING_DIM
 
@@ -231,13 +232,15 @@ async def test_explain_with_llm_selection(explain_store):
     """The LLM selects the best candidate and explains it."""
     from lens.serve.explainer import explain
 
-    mock_client = AsyncMock()
-    # First call: LLM selection returns "1" (first candidate)
-    # Second call: LLM synthesis returns the explanation
-    mock_client.complete.side_effect = [
-        "1",
-        "Inference Latency is the time taken to generate output tokens.",
-    ]
+    # First call: constrained selection picks candidate 1.
+    # Second call: synthesis returns the explanation.
+    mock_client, _fake = make_llm_client(
+        [
+            '{"choice": "1"}',
+            "Inference Latency is the time taken to generate output tokens.",
+        ],
+        supports_schema=True,
+    )
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
         mock_embed.return_value = np.array([[1.0] + [0.0] * (EMBEDDING_DIM - 1)])
@@ -256,11 +259,13 @@ async def test_explain_arch_slot(explain_store):
     """Explain correctly handles arch_slot concepts."""
     from lens.serve.explainer import explain
 
-    mock_client = AsyncMock()
-    mock_client.complete.side_effect = [
-        "1",
-        "The Attention Mechanism determines how the model weighs input tokens.",
-    ]
+    mock_client, _fake = make_llm_client(
+        [
+            '{"choice": "1"}',
+            "The Attention Mechanism determines how the model weighs input tokens.",
+        ],
+        supports_schema=True,
+    )
 
     with patch("lens.serve.explainer.embed_strings") as mock_embed:
         mock_embed.return_value = np.array([[0.0, 0.0, 1.0] + [0.0] * (EMBEDDING_DIM - 3)])

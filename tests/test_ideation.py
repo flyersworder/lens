@@ -1,8 +1,7 @@
 """Tests for the ideation gap analysis pipeline."""
 
-from unittest.mock import AsyncMock
-
 import pytest
+from conftest import make_llm_client
 
 from lens.store.models import EMBEDDING_DIM
 from lens.taxonomy.vocabulary import load_seed_vocabulary
@@ -118,13 +117,12 @@ async def test_run_ideation_with_llm_generates_cards(ideation_store):
 
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = json.dumps(
+    payload = json.dumps(
         {
             "title": "Quantization-aware throughput scheduling",
             "patterns": ["Substitute the Operator or Representation"],
             "hook": "Swap the decode operator to trade accuracy for latency.",
-            "mechanism": "Replace dense attention with a quantized kernel selected per layer.",
+            "mechanism": "Replace dense attention with a quantized kernel per layer.",
             "falsification": "Measure tokens/sec vs perplexity on WikiText-103; "
             "the quantized variant should raise throughput >20% at <1% perplexity loss.",
             "differentiation": ["Unlike static quantization, adapts per-layer at decode time"],
@@ -132,6 +130,7 @@ async def test_run_ideation_with_llm_generates_cards(ideation_store):
             "confidence": 0.7,
         }
     )
+    mock_client, _fake = make_llm_client([payload], repeat=True)
 
     report = await run_ideation_with_llm(ideation_store, mock_client)
 
@@ -153,8 +152,7 @@ async def test_run_ideation_with_llm_generates_cards(ideation_store):
 async def test_run_ideation_with_llm_malformed_json_skips(ideation_store):
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = "not json at all {{{"
+    mock_client, _fake = make_llm_client(["not json at all {{{"], repeat=True)
 
     report = await run_ideation_with_llm(ideation_store, mock_client)
 
@@ -176,18 +174,22 @@ async def test_run_ideation_with_llm_unknown_pattern_keeps_hypothesis_only(ideat
 
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = json.dumps(
-        {
-            "title": "X",
-            "patterns": None,  # unresolvable -> pattern_ids == []
-            "hook": "h",
-            "mechanism": "m",
-            "falsification": "f",
-            "differentiation": [],
-            "signature_terms": [],
-            "confidence": 0.4,
-        }
+    mock_client, _fake = make_llm_client(
+        [
+            json.dumps(
+                {
+                    "title": "X",
+                    "patterns": None,  # unresolvable -> pattern_ids == []
+                    "hook": "h",
+                    "mechanism": "m",
+                    "falsification": "f",
+                    "differentiation": [],
+                    "signature_terms": [],
+                    "confidence": 0.4,
+                }
+            )
+        ],
+        repeat=True,
     )
 
     report = await run_ideation_with_llm(ideation_store, mock_client)
@@ -204,8 +206,7 @@ async def test_run_ideation_with_llm_unknown_pattern_keeps_hypothesis_only(ideat
 async def test_run_ideation_with_llm_complete_raises_skips(ideation_store):
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock_client = AsyncMock()
-    mock_client.complete.side_effect = RuntimeError("boom")
+    mock_client, _fake = make_llm_client([RuntimeError("boom")], repeat=True)
 
     report = await run_ideation_with_llm(ideation_store, mock_client)
 
@@ -245,8 +246,7 @@ async def test_cross_pollination_card_uses_source_cell_provenance(ideation_store
             }
         )
 
-    mock_client = AsyncMock()
-    mock_client.complete.side_effect = _distinct
+    mock_client, _fake = make_llm_client([_distinct], repeat=True)
 
     await run_ideation_with_llm(ideation_store, mock_client, max_cards=1000)
 
@@ -356,10 +356,12 @@ async def test_cross_pollination_provenance_excludes_other_principle_cells(ideat
     import itertools
 
     counter = itertools.count()
-    mock_client = AsyncMock()
-    mock_client.complete.side_effect = lambda *_a, **_k: _valid_card_json(
-        title=f"T{(i := next(counter))}", signature_terms=[f"term{i}"]
-    )
+
+    def _next_card():
+        i = next(counter)
+        return _valid_card_json(title=f"T{i}", signature_terms=[f"term{i}"])
+
+    mock_client, _fake = make_llm_client([_next_card], repeat=True)
 
     await run_ideation_with_llm(ideation_store, mock_client, max_cards=1000)
 
@@ -385,8 +387,7 @@ async def test_seeds_ideation_patterns_when_missing(ideation_store):
     ideation_store.delete("vocabulary", "kind = ?", ("ideation_pattern",))
     assert ideation_store.query("vocabulary", "kind = ?", ("ideation_pattern",)) == []
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = _valid_card_json()
+    mock_client, _fake = make_llm_client([_valid_card_json()], repeat=True)
 
     report = await run_ideation_with_llm(ideation_store, mock_client)
 
@@ -399,8 +400,7 @@ async def test_db_write_failure_skips_gap_gracefully(ideation_store, monkeypatch
     """A DB error while persisting one card is logged and skipped, not fatal."""
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = _valid_card_json()
+    mock_client, _fake = make_llm_client([_valid_card_json()], repeat=True)
 
     orig_add_rows = ideation_store.add_rows
 
@@ -420,9 +420,8 @@ async def test_differentiation_dict_is_dropped(ideation_store):
     """A non-list differentiation (e.g. a dict) is dropped, not repr-stringified (Finding 6)."""
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = _valid_card_json(
-        differentiation={"vs_static": "adapts per layer"}
+    mock_client, _fake = make_llm_client(
+        [_valid_card_json(differentiation={"vs_static": "adapts per layer"})], repeat=True
     )
 
     await run_ideation_with_llm(ideation_store, mock_client)
@@ -482,19 +481,17 @@ def test_diversified_gap_order_round_robins_improving_param():
 
 
 def _counting_mock(fmt="term{i}"):
-    """AsyncMock whose complete() returns a *distinct* card per call, so the
+    """Return ``(client, fake)`` yielding a *distinct* card per call, so the
     diversity gate keeps every card (no dedup collapse)."""
     import itertools
 
     counter = itertools.count()
 
-    def _next(*_args, **_kwargs):
+    def _next():
         i = next(counter)
         return _valid_card_json(title=f"Idea {i}", signature_terms=[fmt.format(i=i)])
 
-    mock = AsyncMock()
-    mock.complete.side_effect = _next
-    return mock
+    return make_llm_client([_next], repeat=True)
 
 
 @pytest.mark.asyncio
@@ -502,9 +499,9 @@ async def test_dedup_collapses_identical_cards(ideation_store):
     """Many gaps that yield identical cards collapse to a single distinct card."""
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock_client = AsyncMock()
-    mock_client.complete.return_value = _valid_card_json(
-        title="Same Idea", signature_terms=["quantization", "throughput"]
+    mock_client, _fake = make_llm_client(
+        [_valid_card_json(title="Same Idea", signature_terms=["quantization", "throughput"])],
+        repeat=True,
     )
 
     await run_ideation_with_llm(ideation_store, mock_client)
@@ -516,7 +513,8 @@ async def test_max_cards_caps_output(ideation_store):
     """With distinct cards available, max_cards bounds how many are emitted."""
     from lens.monitor.ideation import run_ideation_with_llm
 
-    await run_ideation_with_llm(ideation_store, _counting_mock(), max_cards=3)
+    client, _fake = _counting_mock()
+    await run_ideation_with_llm(ideation_store, client, max_cards=3)
     assert len(ideation_store.query("idea_cards")) == 3
 
 
@@ -525,7 +523,7 @@ async def test_min_gap_score_filters_all_gaps(ideation_store):
     """A score floor above every gap's score emits no cards (and spends no LLM calls)."""
     from lens.monitor.ideation import run_ideation_with_llm
 
-    mock = _counting_mock()
-    await run_ideation_with_llm(ideation_store, mock, min_gap_score=2.0)
+    client, fake = _counting_mock()
+    await run_ideation_with_llm(ideation_store, client, min_gap_score=2.0)
     assert ideation_store.query("idea_cards") == []
-    mock.complete.assert_not_called()
+    assert fake.calls == []  # real evidence no LLM call was spent

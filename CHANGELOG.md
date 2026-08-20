@@ -1,8 +1,38 @@
 # Changelog
 
-## Unreleased
+## 0.14.0 (2026-08-20)
 
 ### Added
+
+- **Schema-constrained structured output** (`llm/schemas.py`, `llm/structured.py`,
+  `LLMClient.complete_structured`) — every LLM call that expects structured data
+  now validates against a Pydantic schema instead of being parsed with
+  `json_repair`. Repair makes malformed output *parse*; it cannot make it
+  *correct*, since a response that omits `confidence` or invents a field parses
+  perfectly well while still violating the schema. Where the endpoint supports
+  OpenAI-style `response_format={"type": "json_schema", strict: true}`, the
+  provider enforces the shape during decoding, so a non-conforming response
+  becomes impossible rather than merely repairable.
+
+  Support is per-endpoint and OpenRouter rejects unsupported endpoints outright,
+  so a rejection degrades to a prompt-described schema generated from the same
+  model; both routes end at the same Pydantic gate. The negative result is cached
+  per model, so the wasted round-trip is paid once rather than on every call.
+
+  Migrated call sites: extraction (`ExtractionResponse`), novelty verification
+  (`NoveltyVerdict`), idea cards (`IdeaCardResponse`), and the analyzer's three
+  and explainer's two vocabulary selections. The only remaining `json.loads` in
+  the package reads DB rows, not model output.
+- **`choice_model()`** — builds an enum over options known only at request time.
+  The analyzer and explainer ask the model to pick a parameter, architecture
+  slot, agentic category or candidate by name, but the valid names live in the
+  corpus vocabulary. Declaring them as an enum means a name outside the corpus
+  cannot validate, removing a failure path where a hallucinated name resolved to
+  `None` and silently degraded the answer after a paid call.
+- **`StructuredOutputError`** — carries the text that failed to validate, so
+  ideation can still keep an unusable card as a free-text hypothesis rather than
+  discarding the model's work.
+
 - **`/ideas` — vetted-novelty idea showcase** — a new public web page that
   surfaces the machine-generated idea cards with their prior-art novelty
   verdict as the hero: each card leads with a `novel` / `overlaps` / `scooped`
@@ -19,7 +49,48 @@
   `prior_art`, `novelty_note`, and `novelty_checked_at` fields, matching the
   columns scoop-check writes to the `idea_cards` table.
 
+### Changed
+
+- **`parse_extraction_response` removed from the public API** (`lens.extract`).
+  Superseded by `complete_structured` + `extraction_response_to_tuple`, which
+  validate rather than best-effort parse. It had also gone stale in a way that
+  loses data silently: the current schema emits `new_concepts` as typed pairs,
+  and the old parser drops every extraction containing one while still returning
+  a successful-looking `([], [], [])` — indistinguishable from "this paper had no
+  extractions". Removing it also takes the last `json_repair` call out of the
+  package outside the prompt-fallback path.
+- **`EXTRACTION_RESPONSE_SCHEMA` removed.** The extraction prompt no longer
+  embeds a hand-written JSON example; the schema is generated from the Pydantic
+  model, so the prompt, the request and the validation gate cannot drift apart.
+  The two had already drifted — the hand-written copy described `new_concepts` as
+  a map while the model describes a list.
+- **`new_concepts` is a list of typed pairs on the wire.** Strict structured
+  outputs forbid free-form objects: constrained decoding restricts tokens to a
+  known grammar, and arbitrary keys have no grammar. The value is rebuilt into a
+  `{slug: description}` dict caller-side, so the stored shape is unchanged.
+- **The explainer's two candidate-selection blocks** were byte-identical and
+  collapse into `_select_candidate`, which replaces `int(choice)`-and-clamp with
+  an enum of the actual candidate positions.
+- **Dependencies upgraded** (34 packages) and pre-commit hooks refreshed
+  (ruff `v0.15.6` → `v0.16.3`, ty `v0.0.59` → `v0.0.73`, validate-pyproject
+  `v0.25` → `0.26`). `openai` stays on 2.54.0, the top of the 2.x line: litellm
+  pins `openai<3.0.0`, and uv resolves one universal lockfile across all extras,
+  so the cap applies even to the `web` install that never includes litellm.
+  Moving to openai 3.x additionally means the `httpx2` migration.
+
+- **The weekly monitor cron now generates and novelty-checks idea cards**, so
+  the `/ideas` showcase refreshes automatically. `monitor.ideate_llm` is enabled
+  in the workflow (the `ideate` stage produces new pattern-guided cards), and a
+  `lens scoop-check --max-terms 3 --limit 30` step runs between the monitor and
+  publish steps to verify them. The updated DB (new cards + verdicts) flows into
+  both `lens-prod` and the `corpus-snapshot` release asset, so verdicts are
+  durable across runs. `--max-terms 3 --limit 30` bounds OpenAlex usage to ~90
+  searches/run (under the free-tier ~100/day); scoop-check is idempotent and
+  only touches `unchecked` cards, so any overflow from a heavy week is picked up
+  in a later run.
+
 ### Fixed
+
 - **Idea cards are now grounded in evidence papers** (`_card_paper_ids` in
   `monitor/ideation.py`). Previously every card showed "grounded in 0 papers":
   the diversity gate scores *fully-empty* matrix cells highest (1.0), so those
@@ -31,17 +102,12 @@
   meaningful for the unexplored-tradeoff ideas that dominate the feed, without
   changing which gaps surface.
 
-### Changed
-- **The weekly monitor cron now generates and novelty-checks idea cards**, so
-  the `/ideas` showcase refreshes automatically. `monitor.ideate_llm` is enabled
-  in the workflow (the `ideate` stage produces new pattern-guided cards), and a
-  `lens scoop-check --max-terms 3 --limit 30` step runs between the monitor and
-  publish steps to verify them. The updated DB (new cards + verdicts) flows into
-  both `lens-prod` and the `corpus-snapshot` release asset, so verdicts are
-  durable across runs. `--max-terms 3 --limit 30` bounds OpenAlex usage to ~90
-  searches/run (under the free-tier ~100/day); scoop-check is idempotent and
-  only touches `unchecked` cards, so any overflow from a heavy week is picked up
-  in a later run.
+- **`_call_llm` dropped `**kwargs` on the openai SDK path** (it forwarded them
+  only to litellm), which would have silently discarded `response_format`.
+- **`store.py` carried `_SQLITE_VEC_AVAILABLE` as a sibling boolean** to
+  `_sqlite_vec`. A type checker narrows a `module | None` union only from the
+  object itself, so the flag left every use site possibly-None while duplicating
+  state that was read in exactly one place.
 
 ## 0.13.0 (2026-07-19)
 

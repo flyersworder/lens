@@ -1,8 +1,8 @@
 import json
 from datetime import UTC, datetime
-from unittest.mock import AsyncMock
 
 import pytest
+from conftest import make_llm_client
 
 from lens.store.store import LensStore
 
@@ -42,9 +42,14 @@ def store(tmp_path):
 async def test_judge_novelty_parses_verdict():
     from lens.knowledge.scoop_check import judge_novelty
 
-    llm = AsyncMock()
-    llm.complete.return_value = json.dumps(
-        {"verdict": "scooped", "colliding_papers": ["GQA"], "rationale": "same idea"}
+    llm, fake = make_llm_client(
+        [
+            json.dumps(
+                {"verdict": "scooped", "colliding_papers": ["GQA"], "rationale": "same idea"}
+            )
+        ],
+        supports_schema=True,
+        repeat=True,
     )
     out = await judge_novelty(
         {"title": "t", "mechanism": "m", "differentiation": []},
@@ -58,13 +63,18 @@ async def test_judge_novelty_parses_verdict():
 
 @pytest.mark.asyncio
 async def test_judge_novelty_rejects_bad_verdict():
+    """An out-of-enum verdict or unparseable text must not annotate the card.
+
+    Each case gets two payloads because complete_structured spends one
+    corrective retry before giving up.
+    """
     from lens.knowledge.scoop_check import judge_novelty
 
-    llm = AsyncMock()
-    llm.complete.return_value = json.dumps({"verdict": "maybe", "rationale": "x"})
+    bad_verdict = json.dumps({"verdict": "maybe", "rationale": "x"})
+    llm, _ = make_llm_client([bad_verdict, bad_verdict])
     assert await judge_novelty({"title": "t", "mechanism": "m"}, [], llm) is None
 
-    llm.complete.return_value = "not json at all {{{"
+    llm, _ = make_llm_client(["not json at all {{{", "still not json"])
     assert await judge_novelty({"title": "t", "mechanism": "m"}, [], llm) is None
 
 
@@ -81,9 +91,10 @@ async def test_run_scoop_check_annotates_and_is_idempotent(store, monkeypatch):
 
     monkeypatch.setattr(sc, "search_openalex", fake_search)
 
-    llm = AsyncMock()
-    llm.complete.return_value = json.dumps(
-        {"verdict": "scooped", "colliding_papers": ["Prior"], "rationale": "match"}
+    llm, fake = make_llm_client(
+        [json.dumps({"verdict": "scooped", "colliding_papers": ["Prior"], "rationale": "match"})],
+        supports_schema=True,
+        repeat=True,
     )
 
     summary = await run_scoop_check(store, llm)
@@ -111,12 +122,13 @@ async def test_run_scoop_check_leaves_unchecked_on_empty_prior_art(store, monkey
         return []
 
     monkeypatch.setattr(sc, "search_openalex", empty_search)
-    llm = AsyncMock()
+    # No payloads: any judge call at all would raise, proving none was made.
+    llm, fake = make_llm_client([])
 
     summary = await run_scoop_check(store, llm)
     assert summary["checked"] == 0
     assert store.query("idea_cards")[0]["novelty_status"] == "unchecked"
-    llm.complete.assert_not_awaited()  # no judge call when there's no prior art
+    assert fake.calls == []  # no judge call when there's no prior art
 
 
 @pytest.mark.asyncio
@@ -131,8 +143,7 @@ async def test_run_scoop_check_survives_judge_crash(store, monkeypatch):
 
     monkeypatch.setattr(sc, "search_openalex", fake_search)
 
-    llm = AsyncMock()
-    llm.complete.return_value = None  # non-str -> strip_code_fences would crash
+    llm, _ = make_llm_client([RuntimeError("judge exploded")], repeat=True)
 
     summary = await run_scoop_check(store, llm)  # must not raise
     assert summary["checked"] == 0
@@ -150,9 +161,14 @@ async def test_run_scoop_check_persists_colliding_papers(store, monkeypatch):
         return [{"title": "KVQuant", "abstract": "a", "year": 2024, "url": "http://p"}]
 
     monkeypatch.setattr(sc, "search_openalex", fake_search)
-    llm = AsyncMock()
-    llm.complete.return_value = json.dumps(
-        {"verdict": "scooped", "colliding_papers": ["KVQuant"], "rationale": "same idea"}
+    llm, fake = make_llm_client(
+        [
+            json.dumps(
+                {"verdict": "scooped", "colliding_papers": ["KVQuant"], "rationale": "same idea"}
+            )
+        ],
+        supports_schema=True,
+        repeat=True,
     )
 
     await run_scoop_check(store, llm)
@@ -176,7 +192,7 @@ async def test_run_scoop_check_skips_empty_query(store, monkeypatch):
         return [{"title": "X", "abstract": "a", "year": 2024, "url": "u"}]
 
     monkeypatch.setattr(sc, "search_openalex", fake_search)
-    llm = AsyncMock()
+    llm, _ = make_llm_client([])
 
     summary = await run_scoop_check(store, llm)
     assert searched == []  # no search call for the empty-query card
@@ -223,8 +239,9 @@ async def test_run_scoop_check_honors_max_terms(store, monkeypatch):
 
     monkeypatch.setattr(sc, "search_openalex", fake_search)
 
-    llm = AsyncMock()
-    llm.complete.return_value = json.dumps({"verdict": "novel", "rationale": "ok"})
+    llm, fake = make_llm_client(
+        [json.dumps({"verdict": "novel", "rationale": "ok"})], supports_schema=True, repeat=True
+    )
 
     await run_scoop_check(store, llm, max_terms=3)
     # Only the first 3 of the card's 5 signature terms are searched.
@@ -263,9 +280,10 @@ async def test_run_scoop_check_limit_skips_failing_cards(store, monkeypatch):
         return [{"title": "Prior", "abstract": "a", "year": 2023, "url": "u"}]
 
     monkeypatch.setattr(sc, "search_openalex", fake_search)
-    llm = AsyncMock()
-    llm.complete.return_value = json.dumps(
-        {"verdict": "scooped", "colliding_papers": ["Prior"], "rationale": "m"}
+    llm, fake = make_llm_client(
+        [json.dumps({"verdict": "scooped", "colliding_papers": ["Prior"], "rationale": "m"})],
+        supports_schema=True,
+        repeat=True,
     )
 
     summary = await run_scoop_check(store, llm, limit=1)

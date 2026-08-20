@@ -67,7 +67,7 @@ VERCEL_ORG_ID=team_aWx4s8YoVMOWVPeo3S8FO2RD \
 | **Local-only path** | `LensStore` (sqlite-vec); `--extra local` install | Used by CLI, build pipeline, and 296-test suite |
 | **Vercel env vars set** | `TURSO_DATABASE_URL` (→ lens-prod), `TURSO_AUTH_TOKEN`, `OPENROUTER_API_KEY` | Production environment only; preview/dev not configured |
 | **GitHub Secrets** | `TURSO_DEV_*` (Phase 1 publish) and `TURSO_PROD_*` (Phase 2 monitor cron, queued) | `OPENROUTER_API_KEY` will be added when Phase 2 lands |
-| **Test count** | 355 (as of 0.13.0; offline suite + TursoStore + API/protocol) | All green |
+| **Test count** | 383 (as of 0.14.0; offline suite + TursoStore + API/protocol) | All green |
 
 ### Verified working (last checked 2026-04-26)
 
