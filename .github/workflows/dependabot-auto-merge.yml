@@ -84,8 +84,10 @@ jobs:
           fi
           echo "PR #$PR is patch/minor/security with green CI — squash-merging."
           gh pr merge "$PR" --repo "$REPO" --squash --delete-branch
-          # Gates the deploy step below. Set only on this path: the major-bump
-          # branch above also exits 0, and must not trigger a production deploy.
+          # Gates the steps below. Set only on this path: the major-bump branch
+          # above also exits 0, and must not trigger CI or a production deploy.
+          echo "merged=true" >> "$GITHUB_OUTPUT"
+          # `deploy` additionally narrows to changes that reach the deployed app.
           # File paths are untrusted, but are only pattern-matched here, never
           # executed. Deny-list rather than allow-list: a newly added top-level
           # file should default to deploying. A needless deploy costs two build
@@ -97,6 +99,17 @@ jobs:
           else
             echo "Only CI/docs/tests changed — skipping deploy."
           fi
+
+      # Same recursion guard: no `push` event means Python CI never runs on main
+      # for an auto-merged commit. The PR was tested, but against whatever main
+      # was at the time — the squashed result on today's main is untested, and a
+      # clean git merge does not imply a working one. Dispatched without
+      # `run_publish`, so the publish job's `if` skips it and nothing reaches
+      # PyPI. Gated on `merged` rather than `deploy`: an Actions-only bump skips
+      # deployment but is still worth testing.
+      - name: Run Python CI on the merged commit
+        if: steps.merge.outputs.merged == 'true'
+        run: gh workflow run ci-and-publish.yml --repo "$REPO" --ref main
 
       # A GITHUB_TOKEN push cannot trigger `on: push`, so deploy-vercel never
       # fires for an auto-merged PR and main silently drifts ahead of production.
