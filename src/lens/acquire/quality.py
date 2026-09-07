@@ -19,6 +19,8 @@ def quality_score(
     venue: str | None,
     paper_date: str,
     venue_tiers: dict[str, list[str]] | None = None,
+    *,
+    today: date | None = None,
 ) -> float:
     """Compute a 0-1 quality score for a paper.
 
@@ -26,6 +28,10 @@ def quality_score(
     - Citation score (0.5): log-scaled, saturates ~10k
     - Venue score (0.2): tier1=1.0, tier2=0.5, unknown/None=0.0
     - Recency score (0.3): exponential decay, half-life ~2 years
+
+    ``today`` overrides the reference date used for the recency term. It
+    defaults to :func:`datetime.date.today`; pass it explicitly to make the
+    score reproducible (tests must, or their assertions decay with wall time).
     """
     tiers = venue_tiers or DEFAULT_VENUE_TIERS
 
@@ -43,7 +49,8 @@ def quality_score(
         pub_date = datetime.strptime(paper_date[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError):
         pub_date = date(2020, 1, 1)
-    days_old = max(0, (date.today() - pub_date).days)
+    reference_date = today if today is not None else date.today()
+    days_old = max(0, (reference_date - pub_date).days)
     half_life_days = 2 * 365
     recency_score = math.exp(-0.693 * days_old / half_life_days)
 
