@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import re
+from datetime import date
 from typing import Any
 from urllib.parse import quote_plus
 
@@ -29,7 +30,19 @@ DEFAULT_MAILTO = "lens-project@example.com"
 # art, so restricting to recent CS works keeps generic terms (e.g. "adaptive
 # quantization") from dredging up control-theory / signal-processing papers.
 CS_CONCEPT_ID = "C41008148"
-DEFAULT_FROM_YEAR = 2018
+# Prior-art window, expressed as a span rather than a fixed start year. A
+# hardcoded year looks stable but silently widens the window every January —
+# "recent work" is relative to now, so the span is the part that must be frozen.
+DEFAULT_LOOKBACK_YEARS = 8
+
+
+def default_from_year(today: date | None = None) -> int:
+    """First publication year included in a prior-art search.
+
+    ``today`` overrides the reference date; it defaults to the current date.
+    """
+    reference = today if today is not None else date.today()
+    return reference.year - DEFAULT_LOOKBACK_YEARS
 
 
 def _reconstruct_abstract(inverted_index: Any) -> str:
@@ -48,17 +61,21 @@ async def search_openalex(
     query: str,
     limit: int = 5,
     mailto: str = "",
-    from_year: int = DEFAULT_FROM_YEAR,
+    from_year: int | None = None,
 ) -> list[dict[str, Any]]:
     """Search OpenAlex for prior art matching a text query (polite free pool).
 
     Restricted to recent Computer-science works so generic query terms don't
     surface off-domain / decades-old papers. Never raises — returns [] on
     timeout / HTTP error / malformed body; works without a title are dropped.
+
+    ``from_year`` defaults to a rolling :data:`DEFAULT_LOOKBACK_YEARS` window
+    ending at the current year; pass it explicitly to pin the window.
     """
     effective_mailto = mailto or DEFAULT_MAILTO
+    effective_from_year = from_year if from_year is not None else default_from_year()
     fields = "title,abstract_inverted_index,publication_year,doi,id"
-    filters = f"from_publication_date:{from_year}-01-01,concepts.id:{CS_CONCEPT_ID}"
+    filters = f"from_publication_date:{effective_from_year}-01-01,concepts.id:{CS_CONCEPT_ID}"
     url = (
         f"{OPENALEX_API_URL}?search={quote_plus(query)}"
         f"&per-page={limit}&mailto={effective_mailto}&select={fields}&filter={filters}"

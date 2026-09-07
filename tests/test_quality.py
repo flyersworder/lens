@@ -8,6 +8,8 @@ time rather than with a change in behaviour.
 
 from datetime import date, timedelta
 
+import pytest
+
 TODAY = date(2026, 1, 1)
 
 
@@ -114,13 +116,14 @@ def test_quality_score_is_stable_across_reference_dates():
 
 
 def test_quality_score_defaults_to_today():
-    """Omitting ``today`` is equivalent to passing the current date."""
-    from lens.acquire.quality import quality_score
+    """Omitting ``today`` uses the module's own clock."""
+    from lens.acquire import quality
 
-    published = (date.today() - timedelta(days=365)).isoformat()
-    assert quality_score(citations=100, venue="ICML", paper_date=published) == quality_score(
-        citations=100, venue="ICML", paper_date=published, today=date.today()
-    )
+    now = quality.date.today()
+    published = (now - timedelta(days=365)).isoformat()
+    assert quality.quality_score(
+        citations=100, venue="ICML", paper_date=published
+    ) == quality.quality_score(citations=100, venue="ICML", paper_date=published, today=now)
 
 
 def test_quality_score_future_paper_does_not_exceed_full_recency():
@@ -130,3 +133,39 @@ def test_quality_score_future_paper_does_not_exceed_full_recency():
     future = quality_score(citations=0, venue=None, paper_date=_days_before(-90), today=TODAY)
     now = quality_score(citations=0, venue=None, paper_date=_days_before(0), today=TODAY)
     assert future == now
+
+
+def test_quality_score_unparseable_date_takes_fixed_penalty():
+    """An unparseable date scores as a fixed age, not a fixed calendar date."""
+    from lens.acquire.quality import (
+        UNKNOWN_DATE_HALF_LIVES,
+        quality_score,
+    )
+
+    score = quality_score(citations=0, venue=None, paper_date="not-a-date", today=TODAY)
+    # Recency is the only non-zero term: 0.3 * 2**-UNKNOWN_DATE_HALF_LIVES.
+    assert score == pytest.approx(0.3 * 2.0**-UNKNOWN_DATE_HALF_LIVES, rel=1e-3)
+
+
+def test_quality_score_unparseable_date_does_not_decay_over_time():
+    """Regression guard: the unknown-date penalty must not deepen with the years.
+
+    An absolute fallback publication date would make an unchanged input score
+    lower every year.
+    """
+    from lens.acquire.quality import quality_score
+
+    def score_at(reference: date) -> float:
+        return quality_score(citations=10, venue="ICML", paper_date="", today=reference)
+
+    assert score_at(date(2026, 1, 1)) == score_at(date(2099, 12, 31))
+
+
+def test_quality_score_unparseable_date_ranks_below_a_known_recent_paper():
+    """The penalty still has to bite: unknown beats nothing, loses to recent."""
+    from lens.acquire.quality import quality_score
+
+    unknown = quality_score(citations=100, venue="ICML", paper_date="???", today=TODAY)
+    recent = quality_score(citations=100, venue="ICML", paper_date=_years_before(0.5), today=TODAY)
+    ancient = quality_score(citations=100, venue="ICML", paper_date=_years_before(30), today=TODAY)
+    assert ancient < unknown < recent

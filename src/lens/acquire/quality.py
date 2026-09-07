@@ -8,6 +8,13 @@ from __future__ import annotations
 import math
 from datetime import date, datetime
 
+RECENCY_HALF_LIFE_DAYS = 2 * 365
+# Papers whose date will not parse take a fixed recency penalty of this many
+# half-lives (3 -> a recency factor of 1/8). Expressed as an age rather than an
+# absolute fallback date, whose implied age — and so whose penalty — would
+# deepen every year for an input that has not changed.
+UNKNOWN_DATE_HALF_LIVES = 3
+
 DEFAULT_VENUE_TIERS: dict[str, list[str]] = {
     "tier1": ["ICML", "NeurIPS", "ICLR", "ACL", "EMNLP", "COLM"],
     "tier2": ["AAAI", "NAACL", "EACL", "COLING"],
@@ -29,6 +36,9 @@ def quality_score(
     - Venue score (0.2): tier1=1.0, tier2=0.5, unknown/None=0.0
     - Recency score (0.3): exponential decay, half-life ~2 years
 
+    An unparseable ``paper_date`` is scored as
+    :data:`UNKNOWN_DATE_HALF_LIVES` half-lives old rather than raising.
+
     ``today`` overrides the reference date used for the recency term. It
     defaults to :func:`datetime.date.today`; pass it explicitly to make the
     score reproducible (tests must, or their assertions decay with wall time).
@@ -48,11 +58,11 @@ def quality_score(
     try:
         pub_date = datetime.strptime(paper_date[:10], "%Y-%m-%d").date()
     except (ValueError, TypeError):
-        pub_date = date(2020, 1, 1)
-    reference_date = today if today is not None else date.today()
-    days_old = max(0, (reference_date - pub_date).days)
-    half_life_days = 2 * 365
-    recency_score = math.exp(-0.693 * days_old / half_life_days)
+        days_old = UNKNOWN_DATE_HALF_LIVES * RECENCY_HALF_LIFE_DAYS
+    else:
+        reference_date = today if today is not None else date.today()
+        days_old = max(0, (reference_date - pub_date).days)
+    recency_score = math.exp(-0.693 * days_old / RECENCY_HALF_LIFE_DAYS)
 
     score = 0.5 * citation_score + 0.2 * venue_score + 0.3 * recency_score
     return max(0.0, min(1.0, score))

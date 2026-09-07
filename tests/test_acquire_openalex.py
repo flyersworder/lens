@@ -158,8 +158,10 @@ async def test_search_openalex_parses(monkeypatch):
     monkeypatch.setattr(oa, "fetch_with_retry", fake_fetch)
     monkeypatch.setattr(oa, "SEARCH_PACING_SECONDS", 0)
     res = await oa.search_openalex("kv cache quantization", limit=5)
-    # recency + CS-concept filters are applied to keep results on-domain
-    assert "from_publication_date:2018-01-01" in seen_url["url"]
+    # recency + CS-concept filters are applied to keep results on-domain.
+    # The start year is derived, not hardcoded: pinning a literal here would
+    # make this test fail every January when the rolling window advances.
+    assert f"from_publication_date:{oa.default_from_year()}-01-01" in seen_url["url"]
     assert "concepts.id:C41008148" in seen_url["url"]
     assert len(res) == 2  # full + title-only kept; fully-empty work dropped
     assert res[0]["abstract"] == "Adaptive quantization"
@@ -180,3 +182,66 @@ async def test_search_openalex_fails_soft(monkeypatch):
     monkeypatch.setattr(oa, "fetch_with_retry", boom)
     monkeypatch.setattr(oa, "SEARCH_PACING_SECONDS", 0)
     assert await oa.search_openalex("anything") == []
+
+
+# ---------------------------------------------------------------------------
+# Rolling prior-art window
+# ---------------------------------------------------------------------------
+
+
+def test_default_from_year_is_a_rolling_window():
+    """The window is a fixed span, not a fixed start year."""
+    from datetime import date
+
+    import lens.acquire.openalex as oa
+
+    assert oa.default_from_year(today=date(2026, 6, 1)) == 2026 - oa.DEFAULT_LOOKBACK_YEARS
+    assert oa.default_from_year(today=date(2040, 1, 1)) == 2040 - oa.DEFAULT_LOOKBACK_YEARS
+
+
+def test_default_from_year_span_does_not_widen_over_time():
+    """Regression guard: a hardcoded start year silently widens the window.
+
+    The number of years covered must be identical whenever it is evaluated.
+    """
+    from datetime import date
+
+    import lens.acquire.openalex as oa
+
+    spans = {
+        reference.year - oa.default_from_year(today=reference)
+        for reference in (date(2026, 1, 1), date(2033, 7, 4), date(2050, 12, 31))
+    }
+    assert spans == {oa.DEFAULT_LOOKBACK_YEARS}
+
+
+def test_default_from_year_defaults_to_today():
+    """Omitting ``today`` uses the module's own clock.
+
+    Compares against ``oa.date`` rather than a freshly imported ``date`` so the
+    assertion pins the contract itself, not agreement between two clocks.
+    """
+    import lens.acquire.openalex as oa
+
+    assert oa.default_from_year() == oa.default_from_year(today=oa.date.today())
+
+
+@pytest.mark.asyncio
+async def test_search_openalex_explicit_from_year_overrides_default(monkeypatch):
+    """An explicit from_year pins the window regardless of the current date."""
+    import lens.acquire.openalex as oa
+
+    class FakeResp:
+        def json(self):
+            return {"results": []}
+
+    seen_url = {}
+
+    async def fake_fetch(client, url, headers=None):
+        seen_url["url"] = url
+        return FakeResp()
+
+    monkeypatch.setattr(oa, "fetch_with_retry", fake_fetch)
+    monkeypatch.setattr(oa, "SEARCH_PACING_SECONDS", 0)
+    await oa.search_openalex("anything", from_year=1999)
+    assert "from_publication_date:1999-01-01" in seen_url["url"]
