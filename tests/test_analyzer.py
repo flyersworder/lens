@@ -255,3 +255,23 @@ async def test_analyze_agentic(arch_agentic_store):
     first = result["patterns"][0]
     assert "components" in first
     assert "use_case" in first
+
+
+def test_classify_prompt_names_avoided_degradation_as_worsening():
+    """For "improve X without hurting Y", Y must be the worsening parameter.
+
+    The earlier wording ("which parameter they accept WORSENING") let a literal
+    model answer "(none of these)" for exactly that phrasing — the /analyze
+    placeholder — which discards the whole result. Measured 2026-10-29 on
+    deepseek-v4.1-flash: 4/8 typical tradeoff queries usable before, 8/8 after,
+    off-topic queries still rejected.
+    """
+    from lens.serve.analyzer import _NO_MATCH, _build_classify_prompt
+
+    prompt = _build_classify_prompt(
+        "reduce inference latency without hurting accuracy", ["Inference Latency"]
+    )
+    assert "in tension" in prompt
+    assert '"without hurting X" means X is the worsening parameter' in prompt
+    assert "accept WORSENING" not in prompt
+    assert repr(_NO_MATCH) in prompt  # off-topic escape hatch kept
