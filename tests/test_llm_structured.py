@@ -445,3 +445,34 @@ async def test_client_counts_every_provider_call():
 
     # rejected enforced probe + prompt fallback
     assert client.calls_made == 2
+
+
+class _StatusError(Exception):
+    def __init__(self, message: str, status_code: int) -> None:
+        super().__init__(message)
+        self.status_code = status_code
+
+
+def test_price_cap_404_is_not_a_schema_rejection():
+    """OpenRouter's max_price 404 must propagate, not be cached as "this model
+    can't do json_schema" — that would silently drop strict mode for good.
+    Text captured from a real capped request (2026-10-29)."""
+    from lens.llm.structured import is_schema_unsupported
+
+    err = _StatusError(
+        "Error code: 404 - {'error': {'message': 'No endpoints found that satisfy "
+        "the max price for this request', 'code': 404, 'metadata': {'routing_funnel': "
+        "[{'step': 'Initial Endpoints', 'endpoint_count': 41}], "
+        "'failed_routing_step': 'Filter by Max Price'}}}",
+        404,
+    )
+    assert is_schema_unsupported(err) is False
+
+
+def test_schema_rejection_is_detected():
+    from lens.llm.structured import is_schema_unsupported
+
+    err = _StatusError("Error code: 400 - response_format json_schema not supported", 400)
+    assert is_schema_unsupported(err) is True
+    # A 5xx naming the format is an outage, never a capability verdict.
+    assert is_schema_unsupported(_StatusError("response_format backend down", 500)) is False

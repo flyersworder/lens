@@ -26,6 +26,10 @@ Configuration is via environment variables:
 * ``TURSO_DATABASE_URL`` + ``TURSO_AUTH_TOKEN`` — production libSQL
 * ``OPENROUTER_API_KEY`` — used for both LLM completions and embeddings
 * ``LENS_LLM_MODEL``    — default ``deepseek/deepseek-v4.1-flash``
+* ``LENS_LLM_ROUTING``  — JSON OpenRouter provider preferences; defaults to
+  ``DEFAULT_LLM_ROUTING`` (cheapest fp8+ endpoint under a price cap).
+  ``"{}"`` restores OpenRouter's default load balancing. Override it
+  whenever ``LENS_LLM_MODEL`` changes: the cap is sized for the default model.
 * ``LENS_EMBED_MODEL``  — default ``openai/text-embedding-3-small``
 * ``LENS_LOCAL_DB``     — fallback path used when ``TURSO_*`` is unset
   (defaults to ``~/.lens/data/lens.db``); intended for local dev only
@@ -105,6 +109,19 @@ def _build_store() -> ReadableStore:
     return LensStore(local_path)
 
 
+# Route to the cheapest healthy endpoint (sort=price disables OpenRouter's load
+# balancing; fallbacks stay on), never above the cap ($/M tokens), and skip
+# sub-fp8 quantizations that risk structured-extraction quality. Sized for
+# deepseek-v4.1-flash, whose endpoints span $0.18-$2.40/M output (2026-10-29).
+# Mirrored in .github/workflows/monitor.yml.
+DEFAULT_LLM_ROUTING: dict[str, Any] = {
+    "sort": "price",
+    "max_price": {"prompt": 0.20, "completion": 0.60},
+    "quantizations": ["fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"],
+    "allow_fallbacks": True,
+}
+
+
 def _build_llm() -> LLMClient:
     """Construct the LLM client from env, defaulting to deepseek-v4.1-flash."""
     api_key = os.environ.get("OPENROUTER_API_KEY")
@@ -113,10 +130,13 @@ def _build_llm() -> LLMClient:
             "OPENROUTER_API_KEY must be set. Top up credits at "
             "https://openrouter.ai/credits if needed."
         )
+    routing_env = os.environ.get("LENS_LLM_ROUTING")
+    routing = json.loads(routing_env) if routing_env else DEFAULT_LLM_ROUTING
     return LLMClient(
         model=os.environ.get("LENS_LLM_MODEL", "deepseek/deepseek-v4.1-flash"),
         api_base="https://openrouter.ai/api/v1",
         api_key=api_key,
+        provider_routing=routing,
     )
 
 

@@ -633,3 +633,31 @@ def test_hash_query_is_truncated_sha256():
     assert a == b  # case + whitespace insensitive
     assert a is not None and len(a) == 16
     assert all(ch in "0123456789abcdef" for ch in a)
+
+
+# ---------------------------------------------------------------------------
+# _build_llm provider routing
+# ---------------------------------------------------------------------------
+
+
+def test_build_llm_applies_default_routing(monkeypatch):
+    pytest.importorskip("fastapi")
+    from api.index import DEFAULT_LLM_ROUTING, _build_llm
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.delenv("LENS_LLM_ROUTING", raising=False)
+    assert _build_llm().provider_routing == DEFAULT_LLM_ROUTING
+    assert DEFAULT_LLM_ROUTING["sort"] == "price"
+    assert "fp4" not in DEFAULT_LLM_ROUTING["quantizations"]
+
+
+def test_build_llm_routing_env_override(monkeypatch):
+    pytest.importorskip("fastapi")
+    from api.index import _build_llm
+
+    monkeypatch.setenv("OPENROUTER_API_KEY", "sk-test")
+    monkeypatch.setenv("LENS_LLM_ROUTING", '{"order": ["deepinfra"]}')
+    assert _build_llm().provider_routing == {"order": ["deepinfra"]}
+    # "{}" disables routing preferences entirely (OpenRouter default balancing).
+    monkeypatch.setenv("LENS_LLM_ROUTING", "{}")
+    assert _build_llm().provider_routing is None

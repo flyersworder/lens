@@ -153,3 +153,73 @@ async def test_complete_with_api_base_uses_openai_even_with_litellm():
         assert result == "routed via openai"
         mock_client.chat.completions.create.assert_called_once()
         mock_litellm.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_provider_routing_sent_as_extra_body():
+    """OpenRouter provider preferences ride in ``extra_body["provider"]`` on the
+    openai path, so price caps / quantization filters reach the router."""
+    from lens.llm.client import LLMClient
+
+    routing = {"sort": "price", "max_price": {"prompt": 0.2, "completion": 0.6}}
+    client = LLMClient(
+        model="deepseek/deepseek-v4.1-flash",
+        api_base="https://openrouter.ai/api/v1",
+        api_key="sk-test",
+        provider_routing=routing,
+    )
+    mock_response = AsyncMock()
+    mock_response.choices = [AsyncMock()]
+    mock_response.choices[0].message.content = "ok"
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+    client._openai_client = mock_client
+
+    await client.complete(messages=[{"role": "user", "content": "test"}])
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["extra_body"] == {"provider": routing}
+
+
+@pytest.mark.asyncio
+async def test_no_provider_routing_sends_no_extra_body():
+    from lens.llm.client import LLMClient
+
+    client = LLMClient(model="gpt-4", api_base="http://localhost:4000/v1", api_key="sk-test")
+    mock_response = AsyncMock()
+    mock_response.choices = [AsyncMock()]
+    mock_response.choices[0].message.content = "ok"
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=mock_response)
+    client._openai_client = mock_client
+
+    await client.complete(messages=[{"role": "user", "content": "test"}])
+
+    assert "extra_body" not in mock_client.chat.completions.create.call_args.kwargs
+
+
+@pytest.mark.asyncio
+async def test_provider_routing_sent_when_streaming():
+    from lens.llm.client import LLMClient
+
+    routing = {"sort": "price"}
+    client = LLMClient(
+        model="deepseek/deepseek-v4.1-flash",
+        api_base="https://openrouter.ai/api/v1",
+        api_key="sk-test",
+        provider_routing=routing,
+    )
+
+    async def _empty_stream():
+        return
+        yield
+
+    mock_client = AsyncMock()
+    mock_client.chat.completions.create = AsyncMock(return_value=_empty_stream())
+    client._openai_client = mock_client
+
+    async for _ in client.stream(messages=[{"role": "user", "content": "test"}]):
+        pass
+
+    kwargs = mock_client.chat.completions.create.call_args.kwargs
+    assert kwargs["extra_body"] == {"provider": routing}

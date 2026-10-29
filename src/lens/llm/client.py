@@ -55,12 +55,17 @@ class LLMClient:
         max_tokens: int = 4096,
         api_base: str | None = None,
         api_key: str | None = None,
+        provider_routing: dict[str, Any] | None = None,
     ) -> None:
         self.model = model
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.api_base = api_base or None  # normalize "" to None
         self.api_key = api_key or None
+        # OpenRouter provider preferences (sort / max_price / quantizations ...),
+        # sent as the request's ``provider`` object. Only the openai path talks to
+        # OpenRouter, so litellm's bare provider routing ignores it.
+        self.provider_routing = provider_routing or None
         self._openai_client: openai.AsyncOpenAI | None = None
         # Billable completions issued. complete_structured can spend up to three
         # per request (enforced probe, prompt fallback, corrective retry), so
@@ -90,6 +95,12 @@ class LLMClient:
         routing scheme and misroute the request.
         """
         return HAS_LITELLM and not self.api_base
+
+    def _routing_kwargs(self) -> dict[str, Any]:
+        """``extra_body`` carrying provider preferences, or nothing when unset."""
+        if not self.provider_routing:
+            return {}
+        return {"extra_body": {"provider": self.provider_routing}}
 
     def _require_backend(self) -> None:
         """Raise if neither litellm nor api_base is available."""
@@ -181,6 +192,7 @@ class LLMClient:
                 messages=typed_messages,
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
+                **self._routing_kwargs(),
                 **kwargs,
             )
             content = response.choices[0].message.content
@@ -370,6 +382,7 @@ class LLMClient:
                 temperature=self.temperature,
                 max_tokens=self.max_tokens,
                 stream=True,
+                **self._routing_kwargs(),
             )
             async for chunk in stream:
                 delta = chunk.choices[0].delta.content

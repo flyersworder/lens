@@ -69,6 +69,8 @@ jobs:
           uv run lens config set llm.default_model deepseek/deepseek-v4.1-flash
           uv run lens config set llm.extract_model deepseek/deepseek-v4.1-flash
           uv run lens config set llm.label_model deepseek/deepseek-v4.1-flash
+          # Cheapest fp8+ endpoint under a $/M cap; mirrors DEFAULT_LLM_ROUTING in api/index.py.
+          uv run lens config set llm.provider_routing '{"sort":"price","max_price":{"prompt":0.2,"completion":0.6},"quantizations":["fp8","mxfp8","fp16","bf16","fp32","unknown"],"allow_fallbacks":true}'
           uv run lens config set embeddings.provider cloud
           uv run lens config set embeddings.model openai/text-embedding-3-small
           uv run lens config set embeddings.api_base https://openrouter.ai/api/v1
