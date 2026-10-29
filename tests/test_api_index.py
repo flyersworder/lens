@@ -379,6 +379,30 @@ def test_stats_returns_aggregated_shape(client):
     assert body["taxonomy_version"] == 4
 
 
+def test_stats_counts_agentic_category_kind(client):
+    """The vocabulary stores agentic entries as kind ``agentic_category``; the
+    ``agentic`` field must count those (it once read a non-existent ``agentic``
+    kind and reported 0 against a corpus holding 16)."""
+    c, fake_store, _ = client
+    _reset_stats_cache()
+    fake_store.query_sql = _stub_kind_query_sql(
+        {
+            "SELECT COUNT(*) AS n FROM papers": [{"n": 1}],
+            "SELECT kind, COUNT(*) AS n FROM vocabulary": [
+                {"kind": "parameter", "n": 32},
+                {"kind": "agentic_category", "n": 16},
+            ],
+            "SELECT COUNT(*) AS n FROM matrix_cells": [{"n": 0}],
+            "SELECT COUNT(*) AS n FROM tradeoff_extractions": [{"n": 0}],
+            "SELECT MAX(version_id) AS n FROM taxonomy_versions": [{"n": 1}],
+        }
+    )
+
+    body = c.get("/api/stats").json()
+    assert body["vocabulary"]["agentic"] == 16
+    assert body["vocabulary"]["total"] == 48
+
+
 def test_stats_propagates_none_when_kind_aggregation_fails(client):
     c, fake_store, _ = client
     _reset_stats_cache()
@@ -649,6 +673,7 @@ def test_build_llm_applies_default_routing(monkeypatch):
     assert _build_llm().provider_routing == DEFAULT_LLM_ROUTING
     assert DEFAULT_LLM_ROUTING["sort"] == "price"
     assert "fp4" not in DEFAULT_LLM_ROUTING["quantizations"]
+    assert DEFAULT_LLM_ROUTING["require_parameters"] is True
 
 
 def test_build_llm_routing_env_override(monkeypatch):

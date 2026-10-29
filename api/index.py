@@ -111,7 +111,9 @@ def _build_store() -> ReadableStore:
 
 # Route to the cheapest healthy endpoint (sort=price disables OpenRouter's load
 # balancing; fallbacks stay on), never above the cap ($/M tokens), and skip
-# sub-fp8 quantizations that risk structured-extraction quality. Sized for
+# sub-fp8 quantizations that risk structured-extraction quality. require_parameters
+# keeps a json_schema request off endpoints that would reject response_format —
+# a rejection is cached per model and silently drops strict mode. Sized for
 # deepseek-v4.1-flash, whose endpoints span $0.18-$2.40/M output (2026-10-29).
 # Mirrored in .github/workflows/monitor.yml.
 DEFAULT_LLM_ROUTING: dict[str, Any] = {
@@ -119,6 +121,7 @@ DEFAULT_LLM_ROUTING: dict[str, Any] = {
     "max_price": {"prompt": 0.20, "completion": 0.60},
     "quantizations": ["fp8", "mxfp8", "fp16", "bf16", "fp32", "unknown"],
     "allow_fallbacks": True,
+    "require_parameters": True,
 }
 
 
@@ -608,7 +611,7 @@ def _compute_stats(store: ReadableStore) -> dict[str, Any]:
             "parameter": vocab.get("parameter", 0),
             "principle": vocab.get("principle", 0),
             "arch_slot": vocab.get("arch_slot", 0),
-            "agentic": vocab.get("agentic", 0),
+            "agentic": vocab.get("agentic_category", 0),
         }
     return {
         "papers": _count("SELECT COUNT(*) AS n FROM papers"),
