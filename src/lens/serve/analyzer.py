@@ -28,8 +28,10 @@ def _build_classify_prompt(query: str, param_names: list[str]) -> str:
         f"User query: {query}\n\n"
         "Available parameters (dimensions of LLM design):\n"
         f"{params_list}\n\n"
-        "Identify which parameter the user wants to IMPROVE and "
-        "which parameter they accept WORSENING.\n"
+        "Identify which parameter the user wants to IMPROVE, and which parameter is "
+        "in tension with it: the one that typically WORSENS as a side effect. Name it "
+        'even when the user wants to avoid that degradation ("without hurting X" '
+        "means X is the worsening parameter).\n"
         f"If the query does not map onto these parameters, answer {_NO_MATCH!r} for both."
     )
 
