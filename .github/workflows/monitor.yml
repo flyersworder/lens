@@ -17,11 +17,23 @@ name: Weekly LENS Monitor
 #
 # Concurrency: only one monitor at a time so a manual dispatch can't
 # race the weekly cron mid-publish.
+#
+# Scoop-only runs (Thursdays, or dispatch with scoop_only): ideation emits up
+# to 40 cards a week but one scoop-check fits ~30 in OpenAlex's free *daily*
+# budget, so a mid-week run spends a second day's budget on the backlog. It
+# skips `lens monitor` and the destructive full publish, pushing just the new
+# verdicts in place via scripts/sync_idea_verdicts.py (no API downtime).
 
 on:
   schedule:
-    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC — full monitor
+    - cron: "0 6 * * 4"   # Thursdays 06:00 UTC — scoop-check backlog only
   workflow_dispatch:
+    inputs:
+      scoop_only:
+        description: "Only scoop-check unchecked idea cards (no acquire/extract/ideate, no full publish)"
+        type: boolean
+        default: false
 
 permissions: {}
 
@@ -38,6 +50,7 @@ jobs:
     env:
       LENS_DATA_DIR: ${{ github.workspace }}/.lens-data
       REPO: ${{ github.repository }}
+      SCOOP_ONLY: ${{ github.event.schedule == '0 6 * * 4' || inputs.scoop_only == true }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
@@ -80,20 +93,29 @@ jobs:
           uv run lens config set monitor.ideate_llm true
 
       - name: Run monitor (acquire → enrich → extract → build → ideate)
+        if: env.SCOOP_ONLY != 'true'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: uv run lens monitor
 
-      - name: Scoop-check new idea cards
+      - name: Scoop-check unchecked idea cards (oldest first)
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: uv run lens scoop-check --max-terms 3 --limit 30
 
       - name: Publish to lens-prod
+        if: env.SCOOP_ONLY != 'true'
         env:
           TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}
           TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
         run: uv run python scripts/publish_to_turso.py --target prod --local "$LENS_DATA_DIR/lens.db"
+
+      - name: Sync idea-card verdicts to lens-prod (in place)
+        if: env.SCOOP_ONLY == 'true'
+        env:
+          TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}
+          TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
+        run: uv run python -m scripts.sync_idea_verdicts --target prod --local "$LENS_DATA_DIR/lens.db"
 
       - name: Upload updated corpus snapshot
         env:
