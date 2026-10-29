@@ -62,6 +62,36 @@ def test_config_set_coerces_types():
     assert cfg["monitor"]["ideate_min_gap_score"] == 0.75
 
 
+def test_config_set_parses_json_values():
+    """JSON objects/arrays let one `lens config set` write a nested policy,
+    e.g. llm.provider_routing with a quantizations list."""
+    from lens.config import default_config, set_config_value
+
+    cfg = default_config()
+    set_config_value(
+        cfg, "llm.provider_routing", '{"sort": "price", "quantizations": ["fp8", "bf16"]}'
+    )
+    assert cfg["llm"]["provider_routing"] == {"sort": "price", "quantizations": ["fp8", "bf16"]}
+    set_config_value(cfg, "acquire.arxiv_categories", '["cs.CL"]')
+    assert cfg["acquire"]["arxiv_categories"] == ["cs.CL"]
+
+
+def test_config_set_keeps_malformed_json_as_string():
+    from lens.config import default_config, set_config_value
+
+    cfg = default_config()
+    set_config_value(cfg, "llm.default_model", "{not json")
+    assert cfg["llm"]["default_model"] == "{not json"
+
+
+def test_llm_kwargs_forwards_provider_routing():
+    from lens.cli import _llm_kwargs
+
+    routing = {"sort": "price"}
+    assert _llm_kwargs({"llm": {"provider_routing": routing}})["provider_routing"] == routing
+    assert "provider_routing" not in _llm_kwargs({"llm": {"provider_routing": {}}})
+
+
 def test_resolved_data_dir():
     from lens.config import resolve_data_dir
 

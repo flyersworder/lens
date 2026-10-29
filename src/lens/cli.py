@@ -140,7 +140,7 @@ def _get_store() -> LensStore:
 
 
 def _llm_kwargs(config: dict, key: str = "default_model") -> dict:
-    """Extract api_base and api_key from config for LLMClient."""
+    """Extract api_base, api_key and provider_routing from config for LLMClient."""
     llm_cfg = config.get("llm", {})
     kwargs: dict = {}
     if llm_cfg.get("api_base"):
@@ -148,6 +148,8 @@ def _llm_kwargs(config: dict, key: str = "default_model") -> dict:
     api_key = llm_cfg.get("api_key") or os.environ.get("OPENROUTER_API_KEY", "")
     if api_key:
         kwargs["api_key"] = api_key
+    if llm_cfg.get("provider_routing"):
+        kwargs["provider_routing"] = llm_cfg["provider_routing"]
     return kwargs
 
 

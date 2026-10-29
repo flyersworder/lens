@@ -8,6 +8,7 @@ Environment variables from .env are loaded automatically.
 from __future__ import annotations
 
 import copy
+import json
 import logging
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,9 @@ DEFAULT_CONFIG: dict[str, Any] = {
         "label_model": "openrouter/anthropic/claude-sonnet-4-6",
         "api_base": "",
         "api_key": "",
+        # OpenRouter provider preferences, sent verbatim as the request's
+        # `provider` object (e.g. {"sort": "price", "max_price": {...}}).
+        "provider_routing": {},
     },
     "acquire": {
         "arxiv_categories": ["cs.CL", "cs.LG", "cs.AI"],
@@ -158,6 +162,11 @@ def save_config(config: dict[str, Any], config_path: Path | None = None) -> None
 
 def _coerce_value(value: str) -> Any:
     """Coerce a string value to its most likely Python type."""
+    if value[:1] in ("{", "["):
+        try:
+            return json.loads(value)
+        except json.JSONDecodeError:
+            pass
     if value.lower() in ("true", "yes"):
         return True
     if value.lower() in ("false", "no"):
