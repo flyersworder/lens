@@ -25,7 +25,7 @@ Configuration is via environment variables:
 
 * ``TURSO_DATABASE_URL`` + ``TURSO_AUTH_TOKEN`` — production libSQL
 * ``OPENROUTER_API_KEY`` — used for both LLM completions and embeddings
-* ``LENS_LLM_MODEL``    — default ``deepseek/deepseek-v4-flash``
+* ``LENS_LLM_MODEL``    — default ``deepseek/deepseek-v4.1-flash``
 * ``LENS_EMBED_MODEL``  — default ``openai/text-embedding-3-small``
 * ``LENS_LOCAL_DB``     — fallback path used when ``TURSO_*`` is unset
   (defaults to ``~/.lens/data/lens.db``); intended for local dev only
@@ -106,7 +106,7 @@ def _build_store() -> ReadableStore:
 
 
 def _build_llm() -> LLMClient:
-    """Construct the LLM client from env, defaulting to deepseek-v4-flash."""
+    """Construct the LLM client from env, defaulting to deepseek-v4.1-flash."""
     api_key = os.environ.get("OPENROUTER_API_KEY")
     if not api_key:
         raise RuntimeError(
@@ -114,7 +114,7 @@ def _build_llm() -> LLMClient:
             "https://openrouter.ai/credits if needed."
         )
     return LLMClient(
-        model=os.environ.get("LENS_LLM_MODEL", "deepseek/deepseek-v4-flash"),
+        model=os.environ.get("LENS_LLM_MODEL", "deepseek/deepseek-v4.1-flash"),
         api_base="https://openrouter.ai/api/v1",
         api_key=api_key,
     )

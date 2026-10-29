@@ -66,9 +66,9 @@ jobs:
         run: |
           uv run lens config set llm.api_base https://openrouter.ai/api/v1
           uv run lens config set llm.api_key "$OPENROUTER_API_KEY"
-          uv run lens config set llm.default_model deepseek/deepseek-v4-flash
-          uv run lens config set llm.extract_model deepseek/deepseek-v4-flash
-          uv run lens config set llm.label_model deepseek/deepseek-v4-flash
+          uv run lens config set llm.default_model deepseek/deepseek-v4.1-flash
+          uv run lens config set llm.extract_model deepseek/deepseek-v4.1-flash
+          uv run lens config set llm.label_model deepseek/deepseek-v4.1-flash
           uv run lens config set embeddings.provider cloud
           uv run lens config set embeddings.model openai/text-embedding-3-small
           uv run lens config set embeddings.api_base https://openrouter.ai/api/v1
