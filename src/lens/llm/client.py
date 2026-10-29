@@ -169,6 +169,7 @@ class LLMClient:
                 **llm_kwargs,
                 **kwargs,
             )
+            response = cast("litellm.ModelResponse", response)
             content = response.choices[0].message.content
         else:
             from openai.types.chat import ChatCompletionMessageParam
@@ -353,6 +354,7 @@ class LLMClient:
                 **llm_kwargs,
                 **kwargs,
             )
+            response = cast("litellm.CustomStreamWrapper", response)
             async for chunk in response:
                 delta = getattr(chunk.choices[0].delta, "content", None)
                 if delta:
