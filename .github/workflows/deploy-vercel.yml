@@ -30,7 +30,7 @@ jobs:
       # uv + Python: vercel build runs the api project's installCommand
       # (`uv sync ...`) on the runner, so uv must be on PATH. The hosted
       # Vercel builders ship uv preinstalled; this CI runner doesn't.
-      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
       - run: uv python install 3.12
       - name: Install Vercel CLI
         run: npm i -g vercel@59.1.4
