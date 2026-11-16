@@ -44,7 +44,9 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Monitor runs reach ~48 min; leave room for two publish retries (~6 min
+    # each + backoff). A timeout mid-publish would leave lens-prod empty.
+    timeout-minutes: 90
     permissions:
       contents: write   # release upload (corpus-snapshot)
     env:
@@ -99,16 +101,35 @@ jobs:
         run: uv run lens monitor
 
       - name: Scoop-check unchecked idea cards (oldest first)
+        id: scoop
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: uv run lens scoop-check --max-terms 3 --limit 30
 
+      # publish_to_turso.py drops the remote schema in step 1, so a failure in
+      # any later step leaves lens-prod EMPTY (live API returns 0 results).
+      # The script is idempotent from step 1, so retrying the whole thing is
+      # safe — unlike retrying a single DDL whose response was lost. On
+      # 2026-11-16 Turso answered one CREATE TABLE with HTTP 200 but no
+      # "result" (libsql_client: KeyError: 'result') and prod sat empty
+      # until a manual republish.
       - name: Publish to lens-prod
         if: env.SCOOP_ONLY != 'true'
         env:
           TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}
           TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
-        run: uv run python scripts/publish_to_turso.py --target prod --local "$LENS_DATA_DIR/lens.db"
+        run: |
+          for attempt in 1 2 3; do
+            if uv run python scripts/publish_to_turso.py --target prod --local "$LENS_DATA_DIR/lens.db"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 3 ]; then
+              echo "::warning::publish attempt $attempt failed; retrying in $((attempt * 60))s"
+              sleep $((attempt * 60))
+            fi
+          done
+          echo "::error::publish failed 3 times — lens-prod is likely EMPTY. Republish corpus-snapshot manually."
+          exit 1
 
       - name: Sync idea-card verdicts to lens-prod (in place)
         if: env.SCOOP_ONLY == 'true'
@@ -117,7 +138,13 @@ jobs:
           TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
         run: uv run python -m scripts.sync_idea_verdicts --target prod --local "$LENS_DATA_DIR/lens.db"
 
+      # Runs even if the publish/sync above failed: the snapshot is the source
+      # of truth and prod is derived from it, so keep this run's paid LLM work
+      # (new papers, extractions, idea cards, scoop verdicts) and let the next
+      # publish pick it up. `scoop` only succeeds if `lens monitor` succeeded
+      # (or was skipped in scoop-only mode), so a broken monitor never uploads.
       - name: Upload updated corpus snapshot
+        if: ${{ !cancelled() && steps.scoop.outcome == 'success' }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
