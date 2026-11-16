@@ -44,7 +44,10 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    # Budget: setup ~3 + monitor ~15-20 + scoop-check ~3-6 + publish step
+    # (capped at 80) + uploads. A job timeout mid-publish would leave lens-prod
+    # empty, so this must stay above the sum.
+    timeout-minutes: 130
     permissions:
       contents: write   # release upload (corpus-snapshot)
     env:
@@ -93,34 +96,87 @@ jobs:
           uv run lens config set monitor.ideate_llm true
 
       - name: Run monitor (acquire → enrich → extract → build → ideate)
+        id: monitor
         if: env.SCOOP_ONLY != 'true'
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: uv run lens monitor
 
       - name: Scoop-check unchecked idea cards (oldest first)
+        id: scoop
         env:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
         run: uv run lens scoop-check --max-terms 3 --limit 30
 
+      # publish_to_turso.py drops the remote schema in step 1, so a failure in
+      # any later step leaves lens-prod EMPTY (live API returns 0 results).
+      # Retry the WHOLE script: it is idempotent from step 1 (re-drops
+      # everything), whereas replaying a single DDL or INSERT batch whose
+      # response was lost is not. On 2026-11-16 Turso answered one CREATE TABLE
+      # with HTTP 200 but no "result" (libsql_client: KeyError: 'result') and
+      # prod sat empty until a manual republish.
+      # Runs even if scoop-check failed (that doesn't make the DB unpublishable).
+      # One full publish takes ~27 min at ~880 papers (Nov 2026) and grows with
+      # the corpus, so: 2 attempts, and an 80-min step cap that fits both with
+      # headroom. The cap bounds the stacked retries (batch-level inside, script
+      # level here) so a hang fails this step — letting the preserve step below
+      # run — instead of the job timeout cancelling everything. If a single
+      # publish approaches ~38 min, raise the cap (and the job timeout) again.
       - name: Publish to lens-prod
-        if: env.SCOOP_ONLY != 'true'
+        id: publish
+        if: ${{ !cancelled() && env.SCOOP_ONLY != 'true' && steps.monitor.outcome == 'success' }}
+        timeout-minutes: 80
         env:
           TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}
           TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
-        run: uv run python scripts/publish_to_turso.py --target prod --local "$LENS_DATA_DIR/lens.db"
+        run: |
+          for attempt in 1 2; do
+            if uv run python scripts/publish_to_turso.py --target prod --local "$LENS_DATA_DIR/lens.db"; then
+              exit 0
+            fi
+            if [ "$attempt" -lt 2 ]; then
+              echo "::warning::publish attempt $attempt failed; retrying in 60s"
+              sleep 60
+            fi
+          done
+          echo "::error::publish failed twice. If it got past 'step 1/5: dropping', lens-prod is EMPTY — check /api/stats and republish corpus-snapshot lens.db (last known-good). This run's work is preserved as lens-unpublished.db."
+          exit 1
 
       - name: Sync idea-card verdicts to lens-prod (in place)
+        id: sync
         if: env.SCOOP_ONLY == 'true'
         env:
           TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}
           TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
         run: uv run python -m scripts.sync_idea_verdicts --target prod --local "$LENS_DATA_DIR/lens.db"
 
+      # corpus-snapshot/lens.db is only ever replaced by a DB that was just
+      # written to prod successfully, so it stays a known-good rollback point
+      # (release assets are not versioned — a clobber is unrecoverable).
       - name: Upload updated corpus snapshot
+        if: ${{ !cancelled() && (steps.publish.outcome == 'success' || steps.sync.outcome == 'success') }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           gh release upload corpus-snapshot "$LENS_DATA_DIR/lens.db" \
+            --repo "$REPO" \
+            --clobber
+          # A stale preserved DB from an earlier failed week is now superseded.
+          if gh release view corpus-snapshot --repo "$REPO" --json assets -q '.assets[].name' | grep -qx lens-unpublished.db; then
+            gh release delete-asset corpus-snapshot lens-unpublished.db --repo "$REPO" --yes
+          fi
+
+      # The monitor succeeded but its DB never reached prod (publish failed,
+      # timed out, or was skipped). Keep the paid LLM work under a separate
+      # name instead of clobbering lens.db with a DB that may itself be why the
+      # publish failed. Next week's run still starts from lens.db; to promote
+      # this one, publish it manually and, if that succeeds, upload it as lens.db.
+      - name: Preserve unpublished snapshot
+        if: ${{ !cancelled() && steps.monitor.outcome == 'success' && steps.publish.outcome != 'success' }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          cp "$LENS_DATA_DIR/lens.db" "$RUNNER_TEMP/lens-unpublished.db"
+          gh release upload corpus-snapshot "$RUNNER_TEMP/lens-unpublished.db" \
             --repo "$REPO" \
             --clobber
