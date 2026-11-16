@@ -44,9 +44,10 @@ concurrency:
 jobs:
   monitor:
     runs-on: ubuntu-latest
-    # Monitor runs reach ~48 min, plus scoop-check and a publish step capped at
-    # 35 min. A job timeout mid-publish would leave lens-prod empty.
-    timeout-minutes: 120
+    # Budget: setup ~3 + monitor ~15-20 + scoop-check ~3-6 + publish step
+    # (capped at 80) + uploads. A job timeout mid-publish would leave lens-prod
+    # empty, so this must stay above the sum.
+    timeout-minutes: 130
     permissions:
       contents: write   # release upload (corpus-snapshot)
     env:
@@ -115,27 +116,30 @@ jobs:
       # with HTTP 200 but no "result" (libsql_client: KeyError: 'result') and
       # prod sat empty until a manual republish.
       # Runs even if scoop-check failed (that doesn't make the DB unpublishable).
-      # The step timeout bounds the stacked retries (batch-level inside, script
+      # One full publish takes ~27 min at ~880 papers (Nov 2026) and grows with
+      # the corpus, so: 2 attempts, and an 80-min step cap that fits both with
+      # headroom. The cap bounds the stacked retries (batch-level inside, script
       # level here) so a hang fails this step — letting the preserve step below
-      # run — instead of the job timeout cancelling everything.
+      # run — instead of the job timeout cancelling everything. If a single
+      # publish approaches ~38 min, raise the cap (and the job timeout) again.
       - name: Publish to lens-prod
         id: publish
         if: ${{ !cancelled() && env.SCOOP_ONLY != 'true' && steps.monitor.outcome == 'success' }}
-        timeout-minutes: 35
+        timeout-minutes: 80
         env:
           TURSO_PROD_DATABASE_URL: ${{ secrets.TURSO_PROD_DATABASE_URL }}
           TURSO_PROD_AUTH_TOKEN: ${{ secrets.TURSO_PROD_AUTH_TOKEN }}
         run: |
-          for attempt in 1 2 3; do
+          for attempt in 1 2; do
             if uv run python scripts/publish_to_turso.py --target prod --local "$LENS_DATA_DIR/lens.db"; then
               exit 0
             fi
-            if [ "$attempt" -lt 3 ]; then
-              echo "::warning::publish attempt $attempt failed; retrying in $((attempt * 60))s"
-              sleep $((attempt * 60))
+            if [ "$attempt" -lt 2 ]; then
+              echo "::warning::publish attempt $attempt failed; retrying in 60s"
+              sleep 60
             fi
           done
-          echo "::error::publish failed 3 times. If it got past 'step 1/5: dropping', lens-prod is EMPTY — check /api/stats and republish corpus-snapshot lens.db (last known-good). This run's work is preserved as lens-unpublished.db."
+          echo "::error::publish failed twice. If it got past 'step 1/5: dropping', lens-prod is EMPTY — check /api/stats and republish corpus-snapshot lens.db (last known-good). This run's work is preserved as lens-unpublished.db."
           exit 1
 
       - name: Sync idea-card verdicts to lens-prod (in place)
